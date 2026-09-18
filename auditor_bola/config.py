@@ -17,8 +17,8 @@ from pathlib import Path
 @dataclass
 class Cuenta:
     username: str
+    password: str | None
     role: str
-    password: str | None = None
     auth_type: str = "basic"  # basic | bearer | header | none
     token: str | None = None
     headers: dict[str, str] = field(default_factory=dict)
