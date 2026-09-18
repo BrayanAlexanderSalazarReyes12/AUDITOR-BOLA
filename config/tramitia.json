@@ -1,5 +1,6 @@
 {
   "sistema": "tramitia",
+  "version_objetivo": "2.4.0-rc2",
   "base_url": "http://127.0.0.1:5050",
   "cuentas": [
     {"username": "bruno.mejia", "password": "bruno123", "role": "analista"},
@@ -9,22 +10,27 @@
   "roles_privilegiados": ["coordinador"],
   "endpoints": [
     {
+      "id_control": "P1-BOLA-001",
+      "descripcion": "Un analista no puede leer solicitudes ajenas",
       "metodo": "GET",
       "ruta": "/api/solicitudes/{id}",
       "id_prueba": "1",
       "propietario_esperado": "ana.vargas"
     },
     {
+      "id_control": "P1-BOLA-002",
+      "descripcion": "Un analista no puede modificar solicitudes ajenas",
       "metodo": "PATCH",
       "ruta": "/api/solicitudes/{id}",
       "id_prueba": "1",
       "propietario_esperado": "ana.vargas",
-      "cuerpo_prueba": {"resumen": "editado por el auditor generico"}
+      "cuerpo_prueba": {"resumen": "editado por el auditor correctivo"}
     }
   ],
   "chequeos_agente": [
     {
-      "nombre": "escalada via agente (H-04)",
+      "id_control": "P1-SCOPE-003",
+      "nombre": "El asistente conserva el alcance del solicitante",
       "cuenta": "bruno.mejia",
       "direct_metodo": "GET",
       "direct_ruta": "/api/solicitudes",
@@ -36,6 +42,71 @@
       "tool_field": "herramienta",
       "count_field": "devueltas",
       "id_field": "id"
+    }
+  ],
+  "chequeos_acceso": [
+    {
+      "id_control": "P1-RBAC-004",
+      "nombre": "La auditoría administrativa está restringida por rol",
+      "cuenta": "ana.vargas",
+      "metodo": "GET",
+      "ruta": "/api/admin/auditoria",
+      "acceso_esperado": false
+    },
+    {
+      "id_control": "P1-RBAC-004",
+      "nombre": "La coordinación conserva acceso a la auditoría",
+      "cuenta": "carla.osorio",
+      "metodo": "GET",
+      "ruta": "/api/admin/auditoria",
+      "acceso_esperado": true
+    },
+    {
+      "id_control": "P1-RBAC-005",
+      "nombre": "Un analista no puede invocar priorización reservada",
+      "cuenta": "ana.vargas",
+      "metodo": "POST",
+      "ruta": "/api/asistente/herramientas/priorizar",
+      "cuerpo": {},
+      "acceso_esperado": false
+    }
+  ],
+  "chequeos_pilar2": [
+    {
+      "id_control": "P2-CORS-001",
+      "nombre": "CORS no refleja orígenes arbitrarios con credenciales",
+      "tipo": "cors_reflection",
+      "metodo": "GET",
+      "ruta": "/api/solicitudes",
+      "cuenta": "ana.vargas",
+      "headers": {"Origin": "https://origen-no-autorizado.example"}
+    },
+    {
+      "id_control": "P2-SECRET-002",
+      "nombre": "Producción no depende del secreto de desarrollo por defecto",
+      "tipo": "source_contains",
+      "archivo": "tramitia/__init__.py",
+      "patron_inseguro": "SECRET_KEY=os.getenv(\"TRAMITIA_SECRET\", SECRETO_POR_DEFECTO)",
+      "patron_seguro": "TRAMITIA_SECRET debe definirse con un valor seguro en producción"
+    },
+    {
+      "id_control": "P2-LIMIT-003",
+      "nombre": "La vía urgente no permite al analista saltarse límites",
+      "tipo": "http_status_policy",
+      "metodo": "POST",
+      "ruta": "/api/asistente/ejecutar",
+      "cuenta": "ana.vargas",
+      "cuerpo": {"urgente": true},
+      "campo_repetir": "tarea",
+      "caracter": "x",
+      "cantidad": 401,
+      "codigos_seguros": [400, 403, 429]
+    },
+    {
+      "id_control": "P2-DOCKER-004",
+      "nombre": "El contenedor ejecuta con usuario no privilegiado",
+      "tipo": "docker_non_root",
+      "archivo": "Dockerfile"
     }
   ]
 }
