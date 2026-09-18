@@ -1,4 +1,4 @@
-"""CLI del auditor correctivo de dos pilares."""
+"""CLI del Auditor Correctivo de Seguridad de Dos Pilares."""
 
 from __future__ import annotations
 
@@ -21,7 +21,8 @@ def _diagnose(args) -> int:
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(
-            json.dumps(resultado, ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps(resultado, ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
     else:
         evidence = EvidenceSession.create(args.evidence_dir)
@@ -33,7 +34,8 @@ def _diagnose(args) -> int:
     print(
         "Hallazgos: "
         f"BOLA={r['bola_confirmados']} | acceso={r['acceso_vulnerable']} | "
-        f"agente={r['agente_vulnerable']} | pilar2={r['pilar2_hallazgos']} | errores={r['errores']}"
+        f"agente={r['agente_vulnerable']} | "
+        f"pilar2={r['pilar2_hallazgos']} | errores={r['errores']}"
     )
     total = (
         r["bola_confirmados"]
@@ -48,8 +50,9 @@ def _correct(args) -> int:
     cfg = cargar_config(args.config)
     proceso = None
     reiniciar = None
+
     if args.manage_target:
-        proceso = LocalTargetProcess(args.target_root)
+        proceso = LocalTargetProcess(args.target_root, cfg.runtime)
         proceso.start()
         reiniciar = proceso.restart
 
@@ -71,26 +74,26 @@ def _correct(args) -> int:
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="TRAMITIA — Auditor Correctivo de Seguridad de Dos Pilares"
+        description="Auditor Correctivo de Seguridad de Dos Pilares"
     )
     sub = ap.add_subparsers(dest="command", required=True)
 
     diag = sub.add_parser("diagnose", help="diagnostica Pilar 1 y Pilar 2")
-    diag.add_argument("--config", required=True)
+    diag.add_argument("--config", required=True, help="perfil JSON del objetivo")
     diag.add_argument("--target-root", help="copia local del código objetivo")
     diag.add_argument("--out", help="JSON de salida")
     diag.add_argument("--evidence-dir", default="evidencias")
     diag.set_defaults(func=_diagnose)
 
     corr = sub.add_parser("correct", help="aplica y verifica una corrección")
-    corr.add_argument("--config", required=True)
+    corr.add_argument("--config", required=True, help="perfil JSON del objetivo")
     corr.add_argument("--control", required=True)
     corr.add_argument("--target-root", required=True)
     corr.add_argument("--evidence-dir", default="evidencias")
     corr.add_argument(
         "--manage-target",
         action="store_true",
-        help="el auditor inicia/reinicia la copia local con python run.py",
+        help="inicia/reinicia el objetivo usando runtime del perfil JSON",
     )
     corr.set_defaults(func=_correct)
 
