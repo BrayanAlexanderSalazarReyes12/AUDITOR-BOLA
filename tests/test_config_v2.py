@@ -31,3 +31,26 @@ def test_carga_dos_pilares(tmp_path):
     assert cfg.version_objetivo == "1"
     assert cfg.chequeos_acceso[0].id_control == "P1-RBAC-X"
     assert cfg.chequeos_pilar2[0].codigos_seguros == (403,)
+
+
+def test_carga_correccion_que_requiere_reinicio(tmp_path):
+    path = tmp_path / "cfg-restart.json"
+    path.write_text(json.dumps({
+        "sistema": "x",
+        "base_url": "",
+        "cuentas": [],
+        "endpoints": [],
+        "correcciones": [{
+            "control_id": "P1-X",
+            "archivo": "src/app.py",
+            "requiere_reinicio": True,
+            "operaciones": [{
+                "estrategia": "replace_exact",
+                "buscar": "a",
+                "reemplazar": "b"
+            }]
+        }]
+    }), encoding="utf-8")
+
+    cfg = cargar_config(path)
+    assert cfg.correcciones[0].requiere_reinicio is True

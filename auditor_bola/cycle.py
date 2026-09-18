@@ -161,10 +161,23 @@ def ciclo_correctivo(
         return manifest
 
     correccion: CorrectionResult | None = None
+    receta = cfg.correccion_por_control(control_id)
 
     try:
         correccion = apply_correction(cfg, control_id, target_root, evidence)
         evidence.write_json("cambios/correccion.json", correccion.as_dict())
+
+        if receta and receta.requiere_reinicio and reiniciar is None:
+            rollback(correccion, target_root)
+            manifest["rollback"] = True
+            manifest["estado_final"] = "REQUIERE_REINICIO"
+            manifest["motivo"] = (
+                "La receta fue aplicada a la copia local, pero este control "
+                "requiere reiniciar el objetivo antes de verificar. El cambio "
+                "se revirtió para no dejar el proyecto en un estado parcial."
+            )
+            evidence.write_json("manifest.json", manifest)
+            return manifest
 
         if reiniciar:
             reiniciar()
@@ -172,6 +185,7 @@ def ciclo_correctivo(
         verificacion = diagnosticar(cfg, target_root)
         evidence.write_json("verification/resultados.json", verificacion)
         estado_despues = estado_control(verificacion, control_id)
+        manifest["estado_despues"] = estado_despues
 
         if estado_despues == "SIN_HALLAZGO":
             manifest["estado_final"] = "CORREGIDO"

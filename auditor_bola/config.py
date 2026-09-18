@@ -93,6 +93,7 @@ class Correccion:
     archivo: str
     operaciones: list[dict] = field(default_factory=list)
     descripcion: str | None = None
+    requiere_reinicio: bool = False
 
 
 @dataclass

@@ -8,9 +8,12 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
+import time
 from dataclasses import asdict
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+
+import requests
 
 from .config import ConfigObjetivo, cargar_config
 from .corrective import correction_available
@@ -585,24 +588,86 @@ class AuditorGUI(tk.Tk):
             and self.cfg.runtime.comando_inicio
         )
 
-    def _reiniciar_callback(self, auto_manage: bool):
+    def _target_reachable(self, timeout: float = 0.6) -> bool:
+        if not self.cfg or not self.cfg.base_url:
+            return False
+        try:
+            requests.get(self.cfg.base_url, timeout=timeout)
+            return True
+        except requests.RequestException:
+            return False
+
+    def _wait_target_ready(self, timeout: float = 8.0) -> None:
+        if not self.cfg or not self.cfg.base_url:
+            return
+        limite = time.time() + timeout
+        while time.time() < limite:
+            if self._target_reachable(timeout=0.5):
+                return
+            time.sleep(0.25)
+        raise RuntimeError(
+            f"El objetivo no respondió en {self.cfg.base_url} después del reinicio."
+        )
+
+    def _controls_require_restart(self, controls: list[str]) -> list[str]:
+        if not self.cfg:
+            return []
+        requeridos: list[str] = []
+        for control_id in controls:
+            receta = self.cfg.correccion_por_control(control_id)
+            if receta and receta.requiere_reinicio:
+                requeridos.append(control_id)
+        return requeridos
+
+    def _prepare_restart_callback(self, controls: list[str]):
+        """Prepara un reinicio verificable para controles dinámicos."""
         if not self.cfg or not self.target_root:
             return None
 
-        if auto_manage:
-            if not self.cfg.runtime.comando_inicio:
-                return None
-            if self.proceso is None:
-                self.proceso = LocalTargetProcess(
-                    self.target_root, self.cfg.runtime
-                )
-            if not self.proceso.is_running():
-                self.proceso.start()
-            return self.proceso.restart
+        requieren = self._controls_require_restart(controls)
 
-        if self.proceso and self.proceso.is_running():
-            return self.proceso.restart
-        return None
+        # Si ningún control exige reinicio, se respeta la preferencia normal.
+        if not requieren:
+            if self.proceso and self.proceso.is_running():
+                def restart_existing():
+                    self.proceso.restart()
+                    self._wait_target_ready()
+                return restart_existing
+            return None
+
+        if not self.cfg.runtime.comando_inicio:
+            raise RuntimeError(
+                "Los controles "
+                + ", ".join(requieren)
+                + " requieren reiniciar la aplicación, pero el perfil no "
+                  "declara runtime.comando_inicio."
+            )
+
+        # Si la URL responde pero la GUI no es dueña del proceso, probablemente
+        # la aplicación fue iniciada desde otra consola. No podemos reiniciarla
+        # de forma segura, así que detenemos el ciclo antes de modificar código.
+        if (self.proceso is None or not self.proceso.is_running()) and self._target_reachable():
+            raise RuntimeError(
+                f"Hay una instancia activa en {self.cfg.base_url} que no fue "
+                "iniciada por el auditor. Detén esa instancia externa y vuelve "
+                "a ejecutar la corrección; la GUI iniciará y reiniciará la "
+                "copia local seleccionada automáticamente."
+            )
+
+        if self.proceso is None:
+            self.proceso = LocalTargetProcess(
+                self.target_root, self.cfg.runtime
+            )
+
+        if not self.proceso.is_running():
+            self.proceso.start()
+            self._wait_target_ready()
+
+        def restart_and_wait():
+            self.proceso.restart()
+            self._wait_target_ready()
+
+        return restart_and_wait
 
     def _refresh_state(self):
         has_profile = self.cfg is not None
@@ -748,7 +813,14 @@ class AuditorGUI(tk.Tk):
                 self.proceso = LocalTargetProcess(
                     self.target_root, self.cfg.runtime
                 )
+            if self._target_reachable():
+                raise RuntimeError(
+                    f"Ya existe una instancia activa en {self.cfg.base_url} "
+                    "fuera del control de esta GUI. Detén esa instancia antes "
+                    "de pulsar Iniciar objetivo."
+                )
             self.proceso.start()
+            self._wait_target_ready()
             return True
 
         def done(_):
@@ -913,10 +985,8 @@ class AuditorGUI(tk.Tk):
         ):
             return
 
-        auto_manage = self.auto_manage_var.get()
-
         def task():
-            reiniciar = self._reiniciar_callback(auto_manage)
+            reiniciar = self._prepare_restart_callback([control])
             return ciclo_correctivo(
                 self.cfg,
                 control,
@@ -934,9 +1004,13 @@ class AuditorGUI(tk.Tk):
             evidence = manifest.get("evidencia")
             if evidence:
                 self._refresh_evidence_list(select_path=Path(evidence))
+            detalle = manifest.get("error") or manifest.get("motivo")
+            mensaje = f"{control}: {estado}"
+            if detalle:
+                mensaje += f"\n\n{detalle}"
             messagebox.showinfo(
                 "Ciclo correctivo",
-                f"{control}: {estado}",
+                mensaje,
             )
             self._diagnose()
 
@@ -986,10 +1060,8 @@ class AuditorGUI(tk.Tk):
         if not messagebox.askyesno("Corregir todos", resumen):
             return
 
-        auto_manage = self.auto_manage_var.get()
-
         def task():
-            reiniciar = self._reiniciar_callback(auto_manage)
+            reiniciar = self._prepare_restart_callback(controls)
             return corregir_controles(
                 self.cfg,
                 controls,
@@ -1004,7 +1076,11 @@ class AuditorGUI(tk.Tk):
             for item in manifests:
                 control = item.get("control")
                 estado = item.get("estado_final")
-                lines.append(f"{control}: {estado}")
+                linea = f"{control}: {estado}"
+                detalle = item.get("error") or item.get("motivo")
+                if detalle:
+                    linea += f" — {detalle}"
+                lines.append(linea)
                 if item.get("evidencia"):
                     last_evidence = Path(item["evidencia"])
                 if item.get("error"):
