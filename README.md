@@ -1,77 +1,183 @@
-# Auditor genérico de BOLA (Broken Object Level Authorization)
+# TRAMITIA — Auditor Correctivo de Seguridad de Dos Pilares
 
-Motor determinista (sin IA) que prueba si un sistema HTTP con autenticación
-Basic respeta la propiedad de sus recursos: si el usuario A puede leer o
-editar un recurso que le pertenece a B, sin tener un rol privilegiado que
-lo autorice, queda marcado como BOLA confirmado.
+Auditor determinista para **diagnosticar, corregir, verificar y conservar evidencia** sobre una copia local autorizada de Tramitia.
 
-**No está atado a ningún sistema.** Todo lo que cambia entre auditar un
-blog, un sistema de tickets, o Tramitia, vive en un archivo **JSON** — el
-código de `auditor_bola/` es idéntico para los tres (ver `config/*.json`
-para los tres ejemplos ya probados). Se eligió JSON en vez de YAML a
-propósito: es de la librería estándar de Python (`json`), no depende de
-instalar nada extra, y es el formato que más sistemas ya hablan de forma
-nativa (casi cualquier API expone o consume JSON).
+El proyecto evoluciona el auditor genérico de BOLA original y mantiene su principio central: **la configuración declara qué se espera y el motor observa qué ocurre realmente**. La versión 2 amplía el alcance a los dos primeros pilares del protocolo académico:
 
-## Ver la interfaz gráfica en tu PC (Windows)
+1. **Identidad y Control de Acceso**.
+2. **Arquitectura y Configuración**.
 
-No hace falta instalar nada nuevo para la ventana en sí — **Tkinter viene
-incluido con Python** en la instalación oficial de python.org (no en la
-del Microsoft Store, que a veces lo omite). Pasos:
+La integridad de la evidencia —hashes, respaldos, diff y resultados antes/después— es un mecanismo transversal del auditor y **no se presenta como un tercer pilar**.
+
+> Uso académico y local. No dirija el auditor contra sistemas para los que no tenga autorización. Las correcciones automáticas solo escriben dentro de una copia local indicada explícitamente con `--target-root`.
+
+## Mejoras de esta versión
+
+- Conserva la detección genérica de BOLA.
+- La GUI ejecuta también el control de **alcance del agente**, igual que la CLI.
+- Añade controles RBAC del Pilar 1.
+- Incorpora un motor declarativo para el Pilar 2.
+- Implementa **respaldo → cambio → verificación → rollback**.
+- Conserva evidencia por ejecución y hashes SHA-256.
+- Corrige las referencias históricas a YAML: el proyecto usa **JSON**.
+- Mantiene compatibilidad con los sistemas simulados Blog y Tickets.
+
+## Controles de Tramitia 2.4.0-rc2
+
+### Pilar 1 — Identidad y Control de Acceso
+
+| ID | Control |
+|---|---|
+| `P1-BOLA-001` | Un analista no puede leer solicitudes ajenas |
+| `P1-BOLA-002` | Un analista no puede modificar solicitudes ajenas |
+| `P1-SCOPE-003` | El asistente conserva el alcance del solicitante |
+| `P1-RBAC-004` | La auditoría administrativa está restringida por rol |
+| `P1-RBAC-005` | Un analista no puede usar la priorización reservada |
+
+### Pilar 2 — Arquitectura y Configuración
+
+| ID | Control |
+|---|---|
+| `P2-CORS-001` | CORS no refleja orígenes arbitrarios con credenciales |
+| `P2-SECRET-002` | Producción no depende del secreto de desarrollo por defecto |
+| `P2-LIMIT-003` | La vía urgente no permite saltarse límites sin autorización |
+| `P2-DOCKER-004` | El contenedor ejecuta con usuario no privilegiado |
+
+## Estados
+
+Durante el diagnóstico:
+
+- `HALLAZGO`
+- `SIN_HALLAZGO`
+- `ERROR`
+
+Después de un ciclo correctivo:
+
+- `CORREGIDO`
+- `NO_CORREGIDO`
+- `SIN_HALLAZGO`
+- `ERROR`
+
+El éxito **no** se declara porque el parche pudo escribirse: la prueba original debe dejar de detectar el hallazgo.
+
+## Instalación
 
 ```bash
-cd auditor-generico-bola
 python -m venv .venv
-.venv\Scripts\activate          # PowerShell / cmd
-# o: source .venv/Scripts/activate   # Git Bash
-pip install -r requirements.txt
-python -m auditor_bola.gui
 ```
 
-Si al ejecutar `python -m auditor_bola.gui` te sale `No module named
-_tkinter`, significa que tu Python se instaló sin Tk (pasa con algunas
-instalaciones mínimas o del Microsoft Store). Solución: instala Python
-desde https://www.python.org/downloads/ marcando la opción "tcl/tk and
-IDLE" durante la instalación (viene marcada por defecto en el instalador
-oficial), o reinstala con `py -3.12` si ya tienes el instalador completo.
+Windows:
 
-Primer uso, paso a paso una vez abierta la ventana:
-1. Clic en **"Elegir configuración (.json)"** → selecciona `config/blog.json`.
-2. Clic en **"Ejecutar auditoría"**.
-3. Deberías ver la tabla con 2 filas en rosado (el BOLA de `maria`) — pero
-   para eso el sistema falso tiene que estar corriendo (ver abajo).
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
 
-## Uso por línea de comandos
+Linux/macOS:
 
 ```bash
-python -m auditor_bola.cli --config config/tramitia.json --out reportes/evidencia.json
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-## Escribir un config nuevo para OTRO sistema
+## Diagnóstico
 
-```json
-{
-  "sistema": "nombre-libre",
-  "base_url": "http://host:puerto",
-  "cuentas": [
-    {"username": "user1", "password": "pass1", "role": "rol_bajo"},
-    {"username": "user2", "password": "pass2", "role": "rol_alto"}
-  ],
-  "roles_privilegiados": ["rol_alto"],
-  "endpoints": [
-    {
-      "metodo": "GET",
-      "ruta": "/cualquier/ruta/{id}",
-      "id_prueba": "1",
-      "propietario_esperado": "user1"
-    }
-  ]
-}
+Levante Tramitia **2.4.0-rc2** únicamente en `127.0.0.1:5050`.
+
+```bash
+python -m auditor_bola.cli diagnose \
+  --config config/tramitia.json \
+  --target-root /ruta/a/tramitia-app \
+  --out evidencias/diagnostico.json
 ```
 
-El motor prueba automáticamente TODAS las cuentas contra TODOS los
-endpoints, cruzando quién debería tener acceso (según el YAML) contra
-quién de verdad lo tiene (según la respuesta HTTP real).
+En PowerShell:
+
+```powershell
+python -m auditor_bola.cli diagnose `
+  --config config/tramitia.json `
+  --target-root C:\ruta\tramitia-app `
+  --out evidencias\diagnostico.json
+```
+
+`--target-root` permite inspeccionar también controles estáticos del Pilar 2.
+
+## Ciclo correctivo
+
+Ejemplo BOLA:
+
+```bash
+python -m auditor_bola.cli correct \
+  --config config/tramitia.json \
+  --control P1-BOLA-001 \
+  --target-root /ruta/a/tramitia-app
+```
+
+Para que el auditor inicie/reinicie la copia local:
+
+```bash
+python -m auditor_bola.cli correct \
+  --config config/tramitia.json \
+  --control P1-BOLA-001 \
+  --target-root /ruta/a/tramitia-app \
+  --manage-target
+```
+
+Ciclo:
+
+```text
+Diagnosticar
+   ↓
+Confirmar hallazgo
+   ↓
+Guardar línea base
+   ↓
+Respaldar archivo
+   ↓
+Aplicar corrección
+   ↓
+Reiniciar
+   ↓
+Repetir pruebas
+   ↓
+¿corregido?
+   ├─ sí → conservar evidencia
+   └─ no → rollback → verificar restauración
+```
+
+## Correcciones automáticas disponibles
+
+- `P1-BOLA-001` / `P1-BOLA-002` → `tramitia/api.py`
+- `P1-SCOPE-003` → `tramitia/asistente/api.py`
+- `P1-RBAC-004` → `tramitia/admin.py`
+- `P2-CORS-001` → `tramitia/__init__.py`
+- `P2-SECRET-002` → `tramitia/__init__.py`
+- `P2-LIMIT-003` → `tramitia/asistente/api.py`
+
+`P2-DOCKER-004` es un control de regresión: el Dockerfile de la versión estudiada ya declara un usuario no privilegiado.
+
+Las correcciones usan reemplazos exactos. Si el archivo ya no coincide con la versión prevista, el auditor se detiene **sin modificarlo**.
+
+## Evidencia
+
+Cada ciclo crea:
+
+```text
+evidencias/
+└── 20260917T235500Z/
+    ├── manifest.json
+    ├── baseline/
+    │   └── resultados.json
+    ├── cambios/
+    │   ├── correccion.json
+    │   ├── P1-BOLA-001.diff
+    │   └── backup/
+    └── verification/
+        ├── resultados.json
+        └── rollback.json
+```
+
+La evidencia incluye hashes SHA-256 antes/después, diff y respaldo.
 
 ## Interfaz gráfica
 
@@ -79,20 +185,37 @@ quién de verdad lo tiene (según la respuesta HTTP real).
 python -m auditor_bola.gui
 ```
 
-Se abre una ventana de escritorio (Tkinter, ya incluido con Python — sin
-dependencias nuevas):
+Flujo:
 
-1. **"Elegir configuración (.json)"** — abre cualquiera de los JSON de
-   `config/` (o uno que armes tú para otro sistema).
-2. **"Ejecutar auditoría"** — corre el mismo motor de `engine.py` contra
-   la `base_url` del YAML y llena la tabla en vivo.
-3. Cada fila con **fondo rosado** y `SÍ — BOLA` es un hallazgo confirmado;
-   verde es una prueba que pasó bien.
-4. **"Guardar evidencia (.json)"** — exporta exactamente lo mismo que
-   produce la CLI, para meterlo al informe o al Threat Dragon.
+1. Seleccione `config/tramitia.json`.
+2. Seleccione la carpeta local de `tramitia-app`.
+3. Opcionalmente pulse **Iniciar Tramitia local**.
+4. Pulse **Diagnosticar**.
+5. Revise P1 y P2 en una sola tabla.
+6. Seleccione un hallazgo y pulse **Corregir seleccionado** cuando exista corrección automática.
+7. El auditor repite la prueba y conserva evidencia.
 
-No hace falta escribir ni una línea de código para auditar un sistema
-nuevo: solo un YAML y un clic.
+## Arquitectura
+
+```text
+auditor_bola/
+  config.py            configuración JSON de P1/P2
+  engine.py            Pilar 1: BOLA + RBAC + alcance del agente
+  agent_scope.py       consistencia API directa / agente
+  pilar2.py            Arquitectura y Configuración
+  runner.py            orquestador común CLI/GUI
+  evidence.py          evidencia y hashes
+  corrective.py        parches controlados + rollback
+  cycle.py             ciclo correctivo
+  process_manager.py   proceso local opcional de Tramitia
+  cli.py
+  gui.py
+config/
+  blog.json
+  tickets.json
+  tramitia.json
+tests/
+```
 
 ## Pruebas
 
@@ -100,21 +223,4 @@ nuevo: solo un YAML y un clic.
 pytest -v
 ```
 
-Corre el motor contra dos sistemas simulados (`tests/sistema_falso_*.py`)
-con Flask: uno con un BOLA real a propósito (para confirmar que lo
-detecta) y otro sin bug (para confirmar que no da falsos positivos).
-
-## Estructura
-
-```
-auditor_bola/
-  config.py   -> carga y valida el YAML del objetivo
-  engine.py   -> el motor genérico (no conoce ningún sistema)
-  cli.py      -> interfaz de línea de comandos
-  gui.py      -> interfaz gráfica de escritorio (Tkinter)
-config/
-  blog.json, tickets.json, tramitia.json  -> 3 sistemas de ejemplo
-tests/
-  sistema_falso_blog.py, sistema_falso_tickets.py -> mocks para pytest
-  test_engine.py -> pruebas automatizadas
-```
+La suite conserva el control positivo y negativo BOLA y añade pruebas para configuración de dos pilares y seguridad del corrector.
