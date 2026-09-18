@@ -7,9 +7,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import requests
-
 from .config import ChequeoPilar2, ConfigObjetivo
+from .transport import request_http
 
 
 def _ts() -> str:
@@ -72,13 +71,12 @@ def _cors(cfg: ConfigObjetivo, chequeo: ChequeoPilar2) -> ResultadoPilar2:
     headers = dict(chequeo.headers)
     origen = headers.setdefault("Origin", "https://origen-no-autorizado.example")
     cuenta = _cuenta(cfg, chequeo.cuenta)
-    auth = (cuenta.username, cuenta.password) if cuenta else None
-    resp = requests.request(
+    resp = request_http(
         chequeo.metodo,
         cfg.base_url + chequeo.ruta,
-        auth=auth,
+        cuenta=cuenta,
         headers=headers,
-        json=_preparar_cuerpo(chequeo),
+        cuerpo=_preparar_cuerpo(chequeo),
         timeout=10,
     )
     acao = resp.headers.get("Access-Control-Allow-Origin")
@@ -95,13 +93,12 @@ def _http_status_policy(
     cfg: ConfigObjetivo, chequeo: ChequeoPilar2
 ) -> ResultadoPilar2:
     cuenta = _cuenta(cfg, chequeo.cuenta)
-    auth = (cuenta.username, cuenta.password) if cuenta else None
-    resp = requests.request(
+    resp = request_http(
         chequeo.metodo,
         cfg.base_url + chequeo.ruta,
-        auth=auth,
+        cuenta=cuenta,
         headers=chequeo.headers,
-        json=_preparar_cuerpo(chequeo),
+        cuerpo=_preparar_cuerpo(chequeo),
         timeout=15,
     )
     vulnerable = resp.status_code not in chequeo.codigos_seguros
@@ -120,13 +117,20 @@ def _source_contains(
             f"{chequeo.id_control} requiere --target-root para inspección estática"
         )
     if not chequeo.archivo or not chequeo.patron_inseguro:
-        raise ValueError(f"{chequeo.id_control}: archivo/patron_inseguro son obligatorios")
+        raise ValueError(
+            f"{chequeo.id_control}: archivo/patron_inseguro son obligatorios"
+        )
     ruta = source_root / chequeo.archivo
     texto = ruta.read_text(encoding="utf-8")
     inseguro = chequeo.patron_inseguro in texto
-    seguro = bool(chequeo.patron_seguro and chequeo.patron_seguro in texto)
+    seguro = bool(
+        chequeo.patron_seguro and chequeo.patron_seguro in texto
+    )
     vulnerable = inseguro and not seguro
-    detalle = f"archivo={chequeo.archivo}; patrón inseguro presente={inseguro}; patrón seguro presente={seguro}"
+    detalle = (
+        f"archivo={chequeo.archivo}; patrón inseguro presente={inseguro}; "
+        f"patrón seguro presente={seguro}"
+    )
     return _resultado(cfg, chequeo, vulnerable, detalle)
 
 
@@ -163,7 +167,9 @@ def auditar_pilar2(
             elif chequeo.tipo == "docker_non_root":
                 resultado = _docker_non_root(cfg, chequeo, root)
             else:
-                raise ValueError(f"tipo de control no soportado: {chequeo.tipo}")
+                raise ValueError(
+                    f"tipo de control no soportado: {chequeo.tipo}"
+                )
         except Exception as exc:
             resultado = ResultadoPilar2(
                 sistema=cfg.sistema,
