@@ -16,6 +16,16 @@ Los dos pilares cubiertos son:
 
 La integridad de la evidencia es transversal y no se presenta como un tercer pilar.
 
+## Guía paso a paso
+
+Para utilizar la interfaz y aplicar correcciones, consulte:
+
+```text
+docs/GUIA_INTERFAZ_CORRECCIONES.md
+```
+
+La guía cubre carga del perfil, diagnóstico, corrección individual y múltiple, verificación, evidencias y rollback manual.
+
 ## Interfaz gráfica completa
 
 Ejecute:
