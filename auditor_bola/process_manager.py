@@ -16,8 +16,11 @@ class LocalTargetProcess:
         self.runtime = runtime
         self.process: subprocess.Popen | None = None
 
+    def is_running(self) -> bool:
+        return bool(self.process and self.process.poll() is None)
+
     def start(self) -> None:
-        if self.process and self.process.poll() is None:
+        if self.is_running():
             return
         if not self.runtime.comando_inicio:
             raise RuntimeError(
@@ -40,10 +43,12 @@ class LocalTargetProcess:
         )
         time.sleep(self.runtime.espera_inicio)
         if self.process.poll() is not None:
+            self.process = None
             raise RuntimeError("el sistema objetivo terminó durante el arranque")
 
     def stop(self) -> None:
-        if not self.process or self.process.poll() is not None:
+        if not self.is_running():
+            self.process = None
             return
         self.process.terminate()
         try:
