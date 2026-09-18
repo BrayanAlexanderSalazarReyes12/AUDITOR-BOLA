@@ -1,64 +1,54 @@
-# TRAMITIA — Auditor Correctivo de Seguridad de Dos Pilares
+# Auditor Correctivo de Seguridad — Dos Pilares
 
-Auditor determinista para **diagnosticar, corregir, verificar y conservar evidencia** sobre una copia local autorizada de Tramitia.
+Motor determinista para **diagnosticar, corregir, verificar y conservar evidencia** sobre aplicaciones y repositorios de código autorizados.
 
-El proyecto evoluciona el auditor genérico de BOLA original y mantiene su principio central: **la configuración declara qué se espera y el motor observa qué ocurre realmente**. La versión 2 amplía el alcance a los dos primeros pilares del protocolo académico:
+El repositorio nació como `AUDITOR-BOLA`, pero la versión actual ya no está limitada a BOLA ni a Tramitia. El diseño separa:
+
+- **motor genérico**: lógica reutilizable;
+- **perfil JSON**: lo que cambia entre aplicaciones;
+- **evidencia**: línea base, hashes, diff, verificación y rollback.
+
+Los dos pilares cubiertos son:
 
 1. **Identidad y Control de Acceso**.
 2. **Arquitectura y Configuración**.
 
-La integridad de la evidencia —hashes, respaldos, diff y resultados antes/después— es un mecanismo transversal del auditor y **no se presenta como un tercer pilar**.
+La integridad de la evidencia es transversal y no se presenta como un tercer pilar.
 
-> Uso académico y local. No dirija el auditor contra sistemas para los que no tenga autorización. Las correcciones automáticas solo escriben dentro de una copia local indicada explícitamente con `--target-root`.
+## Objetivo final
 
-## Mejoras de esta versión
+Para auditar otra aplicación **no se modifica el motor**. Se crea un perfil, por ejemplo:
 
-- Conserva la detección genérica de BOLA.
-- La GUI ejecuta también el control de **alcance del agente**, igual que la CLI.
-- Añade controles RBAC del Pilar 1.
-- Incorpora un motor declarativo para el Pilar 2.
-- Implementa **respaldo → cambio → verificación → rollback**.
-- Conserva evidencia por ejecución y hashes SHA-256.
-- Corrige las referencias históricas a YAML: el proyecto usa **JSON**.
-- Mantiene compatibilidad con los sistemas simulados Blog y Tickets.
+```text
+config/
+  plantilla.json
+  tramitia.json
+  blog.json
+  tickets.json
+  mi-aplicacion.json
+```
 
-## Controles de Tramitia 2.4.0-rc2
+El perfil describe cuentas, roles, autenticación, endpoints, controles, arranque local y, opcionalmente, recetas correctivas.
 
-### Pilar 1 — Identidad y Control de Acceso
+Tramitia 2.4.0-rc2 es el caso de estudio principal, no una dependencia del auditor.
 
-| ID | Control |
-|---|---|
-| `P1-BOLA-001` | Un analista no puede leer solicitudes ajenas |
-| `P1-BOLA-002` | Un analista no puede modificar solicitudes ajenas |
-| `P1-SCOPE-003` | El asistente conserva el alcance del solicitante |
-| `P1-RBAC-004` | La auditoría administrativa está restringida por rol |
-| `P1-RBAC-005` | Un analista no puede usar la priorización reservada |
+## Qué es genérico
 
-### Pilar 2 — Arquitectura y Configuración
+- BOLA basado en propiedad de objetos.
+- RBAC/ABAC basado en acceso esperado vs. acceso real.
+- Comparación de alcance entre API directa y agente/asistente.
+- CORS.
+- Políticas de códigos HTTP.
+- Inspección de patrones en código/configuración.
+- Contenedores con usuario no root.
+- Autenticación Basic, Bearer, headers personalizados o ninguna.
+- Arranque/reinicio mediante comando configurable.
+- Correcciones de texto `replace_exact` y `regex_replace`.
+- Backup, SHA-256, diff, verificación y rollback.
 
-| ID | Control |
-|---|---|
-| `P2-CORS-001` | CORS no refleja orígenes arbitrarios con credenciales |
-| `P2-SECRET-002` | Producción no depende del secreto de desarrollo por defecto |
-| `P2-LIMIT-003` | La vía urgente no permite saltarse límites sin autorización |
-| `P2-DOCKER-004` | El contenedor ejecuta con usuario no privilegiado |
+Las inspecciones y correcciones de archivos son independientes del lenguaje: pueden trabajar sobre Java, JavaScript, PHP, C#, Go, Python, configuración, Dockerfiles, etc.
 
-## Estados
-
-Durante el diagnóstico:
-
-- `HALLAZGO`
-- `SIN_HALLAZGO`
-- `ERROR`
-
-Después de un ciclo correctivo:
-
-- `CORREGIDO`
-- `NO_CORREGIDO`
-- `SIN_HALLAZGO`
-- `ERROR`
-
-El éxito **no** se declara porque el parche pudo escribirse: la prueba original debe dejar de detectar el hallazgo.
+Para flujos especializados como SSO/MFA interactivo o protocolos no HTTP se añade un adaptador reusable; no se codifica una excepción para una aplicación concreta.
 
 ## Instalación
 
@@ -80,105 +70,6 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-## Diagnóstico
-
-Levante Tramitia **2.4.0-rc2** únicamente en `127.0.0.1:5050`.
-
-```bash
-python -m auditor_bola.cli diagnose \
-  --config config/tramitia.json \
-  --target-root /ruta/a/tramitia-app \
-  --out evidencias/diagnostico.json
-```
-
-En PowerShell:
-
-```powershell
-python -m auditor_bola.cli diagnose `
-  --config config/tramitia.json `
-  --target-root C:\ruta\tramitia-app `
-  --out evidencias\diagnostico.json
-```
-
-`--target-root` permite inspeccionar también controles estáticos del Pilar 2.
-
-## Ciclo correctivo
-
-Ejemplo BOLA:
-
-```bash
-python -m auditor_bola.cli correct \
-  --config config/tramitia.json \
-  --control P1-BOLA-001 \
-  --target-root /ruta/a/tramitia-app
-```
-
-Para que el auditor inicie/reinicie la copia local:
-
-```bash
-python -m auditor_bola.cli correct \
-  --config config/tramitia.json \
-  --control P1-BOLA-001 \
-  --target-root /ruta/a/tramitia-app \
-  --manage-target
-```
-
-Ciclo:
-
-```text
-Diagnosticar
-   ↓
-Confirmar hallazgo
-   ↓
-Guardar línea base
-   ↓
-Respaldar archivo
-   ↓
-Aplicar corrección
-   ↓
-Reiniciar
-   ↓
-Repetir pruebas
-   ↓
-¿corregido?
-   ├─ sí → conservar evidencia
-   └─ no → rollback → verificar restauración
-```
-
-## Correcciones automáticas disponibles
-
-- `P1-BOLA-001` / `P1-BOLA-002` → `tramitia/api.py`
-- `P1-SCOPE-003` → `tramitia/asistente/api.py`
-- `P1-RBAC-004` → `tramitia/admin.py`
-- `P2-CORS-001` → `tramitia/__init__.py`
-- `P2-SECRET-002` → `tramitia/__init__.py`
-- `P2-LIMIT-003` → `tramitia/asistente/api.py`
-
-`P2-DOCKER-004` es un control de regresión: el Dockerfile de la versión estudiada ya declara un usuario no privilegiado.
-
-Las correcciones usan reemplazos exactos. Si el archivo ya no coincide con la versión prevista, el auditor se detiene **sin modificarlo**.
-
-## Evidencia
-
-Cada ciclo crea:
-
-```text
-evidencias/
-└── 20260917T235500Z/
-    ├── manifest.json
-    ├── baseline/
-    │   └── resultados.json
-    ├── cambios/
-    │   ├── correccion.json
-    │   ├── P1-BOLA-001.diff
-    │   └── backup/
-    └── verification/
-        ├── resultados.json
-        └── rollback.json
-```
-
-La evidencia incluye hashes SHA-256 antes/después, diff y respaldo.
-
 ## Interfaz gráfica
 
 ```bash
@@ -187,35 +78,102 @@ python -m auditor_bola.gui
 
 Flujo:
 
-1. Seleccione `config/tramitia.json`.
-2. Seleccione la carpeta local de `tramitia-app`.
-3. Opcionalmente pulse **Iniciar Tramitia local**.
-4. Pulse **Diagnosticar**.
-5. Revise P1 y P2 en una sola tabla.
-6. Seleccione un hallazgo y pulse **Corregir seleccionado** cuando exista corrección automática.
-7. El auditor repite la prueba y conserva evidencia.
+1. Seleccionar el perfil JSON de la aplicación.
+2. Seleccionar la copia local del código cuando se usarán controles estáticos/correcciones.
+3. Iniciar opcionalmente el objetivo con el comando declarado en el perfil.
+4. Diagnosticar P1 y P2.
+5. Seleccionar un hallazgo.
+6. Aplicar una receta correctiva, si está declarada.
+7. Verificar y conservar evidencia.
+
+## CLI
+
+Diagnóstico:
+
+```bash
+python -m auditor_bola.cli diagnose \
+  --config config/mi-aplicacion.json \
+  --target-root /ruta/al/codigo \
+  --out evidencias/diagnostico.json
+```
+
+Corrección:
+
+```bash
+python -m auditor_bola.cli correct \
+  --config config/mi-aplicacion.json \
+  --control P1-BOLA-001 \
+  --target-root /ruta/al/codigo
+```
+
+Si el perfil declara `runtime.comando_inicio`, el auditor puede administrar el proceso:
+
+```bash
+python -m auditor_bola.cli correct \
+  --config config/mi-aplicacion.json \
+  --control P1-BOLA-001 \
+  --target-root /ruta/al/codigo \
+  --manage-target
+```
+
+## Estados
+
+Diagnóstico:
+
+- `HALLAZGO`
+- `SIN_HALLAZGO`
+- `ERROR`
+
+Ciclo correctivo:
+
+- `CORREGIDO`
+- `NO_CORREGIDO`
+- `SIN_HALLAZGO`
+- `ERROR`
+
+Un parche escrito no equivale a una corrección: la prueba original debe pasar después del cambio.
 
 ## Arquitectura
 
 ```text
 auditor_bola/
-  config.py            configuración JSON de P1/P2
-  engine.py            Pilar 1: BOLA + RBAC + alcance del agente
-  agent_scope.py       consistencia API directa / agente
-  pilar2.py            Arquitectura y Configuración
+  config.py            esquema del perfil
+  transport.py         autenticación/transporte HTTP
+  engine.py            Pilar 1
+  agent_scope.py       API directa vs. agente
+  pilar2.py            Pilar 2
   runner.py            orquestador común CLI/GUI
-  evidence.py          evidencia y hashes
-  corrective.py        parches controlados + rollback
-  cycle.py             ciclo correctivo
-  process_manager.py   proceso local opcional de Tramitia
+  corrective.py        recetas genéricas
+  evidence.py          hashes y evidencia
+  cycle.py             diagnóstico/corrección/verificación/rollback
+  process_manager.py   proceso local configurable
   cli.py
   gui.py
+
 config/
-  blog.json
-  tickets.json
-  tramitia.json
-tests/
+  plantilla.json       base para cualquier aplicación
+  tramitia.json        caso de estudio
+  blog.json            sistema simulado
+  tickets.json         sistema simulado
+
+docs/
+  CREAR_PERFIL.md
 ```
+
+## Caso Tramitia
+
+`config/tramitia.json` demuestra que los detalles de Tramitia viven en el perfil: rutas, cuentas, comandos y parches. Los motores no contienen rutas `tramitia/*.py` ni reglas específicas de ese sistema.
+
+## Crear un perfil nuevo
+
+Use:
+
+```text
+config/plantilla.json
+docs/CREAR_PERFIL.md
+```
+
+La regla es: **una nueva aplicación se integra con configuración; una nueva capacidad universal se integra como extensión reusable.**
 
 ## Pruebas
 
@@ -223,4 +181,4 @@ tests/
 pytest -v
 ```
 
-La suite conserva el control positivo y negativo BOLA y añade pruebas para configuración de dos pilares y seguridad del corrector.
+La suite incluye sistemas simulados distintos, controles del Pilar 2, autenticación configurable y pruebas del corrector/rollback.
