@@ -1,13 +1,4 @@
-"""Interfaz gráfica de escritorio del auditor genérico de BOLA.
-
-Recibe la configuración de CUALQUIER sistema (un archivo YAML, ver
-config/*.json para ejemplos), lo audita, y muestra los resultados en una
-tabla. No conoce ningún sistema en particular: todo llega por el YAML
-que el usuario selecciona.
-
-Uso:
-    python -m auditor_bola.gui
-"""
+"""Interfaz gráfica del Auditor Correctivo de Seguridad de Dos Pilares."""
 
 from __future__ import annotations
 
@@ -17,165 +8,337 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from .config import cargar_config
-from .engine import auditar
+from .config import ConfigObjetivo, cargar_config
+from .corrective import correction_available
+from .cycle import ciclo_correctivo
+from .process_manager import LocalTargetProcess
+from .runner import diagnosticar, filas_gui
 
 
 class AuditorGUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Auditor genérico de BOLA — recibe cualquier sistema")
-        self.geometry("980x620")
-        self.minsize(820, 480)
+        self.title("Auditor Correctivo de Seguridad — Dos Pilares")
+        self.geometry("1180x720")
+        self.minsize(980, 600)
 
         self.config_path: Path | None = None
-        self.hallazgos: list[dict] = []
+        self.cfg: ConfigObjetivo | None = None
+        self.target_root: Path | None = None
+        self.resultado: dict | None = None
+        self.proceso: LocalTargetProcess | None = None
 
-        self._construir_barra_superior()
-        self._construir_resumen()
-        self._construir_tabla()
-        self._construir_barra_inferior()
+        self._top()
+        self._summary()
+        self._table()
+        self._bottom()
 
-    # ------------------------------------------------------------------
-    def _construir_barra_superior(self):
-        marco = ttk.Frame(self, padding=10)
-        marco.pack(fill="x")
+    def _top(self):
+        frame = ttk.Frame(self, padding=10)
+        frame.pack(fill="x")
 
         ttk.Button(
-            marco, text="1. Elegir configuración (.json)", command=self._elegir_config
+            frame,
+            text="1. Perfil de aplicación (.json)",
+            command=self._choose_config,
         ).pack(side="left")
+        self.lbl_config = ttk.Label(frame, text="Sin perfil")
+        self.lbl_config.pack(side="left", padx=8)
 
-        self.lbl_config = ttk.Label(marco, text="ningún archivo seleccionado", foreground="#666")
-        self.lbl_config.pack(side="left", padx=10)
+        ttk.Button(
+            frame,
+            text="2. Carpeta de código local",
+            command=self._choose_target,
+        ).pack(side="left", padx=(16, 0))
+        self.lbl_target = ttk.Label(frame, text="Sin carpeta")
+        self.lbl_target.pack(side="left", padx=8)
 
-        self.btn_auditar = ttk.Button(
-            marco, text="2. Ejecutar auditoría", command=self._ejecutar_auditoria, state="disabled"
+        self.btn_run = ttk.Button(
+            frame,
+            text="3. Diagnosticar",
+            command=self._run,
+            state="disabled",
         )
-        self.btn_auditar.pack(side="right")
+        self.btn_run.pack(side="right")
 
-    def _construir_resumen(self):
-        self.lbl_resumen = ttk.Label(self, text="", font=("TkDefaultFont", 11, "bold"), padding=(10, 4))
-        self.lbl_resumen.pack(fill="x")
+    def _summary(self):
+        self.lbl_summary = ttk.Label(
+            self,
+            text="",
+            font=("TkDefaultFont", 11, "bold"),
+            padding=(10, 4),
+        )
+        self.lbl_summary.pack(fill="x")
 
-    def _construir_tabla(self):
-        columnas = ("endpoint", "metodo", "cuenta", "rol", "esperado", "real", "http", "bola")
-        self.tabla = ttk.Treeview(self, columns=columnas, show="headings", height=16)
-        titulos = {
-            "endpoint": "Endpoint", "metodo": "Método", "cuenta": "Cuenta", "rol": "Rol",
-            "esperado": "Acceso esperado", "real": "Acceso real", "http": "HTTP",
-            "bola": "¿BOLA confirmado?",
+    def _table(self):
+        columns = ("pilar", "id", "control", "cuenta", "estado", "detalle")
+        self.table = ttk.Treeview(
+            self, columns=columns, show="headings", height=20
+        )
+        titles = {
+            "pilar": "Pilar",
+            "id": "Control",
+            "control": "Descripción",
+            "cuenta": "Cuenta",
+            "estado": "Estado",
+            "detalle": "Detalle",
         }
-        anchos = {"endpoint": 220, "metodo": 70, "cuenta": 120, "rol": 90,
-                  "esperado": 110, "real": 90, "http": 60, "bola": 130}
-        for c in columnas:
-            self.tabla.heading(c, text=titulos[c])
-            self.tabla.column(c, width=anchos[c], anchor="center" if c != "endpoint" else "w")
+        widths = {
+            "pilar": 55,
+            "id": 120,
+            "control": 300,
+            "cuenta": 130,
+            "estado": 125,
+            "detalle": 390,
+        }
+        for col in columns:
+            self.table.heading(col, text=titles[col])
+            self.table.column(col, width=widths[col], anchor="w")
 
-        self.tabla.tag_configure("bola", background="#f8d7da")
-        self.tabla.tag_configure("ok", background="#d4edda")
+        self.table.tag_configure("hallazgo", background="#f8d7da")
+        self.table.tag_configure("ok", background="#d4edda")
+        self.table.tag_configure("error", background="#fff3cd")
+        self.table.bind(
+            "<<TreeviewSelect>>", lambda _e: self._update_buttons()
+        )
 
-        cont = ttk.Frame(self)
-        cont.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        scroll = ttk.Scrollbar(cont, orient="vertical", command=self.tabla.yview)
-        self.tabla.configure(yscrollcommand=scroll.set)
-        self.tabla.pack(side="left", fill="both", expand=True)
+        holder = ttk.Frame(self)
+        holder.pack(fill="both", expand=True, padx=10, pady=(0, 8))
+        scroll = ttk.Scrollbar(
+            holder, orient="vertical", command=self.table.yview
+        )
+        self.table.configure(yscrollcommand=scroll.set)
+        self.table.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
 
-    def _construir_barra_inferior(self):
-        marco = ttk.Frame(self, padding=10)
-        marco.pack(fill="x")
-        self.btn_guardar = ttk.Button(
-            marco, text="Guardar evidencia (.json)", command=self._guardar_evidencia, state="disabled"
-        )
-        self.btn_guardar.pack(side="right")
-        self.lbl_estado = ttk.Label(marco, text="Listo.", foreground="#666")
-        self.lbl_estado.pack(side="left")
+    def _bottom(self):
+        frame = ttk.Frame(self, padding=10)
+        frame.pack(fill="x")
 
-    # ------------------------------------------------------------------
-    def _elegir_config(self):
-        ruta = filedialog.askopenfilename(
-            title="Elegir configuración del sistema a auditar",
-            filetypes=[("JSON", "*.json"), ("Todos", "*.*")],
+        self.lbl_status = ttk.Label(frame, text="Listo.")
+        self.lbl_status.pack(side="left")
+
+        self.btn_save = ttk.Button(
+            frame,
+            text="Guardar evidencia JSON",
+            command=self._save,
+            state="disabled",
         )
-        if not ruta:
+        self.btn_save.pack(side="right")
+
+        self.btn_correct = ttk.Button(
+            frame,
+            text="Corregir seleccionado",
+            command=self._correct,
+            state="disabled",
+        )
+        self.btn_correct.pack(side="right", padx=8)
+
+        self.btn_start = ttk.Button(
+            frame,
+            text="Iniciar objetivo local",
+            command=self._start_target,
+            state="disabled",
+        )
+        self.btn_start.pack(side="right", padx=8)
+
+    def _choose_config(self):
+        path = filedialog.askopenfilename(
+            title="Seleccione el perfil de la aplicación",
+            filetypes=[("JSON", "*.json")],
+        )
+        if not path:
             return
         try:
-            cfg = cargar_config(ruta)
-        except Exception as exc:  # noqa: BLE001 - mostramos cualquier error de config al usuario
+            cfg = cargar_config(path)
+        except Exception as exc:
             messagebox.showerror("Configuración inválida", str(exc))
             return
 
-        self.config_path = Path(ruta)
+        self.config_path = Path(path)
+        self.cfg = cfg
         self.lbl_config.configure(
-            text=f"{self.config_path.name} — sistema: {cfg.sistema} "
-                 f"({len(cfg.cuentas)} cuentas, {len(cfg.endpoints)} endpoints)"
+            text=f"{cfg.sistema} {cfg.version_objetivo or ''}".strip()
         )
-        self.btn_auditar.configure(state="normal")
-        self.lbl_estado.configure(text="Configuración cargada. Lista para auditar.")
+        self._update_ready()
 
-    def _ejecutar_auditoria(self):
-        self.btn_auditar.configure(state="disabled")
-        self.lbl_estado.configure(text="Auditando… (puede tardar unos segundos)")
-        for fila in self.tabla.get_children():
-            self.tabla.delete(fila)
-        threading.Thread(target=self._auditar_en_hilo, daemon=True).start()
-
-    def _auditar_en_hilo(self):
-        try:
-            cfg = cargar_config(self.config_path)
-            hallazgos = auditar(cfg)
-        except Exception as exc:  # noqa: BLE001
-            self.after(0, lambda: self._mostrar_error_auditoria(exc))
+    def _choose_target(self):
+        path = filedialog.askdirectory(
+            title="Seleccione la copia local del código objetivo"
+        )
+        if not path:
             return
-        self.after(0, lambda: self._mostrar_resultados(cfg.sistema, hallazgos))
+        self.target_root = Path(path)
+        self.lbl_target.configure(text=self.target_root.name)
+        self._update_ready()
 
-    def _mostrar_error_auditoria(self, exc: Exception):
-        self.btn_auditar.configure(state="normal")
-        self.lbl_estado.configure(text="Error durante la auditoría.")
-        messagebox.showerror(
-            "No se pudo completar la auditoría",
-            f"{exc}\n\n¿El sistema objetivo está corriendo y accesible en la base_url del YAML?",
+    def _update_ready(self):
+        self.btn_run.configure(
+            state="normal" if self.cfg else "disabled"
+        )
+        puede_iniciar = bool(
+            self.cfg
+            and self.target_root
+            and self.cfg.runtime.comando_inicio
+        )
+        self.btn_start.configure(
+            state="normal" if puede_iniciar else "disabled"
+        )
+        self._update_buttons()
+
+    def _start_target(self):
+        if not self.target_root or not self.cfg:
+            return
+        try:
+            if self.proceso:
+                self.proceso.stop()
+            self.proceso = LocalTargetProcess(
+                self.target_root, self.cfg.runtime
+            )
+            self.proceso.start()
+            self.lbl_status.configure(
+                text=f"{self.cfg.sistema} iniciado por el auditor."
+            )
+        except Exception as exc:
+            messagebox.showerror("No se pudo iniciar", str(exc))
+
+    def _run(self):
+        if not self.cfg:
+            return
+        self.btn_run.configure(state="disabled")
+        self.lbl_status.configure(text="Diagnosticando…")
+        threading.Thread(
+            target=self._run_thread, daemon=True
+        ).start()
+
+    def _run_thread(self):
+        try:
+            result = diagnosticar(self.cfg, self.target_root)
+        except Exception as exc:
+            self.after(0, lambda: self._error(exc))
+            return
+        self.after(0, lambda: self._show(result))
+
+    def _error(self, exc):
+        self.btn_run.configure(state="normal")
+        self.lbl_status.configure(text="Error.")
+        messagebox.showerror("Auditoría", str(exc))
+
+    def _show(self, result):
+        self.resultado = result
+        for item in self.table.get_children():
+            self.table.delete(item)
+
+        rows = filas_gui(result)
+        for row in rows:
+            if row["estado"] == "HALLAZGO":
+                tag = "hallazgo"
+            elif row["estado"] == "ERROR":
+                tag = "error"
+            else:
+                tag = "ok"
+            self.table.insert(
+                "",
+                "end",
+                values=(
+                    row["pilar"],
+                    row["id"],
+                    row["control"],
+                    row["cuenta"],
+                    row["estado"],
+                    row["detalle"],
+                ),
+                tags=(tag,),
+            )
+
+        r = result["resumen"]
+        total = (
+            r["bola_confirmados"]
+            + r["acceso_vulnerable"]
+            + r["agente_vulnerable"]
+            + r["pilar2_hallazgos"]
+        )
+        self.lbl_summary.configure(
+            text=(
+                f"Sistema: {result['sistema']} | "
+                f"Hallazgos confirmados: {total} | errores: {r['errores']}"
+            )
+        )
+        self.lbl_status.configure(text="Diagnóstico completo.")
+        self.btn_run.configure(state="normal")
+        self.btn_save.configure(state="normal")
+        self._update_buttons()
+
+    def _selected_control(self):
+        selected = self.table.selection()
+        if not selected:
+            return None
+        values = self.table.item(selected[0], "values")
+        return values[1] if values else None
+
+    def _update_buttons(self):
+        control = self._selected_control()
+        enabled = bool(
+            control
+            and self.target_root
+            and self.cfg
+            and correction_available(self.cfg, control)
+        )
+        self.btn_correct.configure(
+            state="normal" if enabled else "disabled"
         )
 
-    def _mostrar_resultados(self, sistema: str, hallazgos: list):
-        self.hallazgos = [h.as_dict() for h in hallazgos]
-        confirmados = [h for h in self.hallazgos if h["confirmado_bola"]]
+    def _correct(self):
+        control = self._selected_control()
+        if not control or not self.target_root or not self.cfg:
+            return
 
-        for h in self.hallazgos:
-            tag = "bola" if h["confirmado_bola"] else "ok"
-            self.tabla.insert("", "end", values=(
-                h["endpoint"], h["metodo"], h["cuenta"], h["rol"],
-                "sí" if h["acceso_esperado"] else "no",
-                "sí" if h["acceso_real"] else "no",
-                h["http_status"],
-                "SÍ — BOLA" if h["confirmado_bola"] else "no",
-            ), tags=(tag,))
+        if not messagebox.askyesno(
+            "Corrección controlada",
+            (
+                f"Aplicar y verificar {control} sobre la copia local "
+                f"de {self.cfg.sistema}?"
+            ),
+        ):
+            return
 
-        color = "#c0392b" if confirmados else "#1e7d32"
-        self.lbl_resumen.configure(
-            text=f"Sistema: {sistema}  |  Pruebas: {len(self.hallazgos)}  |  "
-                 f"BOLA confirmados: {len(confirmados)}",
-            foreground=color,
-        )
-        self.btn_auditar.configure(state="normal")
-        self.btn_guardar.configure(state="normal" if self.hallazgos else "disabled")
-        self.lbl_estado.configure(text="Auditoría completa.")
+        try:
+            reiniciar = self.proceso.restart if self.proceso else None
+            manifest = ciclo_correctivo(
+                self.cfg,
+                control,
+                self.target_root,
+                reiniciar=reiniciar,
+            )
+            messagebox.showinfo(
+                "Resultado",
+                f"{control}: {manifest['estado_final']}",
+            )
+            self._run()
+        except Exception as exc:
+            messagebox.showerror("Corrección", str(exc))
 
-    def _guardar_evidencia(self):
-        ruta = filedialog.asksaveasfilename(
-            title="Guardar evidencia", defaultextension=".json",
+    def _save(self):
+        if not self.resultado:
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".json",
             filetypes=[("JSON", "*.json")],
         )
-        if not ruta:
+        if not path:
             return
-        confirmados = [h for h in self.hallazgos if h["confirmado_bola"]]
-        salida = {
-            "total_pruebas": len(self.hallazgos),
-            "bola_confirmados": len(confirmados),
-            "hallazgos": self.hallazgos,
-        }
-        Path(ruta).write_text(json.dumps(salida, ensure_ascii=False, indent=2), encoding="utf-8")
-        self.lbl_estado.configure(text=f"Evidencia guardada en {ruta}")
+        Path(path).write_text(
+            json.dumps(self.resultado, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        self.lbl_status.configure(
+            text=f"Evidencia guardada: {path}"
+        )
+
+    def destroy(self):
+        if self.proceso:
+            self.proceso.stop()
+        super().destroy()
 
 
 def main():

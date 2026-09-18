@@ -1,0 +1,100 @@
+{
+  "sistema": "mi-aplicacion",
+  "version_objetivo": "1.0.0",
+  "base_url": "http://127.0.0.1:8080",
+  "cuentas": [
+    {
+      "username": "usuario1",
+      "password": "cambiar",
+      "role": "usuario",
+      "auth_type": "basic",
+      "headers": {}
+    },
+    {
+      "username": "admin-api",
+      "password": null,
+      "role": "administrador",
+      "auth_type": "bearer",
+      "token": "TOKEN_DE_PRUEBA",
+      "headers": {}
+    }
+  ],
+  "roles_privilegiados": [
+    "administrador"
+  ],
+  "runtime": {
+    "comando_inicio": [
+      "python",
+      "app.py"
+    ],
+    "directorio_trabajo": ".",
+    "espera_inicio": 1.5,
+    "variables": {}
+  },
+  "endpoints": [
+    {
+      "id_control": "P1-BOLA-001",
+      "descripcion": "Un usuario no puede leer recursos de otro propietario",
+      "metodo": "GET",
+      "ruta": "/api/recursos/{id}",
+      "id_prueba": "1",
+      "propietario_esperado": "usuario1",
+      "codigos_permitidos": [
+        200
+      ]
+    }
+  ],
+  "chequeos_agente": [],
+  "chequeos_acceso": [
+    {
+      "id_control": "P1-RBAC-001",
+      "nombre": "Un usuario estándar no puede usar la operación administrativa",
+      "cuenta": "usuario1",
+      "metodo": "POST",
+      "ruta": "/api/admin/accion",
+      "cuerpo": {},
+      "acceso_esperado": false,
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ]
+    }
+  ],
+  "chequeos_pilar2": [
+    {
+      "id_control": "P2-CORS-001",
+      "nombre": "No reflejar orígenes arbitrarios con credenciales",
+      "tipo": "cors_reflection",
+      "metodo": "GET",
+      "ruta": "/api/recursos",
+      "cuenta": "usuario1",
+      "headers": {
+        "Origin": "https://origen-no-autorizado.example"
+      }
+    },
+    {
+      "id_control": "P2-SOURCE-001",
+      "nombre": "No conservar una configuración insegura conocida",
+      "tipo": "source_contains",
+      "archivo": "src/config.txt",
+      "patron_inseguro": "DEBUG=true",
+      "patron_seguro": "DEBUG=false"
+    }
+  ],
+  "correcciones": [
+    {
+      "control_id": "P2-SOURCE-001",
+      "archivo": "src/config.txt",
+      "descripcion": "Deshabilitar el modo debug en la copia local.",
+      "operaciones": [
+        {
+          "estrategia": "replace_exact",
+          "buscar": "DEBUG=true",
+          "reemplazar": "DEBUG=false",
+          "max_reemplazos": 1
+        }
+      ]
+    }
+  ]
+}

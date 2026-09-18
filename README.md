@@ -1,77 +1,74 @@
-# Auditor genérico de BOLA (Broken Object Level Authorization)
+# Auditor Correctivo de Seguridad — Dos Pilares
 
-Motor determinista (sin IA) que prueba si un sistema HTTP con autenticación
-Basic respeta la propiedad de sus recursos: si el usuario A puede leer o
-editar un recurso que le pertenece a B, sin tener un rol privilegiado que
-lo autorice, queda marcado como BOLA confirmado.
+Motor determinista para **diagnosticar, corregir, verificar y conservar evidencia** sobre aplicaciones y repositorios de código autorizados.
 
-**No está atado a ningún sistema.** Todo lo que cambia entre auditar un
-blog, un sistema de tickets, o Tramitia, vive en un archivo **JSON** — el
-código de `auditor_bola/` es idéntico para los tres (ver `config/*.json`
-para los tres ejemplos ya probados). Se eligió JSON en vez de YAML a
-propósito: es de la librería estándar de Python (`json`), no depende de
-instalar nada extra, y es el formato que más sistemas ya hablan de forma
-nativa (casi cualquier API expone o consume JSON).
+El repositorio nació como `AUDITOR-BOLA`, pero la versión actual ya no está limitada a BOLA ni a Tramitia. El diseño separa:
 
-## Ver la interfaz gráfica en tu PC (Windows)
+- **motor genérico**: lógica reutilizable;
+- **perfil JSON**: lo que cambia entre aplicaciones;
+- **evidencia**: línea base, hashes, diff, verificación y rollback.
 
-No hace falta instalar nada nuevo para la ventana en sí — **Tkinter viene
-incluido con Python** en la instalación oficial de python.org (no en la
-del Microsoft Store, que a veces lo omite). Pasos:
+Los dos pilares cubiertos son:
+
+1. **Identidad y Control de Acceso**.
+2. **Arquitectura y Configuración**.
+
+La integridad de la evidencia es transversal y no se presenta como un tercer pilar.
+
+## Objetivo final
+
+Para auditar otra aplicación **no se modifica el motor**. Se crea un perfil, por ejemplo:
+
+```text
+config/
+  plantilla.json
+  tramitia.json
+  blog.json
+  tickets.json
+  mi-aplicacion.json
+```
+
+El perfil describe cuentas, roles, autenticación, endpoints, controles, arranque local y, opcionalmente, recetas correctivas.
+
+Tramitia 2.4.0-rc2 es el caso de estudio principal, no una dependencia del auditor.
+
+## Qué es genérico
+
+- BOLA basado en propiedad de objetos.
+- RBAC/ABAC basado en acceso esperado vs. acceso real.
+- Comparación de alcance entre API directa y agente/asistente.
+- CORS.
+- Políticas de códigos HTTP.
+- Inspección de patrones en código/configuración.
+- Contenedores con usuario no root.
+- Autenticación Basic, Bearer, headers personalizados o ninguna.
+- Arranque/reinicio mediante comando configurable.
+- Correcciones de texto `replace_exact` y `regex_replace`.
+- Backup, SHA-256, diff, verificación y rollback.
+
+Las inspecciones y correcciones de archivos son independientes del lenguaje: pueden trabajar sobre Java, JavaScript, PHP, C#, Go, Python, configuración, Dockerfiles, etc.
+
+Para flujos especializados como SSO/MFA interactivo o protocolos no HTTP se añade un adaptador reusable; no se codifica una excepción para una aplicación concreta.
+
+## Instalación
 
 ```bash
-cd auditor-generico-bola
 python -m venv .venv
-.venv\Scripts\activate          # PowerShell / cmd
-# o: source .venv/Scripts/activate   # Git Bash
-pip install -r requirements.txt
-python -m auditor_bola.gui
 ```
 
-Si al ejecutar `python -m auditor_bola.gui` te sale `No module named
-_tkinter`, significa que tu Python se instaló sin Tk (pasa con algunas
-instalaciones mínimas o del Microsoft Store). Solución: instala Python
-desde https://www.python.org/downloads/ marcando la opción "tcl/tk and
-IDLE" durante la instalación (viene marcada por defecto en el instalador
-oficial), o reinstala con `py -3.12` si ya tienes el instalador completo.
+Windows:
 
-Primer uso, paso a paso una vez abierta la ventana:
-1. Clic en **"Elegir configuración (.json)"** → selecciona `config/blog.json`.
-2. Clic en **"Ejecutar auditoría"**.
-3. Deberías ver la tabla con 2 filas en rosado (el BOLA de `maria`) — pero
-   para eso el sistema falso tiene que estar corriendo (ver abajo).
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
 
-## Uso por línea de comandos
+Linux/macOS:
 
 ```bash
-python -m auditor_bola.cli --config config/tramitia.json --out reportes/evidencia.json
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
-
-## Escribir un config nuevo para OTRO sistema
-
-```json
-{
-  "sistema": "nombre-libre",
-  "base_url": "http://host:puerto",
-  "cuentas": [
-    {"username": "user1", "password": "pass1", "role": "rol_bajo"},
-    {"username": "user2", "password": "pass2", "role": "rol_alto"}
-  ],
-  "roles_privilegiados": ["rol_alto"],
-  "endpoints": [
-    {
-      "metodo": "GET",
-      "ruta": "/cualquier/ruta/{id}",
-      "id_prueba": "1",
-      "propietario_esperado": "user1"
-    }
-  ]
-}
-```
-
-El motor prueba automáticamente TODAS las cuentas contra TODOS los
-endpoints, cruzando quién debería tener acceso (según el YAML) contra
-quién de verdad lo tiene (según la respuesta HTTP real).
 
 ## Interfaz gráfica
 
@@ -79,20 +76,104 @@ quién de verdad lo tiene (según la respuesta HTTP real).
 python -m auditor_bola.gui
 ```
 
-Se abre una ventana de escritorio (Tkinter, ya incluido con Python — sin
-dependencias nuevas):
+Flujo:
 
-1. **"Elegir configuración (.json)"** — abre cualquiera de los JSON de
-   `config/` (o uno que armes tú para otro sistema).
-2. **"Ejecutar auditoría"** — corre el mismo motor de `engine.py` contra
-   la `base_url` del YAML y llena la tabla en vivo.
-3. Cada fila con **fondo rosado** y `SÍ — BOLA` es un hallazgo confirmado;
-   verde es una prueba que pasó bien.
-4. **"Guardar evidencia (.json)"** — exporta exactamente lo mismo que
-   produce la CLI, para meterlo al informe o al Threat Dragon.
+1. Seleccionar el perfil JSON de la aplicación.
+2. Seleccionar la copia local del código cuando se usarán controles estáticos/correcciones.
+3. Iniciar opcionalmente el objetivo con el comando declarado en el perfil.
+4. Diagnosticar P1 y P2.
+5. Seleccionar un hallazgo.
+6. Aplicar una receta correctiva, si está declarada.
+7. Verificar y conservar evidencia.
 
-No hace falta escribir ni una línea de código para auditar un sistema
-nuevo: solo un YAML y un clic.
+## CLI
+
+Diagnóstico:
+
+```bash
+python -m auditor_bola.cli diagnose \
+  --config config/mi-aplicacion.json \
+  --target-root /ruta/al/codigo \
+  --out evidencias/diagnostico.json
+```
+
+Corrección:
+
+```bash
+python -m auditor_bola.cli correct \
+  --config config/mi-aplicacion.json \
+  --control P1-BOLA-001 \
+  --target-root /ruta/al/codigo
+```
+
+Si el perfil declara `runtime.comando_inicio`, el auditor puede administrar el proceso:
+
+```bash
+python -m auditor_bola.cli correct \
+  --config config/mi-aplicacion.json \
+  --control P1-BOLA-001 \
+  --target-root /ruta/al/codigo \
+  --manage-target
+```
+
+## Estados
+
+Diagnóstico:
+
+- `HALLAZGO`
+- `SIN_HALLAZGO`
+- `ERROR`
+
+Ciclo correctivo:
+
+- `CORREGIDO`
+- `NO_CORREGIDO`
+- `SIN_HALLAZGO`
+- `ERROR`
+
+Un parche escrito no equivale a una corrección: la prueba original debe pasar después del cambio.
+
+## Arquitectura
+
+```text
+auditor_bola/
+  config.py            esquema del perfil
+  transport.py         autenticación/transporte HTTP
+  engine.py            Pilar 1
+  agent_scope.py       API directa vs. agente
+  pilar2.py            Pilar 2
+  runner.py            orquestador común CLI/GUI
+  corrective.py        recetas genéricas
+  evidence.py          hashes y evidencia
+  cycle.py             diagnóstico/corrección/verificación/rollback
+  process_manager.py   proceso local configurable
+  cli.py
+  gui.py
+
+config/
+  plantilla.json       base para cualquier aplicación
+  tramitia.json        caso de estudio
+  blog.json            sistema simulado
+  tickets.json         sistema simulado
+
+docs/
+  CREAR_PERFIL.md
+```
+
+## Caso Tramitia
+
+`config/tramitia.json` demuestra que los detalles de Tramitia viven en el perfil: rutas, cuentas, comandos y parches. Los motores no contienen rutas `tramitia/*.py` ni reglas específicas de ese sistema.
+
+## Crear un perfil nuevo
+
+Use:
+
+```text
+config/plantilla.json
+docs/CREAR_PERFIL.md
+```
+
+La regla es: **una nueva aplicación se integra con configuración; una nueva capacidad universal se integra como extensión reusable.**
 
 ## Pruebas
 
@@ -100,21 +181,4 @@ nuevo: solo un YAML y un clic.
 pytest -v
 ```
 
-Corre el motor contra dos sistemas simulados (`tests/sistema_falso_*.py`)
-con Flask: uno con un BOLA real a propósito (para confirmar que lo
-detecta) y otro sin bug (para confirmar que no da falsos positivos).
-
-## Estructura
-
-```
-auditor_bola/
-  config.py   -> carga y valida el YAML del objetivo
-  engine.py   -> el motor genérico (no conoce ningún sistema)
-  cli.py      -> interfaz de línea de comandos
-  gui.py      -> interfaz gráfica de escritorio (Tkinter)
-config/
-  blog.json, tickets.json, tramitia.json  -> 3 sistemas de ejemplo
-tests/
-  sistema_falso_blog.py, sistema_falso_tickets.py -> mocks para pytest
-  test_engine.py -> pruebas automatizadas
-```
+La suite incluye sistemas simulados distintos, controles del Pilar 2, autenticación configurable y pruebas del corrector/rollback.

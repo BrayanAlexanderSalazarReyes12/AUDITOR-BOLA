@@ -1,10 +1,10 @@
-"""Carga y validación de la configuración del objetivo a auditar.
+"""Configuración declarativa del auditor.
 
-Esta es la única frontera entre el motor genérico y un sistema real. Nada
-en engine.py sabe el nombre de ningún sistema: todo entra por aquí.
+El motor no conoce nombres de aplicaciones, frameworks ni rutas concretas.
+Todo lo específico del sistema objetivo vive en un perfil JSON.
 
-Formato: JSON puro (sin dependencias extra — json es de la librería
-estándar de Python, a diferencia de YAML).
+Pilar 1: Identidad y Control de Acceso.
+Pilar 2: Arquitectura y Configuración.
 """
 
 from __future__ import annotations
@@ -17,30 +17,29 @@ from pathlib import Path
 @dataclass
 class Cuenta:
     username: str
-    password: str
+    password: str | None
     role: str
+    auth_type: str = "basic"  # basic | bearer | header | none
+    token: str | None = None
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class Endpoint:
     metodo: str
-    ruta: str  # plantilla, ej: /api/recurso/{id}
+    ruta: str
     id_prueba: str
     propietario_esperado: str
     cuerpo_prueba: dict | None = None
     codigos_permitidos: tuple[int, ...] = (200, 201, 204)
+    id_control: str | None = None
+    descripcion: str | None = None
 
 
 @dataclass
 class ChequeoAgente:
-    """Compara la API directa contra un agente conversacional, con la misma cuenta.
-
-    Ver agent_scope.py: portado del control P1-SCOPE-006 del equipo, aquí
-    generalizado a cualquier sistema con un endpoint "directo" y otro que
-    invoca un agente/asistente.
-    """
     nombre: str
-    cuenta: str  # username de baja privilegio con el que se prueban ambos lados
+    cuenta: str
     direct_metodo: str
     direct_ruta: str
     agent_ruta: str
@@ -52,6 +51,58 @@ class ChequeoAgente:
     count_field: str = "devueltas"
     id_field: str = "id"
     agent_items_json_path: str | None = None
+    id_control: str = "P1-SCOPE"
+
+
+@dataclass
+class ChequeoAcceso:
+    id_control: str
+    nombre: str
+    cuenta: str
+    metodo: str
+    ruta: str
+    acceso_esperado: bool
+    cuerpo: dict | None = None
+    codigos_permitidos: tuple[int, ...] = (200, 201, 204)
+
+
+@dataclass
+class ChequeoPilar2:
+    id_control: str
+    nombre: str
+    tipo: str
+    metodo: str = "GET"
+    ruta: str = "/"
+    cuenta: str | None = None
+    cuerpo: dict | None = None
+    headers: dict[str, str] = field(default_factory=dict)
+    codigos_seguros: tuple[int, ...] = (400, 401, 403, 429)
+    campo_repetir: str | None = None
+    caracter: str = "x"
+    cantidad: int = 0
+    archivo: str | None = None
+    patron_inseguro: str | None = None
+    patron_seguro: str | None = None
+
+
+@dataclass
+class Correccion:
+    """Receta declarativa compuesta por operaciones genéricas."""
+
+    control_id: str
+    archivo: str
+    operaciones: list[dict] = field(default_factory=list)
+    descripcion: str | None = None
+
+
+@dataclass
+class RuntimeConfig:
+    """Cómo iniciar/reiniciar una copia local del objetivo."""
+
+    comando_inicio: list[str] = field(default_factory=list)
+    directorio_trabajo: str = "."
+    espera_inicio: float = 1.2
+    variables: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -62,32 +113,72 @@ class ConfigObjetivo:
     endpoints: list[Endpoint]
     roles_privilegiados: list[str] = field(default_factory=list)
     chequeos_agente: list[ChequeoAgente] = field(default_factory=list)
+    chequeos_acceso: list[ChequeoAcceso] = field(default_factory=list)
+    chequeos_pilar2: list[ChequeoPilar2] = field(default_factory=list)
+    correcciones: list[Correccion] = field(default_factory=list)
+    runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    version_objetivo: str | None = None
 
     def cuenta_por_username(self, username: str) -> Cuenta | None:
-        for c in self.cuentas:
-            if c.username == username:
-                return c
+        for cuenta in self.cuentas:
+            if cuenta.username == username:
+                return cuenta
         return None
+
+    def correccion_por_control(self, control_id: str) -> Correccion | None:
+        for correccion in self.correcciones:
+            if correccion.control_id == control_id:
+                return correccion
+        return None
+
+
+def _tuple_codigos(datos: dict, campo: str) -> None:
+    if campo in datos:
+        datos[campo] = tuple(datos[campo])
 
 
 def cargar_config(path: str | Path) -> ConfigObjetivo:
     datos = json.loads(Path(path).read_text(encoding="utf-8"))
 
-    cuentas = [Cuenta(**c) for c in datos["cuentas"]]
-    endpoints = []
-    for e in datos["endpoints"]:
-        e = dict(e)
-        if "codigos_permitidos" in e:
-            e["codigos_permitidos"] = tuple(e["codigos_permitidos"])
-        endpoints.append(Endpoint(**e))
+    cuentas = [Cuenta(**c) for c in datos.get("cuentas", [])]
 
-    chequeos_agente = [ChequeoAgente(**c) for c in datos.get("chequeos_agente", [])]
+    endpoints: list[Endpoint] = []
+    for raw in datos.get("endpoints", []):
+        item = dict(raw)
+        _tuple_codigos(item, "codigos_permitidos")
+        endpoints.append(Endpoint(**item))
+
+    chequeos_agente = [
+        ChequeoAgente(**item) for item in datos.get("chequeos_agente", [])
+    ]
+
+    chequeos_acceso: list[ChequeoAcceso] = []
+    for raw in datos.get("chequeos_acceso", []):
+        item = dict(raw)
+        _tuple_codigos(item, "codigos_permitidos")
+        chequeos_acceso.append(ChequeoAcceso(**item))
+
+    chequeos_pilar2: list[ChequeoPilar2] = []
+    for raw in datos.get("chequeos_pilar2", []):
+        item = dict(raw)
+        _tuple_codigos(item, "codigos_seguros")
+        chequeos_pilar2.append(ChequeoPilar2(**item))
+
+    correcciones = [
+        Correccion(**item) for item in datos.get("correcciones", [])
+    ]
+    runtime = RuntimeConfig(**datos.get("runtime", {}))
 
     return ConfigObjetivo(
         sistema=datos["sistema"],
-        base_url=datos["base_url"].rstrip("/"),
+        base_url=datos.get("base_url", "").rstrip("/"),
         cuentas=cuentas,
         endpoints=endpoints,
         roles_privilegiados=datos.get("roles_privilegiados", []),
         chequeos_agente=chequeos_agente,
+        chequeos_acceso=chequeos_acceso,
+        chequeos_pilar2=chequeos_pilar2,
+        correcciones=correcciones,
+        runtime=runtime,
+        version_objetivo=datos.get("version_objetivo"),
     )
