@@ -73,6 +73,7 @@ def verificar_control(
 
 
 def _rollback_seguro(
+    cfg: ConfigObjetivo,
     correccion: CorrectionResult,
     target_root: str | Path,
     evidence: EvidenceSession,
@@ -91,7 +92,7 @@ def _rollback_seguro(
                 manifest["rollback_restart_error"] = str(exc)
 
         try:
-            restaurado = diagnosticar(manifest["_cfg"], target_root)
+            restaurado = diagnosticar(cfg, target_root)
             evidence.write_json("verification/rollback.json", restaurado)
         except Exception as exc:
             manifest["rollback_verification_error"] = str(exc)
@@ -177,11 +178,9 @@ def ciclo_correctivo(
             evidence.write_json("manifest.json", manifest)
             return manifest
 
-        manifest["_cfg"] = cfg
         _rollback_seguro(
-            correccion, target_root, evidence, reiniciar, manifest
+            cfg, correccion, target_root, evidence, reiniciar, manifest
         )
-        manifest.pop("_cfg", None)
         manifest["estado_final"] = (
             "NO_CORREGIDO" if estado_despues == "HALLAZGO" else "ERROR"
         )
@@ -193,11 +192,9 @@ def ciclo_correctivo(
         manifest["estado_final"] = "ERROR"
 
         if correccion is not None:
-            manifest["_cfg"] = cfg
             _rollback_seguro(
-                correccion, target_root, evidence, reiniciar, manifest
+                cfg, correccion, target_root, evidence, reiniciar, manifest
             )
-            manifest.pop("_cfg", None)
 
         evidence.write_json("manifest.json", manifest)
         return manifest
