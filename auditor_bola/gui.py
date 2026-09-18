@@ -146,8 +146,15 @@ class AuditorGUI(tk.Tk):
             "correccion",
             "detalle",
         )
+
+        # Todos los widgets administrados con grid pertenecen al mismo
+        # contenedor. Antes el Treeview era hijo de tab_results mientras
+        # holder se administraba con pack, lo que provocaba TclError.
+        holder = ttk.Frame(self.tab_results)
+        holder.pack(fill="both", expand=True)
+
         self.table = ttk.Treeview(
-            self.tab_results, columns=columns, show="headings", height=20
+            holder, columns=columns, show="headings", height=20
         )
         titles = {
             "pilar": "Pilar",
@@ -176,8 +183,6 @@ class AuditorGUI(tk.Tk):
         self.table.tag_configure("error", background="#fff3cd")
         self.table.bind("<<TreeviewSelect>>", self._on_result_selected)
 
-        holder = ttk.Frame(self.tab_results)
-        holder.pack(fill="both", expand=True)
         scroll_y = ttk.Scrollbar(
             holder, orient="vertical", command=self.table.yview
         )
