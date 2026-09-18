@@ -296,3 +296,150 @@ def rollback_desde_evidencia(
         encoding="utf-8",
     )
     return payload
+
+
+def listar_sesiones_correccion(
+    evidence_base: str | Path,
+) -> list[Path]:
+    """Lista sesiones con corrección, de la más reciente a la más antigua."""
+    base = Path(evidence_base).resolve()
+    if not base.exists():
+        return []
+    sesiones = [
+        path
+        for path in base.iterdir()
+        if path.is_dir() and (path / "cambios" / "correccion.json").exists()
+    ]
+    return sorted(sesiones, key=lambda path: path.name, reverse=True)
+
+
+def controles_desde_evidencias(
+    evidence_base: str | Path,
+) -> list[str]:
+    """Obtiene controles únicos presentes en sesiones correctivas."""
+    controles: list[str] = []
+    for session in listar_sesiones_correccion(evidence_base):
+        try:
+            data = json.loads(
+                (session / "cambios" / "correccion.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            control = data.get("control_id")
+            if control and control not in controles:
+                controles.append(control)
+        except Exception:
+            continue
+    return controles
+
+
+def rollback_todas_desde_evidencias(
+    evidence_base: str | Path,
+    target_root: str | Path,
+    *,
+    reiniciar: Callable[[], None] | None = None,
+) -> dict:
+    """Revierte todas las correcciones aplicables, en orden inverso.
+
+    Seguridad:
+    - Si el hash actual coincide con after_hash, restaura el backup.
+    - Si coincide con before_hash, la sesión ya está revertida.
+    - Si no coincide con ninguno, no sobrescribe el archivo.
+    """
+    base = Path(evidence_base).resolve()
+    root = Path(target_root).resolve()
+    sesiones = listar_sesiones_correccion(base)
+
+    resultados: list[dict] = []
+    hubo_cambios = False
+
+    for session in sesiones:
+        correction_path = session / "cambios" / "correccion.json"
+        try:
+            data = json.loads(correction_path.read_text(encoding="utf-8"))
+            correction = CorrectionResult(**data)
+            archivo = (root / correction.archivo).resolve()
+
+            if archivo != root and root not in archivo.parents:
+                raise ValueError("ruta de rollback fuera del target_root")
+            if not archivo.exists():
+                raise FileNotFoundError(archivo)
+
+            current_hash = sha256_file(archivo)
+
+            if current_hash == correction.before_hash:
+                estado = "YA_REVERTIDA"
+                restored_hash = current_hash
+
+            elif current_hash == correction.after_hash:
+                rollback(correction, root)
+                restored_hash = sha256_file(archivo)
+                if restored_hash == correction.before_hash:
+                    estado = "REVERTIDA"
+                    hubo_cambios = True
+                else:
+                    estado = "ERROR_HASH"
+
+            else:
+                estado = "CONFLICTO_HASH"
+                restored_hash = current_hash
+
+            payload = {
+                "sesion": str(session),
+                "control": correction.control_id,
+                "archivo": correction.archivo,
+                "estado": estado,
+                "hash_actual_antes": current_hash,
+                "hash_esperado_corregido": correction.after_hash,
+                "hash_original": correction.before_hash,
+                "hash_actual_despues": restored_hash,
+            }
+
+        except Exception as exc:
+            payload = {
+                "sesion": str(session),
+                "estado": "ERROR",
+                "error": str(exc),
+            }
+
+        resultados.append(payload)
+
+        verification = session / "verification"
+        verification.mkdir(parents=True, exist_ok=True)
+        (verification / "rollback_total.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    reinicio_error = None
+    if hubo_cambios and reiniciar:
+        try:
+            reiniciar()
+        except Exception as exc:
+            reinicio_error = str(exc)
+
+    resumen = {
+        "sesiones_encontradas": len(sesiones),
+        "revertidas": sum(
+            item.get("estado") == "REVERTIDA" for item in resultados
+        ),
+        "ya_revertidas": sum(
+            item.get("estado") == "YA_REVERTIDA" for item in resultados
+        ),
+        "conflictos_hash": sum(
+            item.get("estado") == "CONFLICTO_HASH" for item in resultados
+        ),
+        "errores": sum(
+            item.get("estado") in {"ERROR", "ERROR_HASH"}
+            for item in resultados
+        ),
+        "reinicio_error": reinicio_error,
+        "resultados": resultados,
+    }
+
+    base.mkdir(parents=True, exist_ok=True)
+    (base / "rollback_total_ultimo.json").write_text(
+        json.dumps(resumen, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return resumen

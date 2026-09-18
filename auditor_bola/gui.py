@@ -19,8 +19,10 @@ from .config import ConfigObjetivo, cargar_config
 from .corrective import correction_available
 from .cycle import (
     ciclo_correctivo,
+    controles_desde_evidencias,
     corregir_controles,
     rollback_desde_evidencia,
+    rollback_todas_desde_evidencias,
     verificar_control,
 )
 from .process_manager import LocalTargetProcess
@@ -399,6 +401,15 @@ class AuditorGUI(tk.Tk):
             row=1, column=0, columnspan=2, sticky="ew", pady=(5, 0)
         )
 
+        self.btn_rollback_all = ttk.Button(
+            buttons,
+            text="Revertir todas las correcciones",
+            command=self._rollback_all_evidence,
+        )
+        self.btn_rollback_all.grid(
+            row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0)
+        )
+
         self.evidence_text = tk.Text(
             right, wrap="none", font=("Consolas", 10)
         )
@@ -731,6 +742,19 @@ class AuditorGUI(tk.Tk):
         )
         self.btn_rollback.configure(
             state=normal_or_disabled(rollback_ok)
+        )
+
+        rollback_all_ok = bool(
+            has_target
+            and self.evidence_base.exists()
+            and any(
+                path.is_dir()
+                and (path / "cambios" / "correccion.json").exists()
+                for path in self.evidence_base.iterdir()
+            )
+        )
+        self.btn_rollback_all.configure(
+            state=normal_or_disabled(rollback_all_ok)
         )
 
         self._refresh_process_state()
@@ -1228,6 +1252,87 @@ class AuditorGUI(tk.Tk):
             self._diagnose()
 
         self._run_background(task, done, "Revirtiendo corrección…")
+
+    def _rollback_all_evidence(self):
+        if not self.target_root:
+            return
+
+        sessions = (
+            [
+                path
+                for path in self.evidence_base.iterdir()
+                if path.is_dir()
+                and (path / "cambios" / "correccion.json").exists()
+            ]
+            if self.evidence_base.exists()
+            else []
+        )
+
+        if not sessions:
+            messagebox.showinfo(
+                "Revertir todas",
+                "No hay sesiones correctivas para revertir.",
+            )
+            return
+
+        if not messagebox.askyesno(
+            "Revertir todas las correcciones",
+            (
+                f"Se revisarán {len(sessions)} sesión(es) correctiva(s) "
+                "desde la más reciente hasta la más antigua.\n\n"
+                "Solo se restaurará un archivo cuando su SHA-256 actual "
+                "coincida con el estado corregido guardado. Los archivos "
+                "modificados por fuera del auditor no serán sobrescritos.\n\n"
+                "¿Deseas continuar?"
+            ),
+        ):
+            return
+
+        controls = controles_desde_evidencias(self.evidence_base)
+
+        def task():
+            reiniciar = self._prepare_restart_callback(controls)
+            return rollback_todas_desde_evidencias(
+                self.evidence_base,
+                self.target_root,
+                reiniciar=reiniciar,
+            )
+
+        def done(payload):
+            self._refresh_evidence_list()
+            self._log(
+                "Rollback total: "
+                f"revertidas={payload['revertidas']}, "
+                f"ya_revertidas={payload['ya_revertidas']}, "
+                f"conflictos={payload['conflictos_hash']}, "
+                f"errores={payload['errores']}"
+            )
+
+            mensaje = (
+                f"Sesiones encontradas: {payload['sesiones_encontradas']}\n"
+                f"Revertidas: {payload['revertidas']}\n"
+                f"Ya revertidas: {payload['ya_revertidas']}\n"
+                f"Conflictos de hash: {payload['conflictos_hash']}\n"
+                f"Errores: {payload['errores']}"
+            )
+            if payload.get("reinicio_error"):
+                mensaje += (
+                    "\n\nEl código fue procesado, pero hubo un error "
+                    f"al reiniciar: {payload['reinicio_error']}"
+                )
+
+            messagebox.showinfo(
+                "Resultado de revertir todas",
+                mensaje,
+            )
+            if self.cfg:
+                self._diagnose()
+
+        self._run_background(
+            task,
+            done,
+            "Revirtiendo todas las correcciones…",
+        )
 
     def _open_selected_evidence(self):
         path = self._selected_evidence_path()
