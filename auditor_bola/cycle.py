@@ -133,15 +133,28 @@ def corregir_controles(
         if control_id in vistos:
             continue
         vistos.add(control_id)
-        resultados.append(
-            ciclo_correctivo(
-                cfg,
-                control_id,
-                target_root,
-                evidence_base=evidence_base,
-                reiniciar=reiniciar,
+        try:
+            resultados.append(
+                ciclo_correctivo(
+                    cfg,
+                    control_id,
+                    target_root,
+                    evidence_base=evidence_base,
+                    reiniciar=reiniciar,
+                )
             )
-        )
+        except Exception as exc:
+            resultados.append(
+                {
+                    "sistema": cfg.sistema,
+                    "version_objetivo": cfg.version_objetivo,
+                    "control": control_id,
+                    "tipo": "CICLO_CORRECTIVO",
+                    "estado_final": "ERROR",
+                    "error": str(exc),
+                    "evidencia": None,
+                }
+            )
     return resultados
 
 
