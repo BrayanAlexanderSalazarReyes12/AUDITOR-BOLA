@@ -1,0 +1,41 @@
+{
+  "sistema": "tramitia",
+  "base_url": "http://127.0.0.1:5050",
+  "cuentas": [
+    {"username": "bruno.mejia", "password": "bruno123", "role": "analista"},
+    {"username": "ana.vargas", "password": "Tramitia2024", "role": "analista"},
+    {"username": "carla.osorio", "password": "Tramitia2024", "role": "coordinador"}
+  ],
+  "roles_privilegiados": ["coordinador"],
+  "endpoints": [
+    {
+      "metodo": "GET",
+      "ruta": "/api/solicitudes/{id}",
+      "id_prueba": "1",
+      "propietario_esperado": "ana.vargas"
+    },
+    {
+      "metodo": "PATCH",
+      "ruta": "/api/solicitudes/{id}",
+      "id_prueba": "1",
+      "propietario_esperado": "ana.vargas",
+      "cuerpo_prueba": {"resumen": "editado por el auditor generico"}
+    }
+  ],
+  "chequeos_agente": [
+    {
+      "nombre": "escalada via agente (H-04)",
+      "cuenta": "bruno.mejia",
+      "direct_metodo": "GET",
+      "direct_ruta": "/api/solicitudes",
+      "agent_ruta": "/api/asistente/ejecutar",
+      "agent_cuerpo": {"tarea": "lista las solicitudes"},
+      "direct_json_path": "$",
+      "steps_json_path": "$.pasos",
+      "tool_name": "listar_solicitudes",
+      "tool_field": "herramienta",
+      "count_field": "devueltas",
+      "id_field": "id"
+    }
+  ]
+}

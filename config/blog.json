@@ -1,0 +1,25 @@
+{
+  "sistema": "blog_falso",
+  "base_url": "http://127.0.0.1:5100",
+  "cuentas": [
+    {"username": "juan", "password": "clave1", "role": "editor"},
+    {"username": "maria", "password": "clave2", "role": "editor"},
+    {"username": "admin_blog", "password": "adminpass", "role": "admin"}
+  ],
+  "roles_privilegiados": ["admin"],
+  "endpoints": [
+    {
+      "metodo": "GET",
+      "ruta": "/posts/{id}",
+      "id_prueba": "1",
+      "propietario_esperado": "juan"
+    },
+    {
+      "metodo": "PATCH",
+      "ruta": "/posts/{id}",
+      "id_prueba": "1",
+      "propietario_esperado": "juan",
+      "cuerpo_prueba": {"titulo": "editado por la prueba del auditor"}
+    }
+  ]
+}
