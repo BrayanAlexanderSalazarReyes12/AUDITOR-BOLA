@@ -1,27 +1,43 @@
+from auditor_bola.config import ConfigObjetivo, Correccion
 from auditor_bola.corrective import apply_correction, rollback
 from auditor_bola.evidence import EvidenceSession
 
 
-def test_corrector_bola_hace_backup_y_rollback(tmp_path):
+def test_corrector_generico_hace_backup_y_rollback(tmp_path):
     target = tmp_path / "target"
-    api = target / "tramitia" / "api.py"
-    api.parent.mkdir(parents=True)
-    original = '''from .auth import COORDINADOR, current_user
+    source = target / "src" / "access.py"
+    source.parent.mkdir(parents=True)
+    original = "ALLOW_ALL = True\n"
+    source.write_text(original, encoding="utf-8")
 
-def puede_acceder(row) -> bool:
-    """Verifica que la identidad actual tenga sesion valida sobre la solicitud."""
-    usuario = current_user()
-    return usuario is not None
-'''
-    api.write_text(original, encoding="utf-8")
+    cfg = ConfigObjetivo(
+        sistema="demo",
+        base_url="",
+        cuentas=[],
+        endpoints=[],
+        correcciones=[
+            Correccion(
+                control_id="P1-DEMO",
+                archivo="src/access.py",
+                operaciones=[
+                    {
+                        "estrategia": "replace_exact",
+                        "buscar": "ALLOW_ALL = True",
+                        "reemplazar": "ALLOW_ALL = False",
+                    }
+                ],
+            )
+        ],
+    )
 
     evidence = EvidenceSession.create(tmp_path / "evidencias")
-    result = apply_correction("P1-BOLA-001", target, evidence)
+    result = apply_correction(cfg, "P1-DEMO", target, evidence)
 
-    patched = api.read_text(encoding="utf-8")
-    assert 'row["propietario"] == usuario["username"]' in patched
+    patched = source.read_text(encoding="utf-8")
+    assert "ALLOW_ALL = False" in patched
     assert result.before_hash != result.after_hash
+    assert result.operaciones_aplicadas == 1
     assert "@@" in result.diff
 
     rollback(result, target)
-    assert api.read_text(encoding="utf-8") == original
+    assert source.read_text(encoding="utf-8") == original
