@@ -94,7 +94,8 @@
           "reemplazar": "DEBUG=false",
           "max_reemplazos": 1
         }
-      ]
+      ],
+      "requiere_reinicio": false
     }
   ]
 }
