@@ -5,10 +5,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 
-import requests
-
 from .agent_scope import ResultadoAlcanceAgente, evaluar_alcance_agente
 from .config import ConfigObjetivo, Cuenta, Endpoint
+from .transport import request_http
 
 
 def _ts() -> str:
@@ -80,28 +79,8 @@ def _armar_url(base_url: str, endpoint: Endpoint) -> str:
     return base_url + endpoint.ruta.format(id=endpoint.id_prueba)
 
 
-def _request(
-    metodo: str,
-    url: str,
-    *,
-    cuenta: Cuenta | None = None,
-    cuerpo: dict | None = None,
-    headers: dict | None = None,
-    timeout: int = 10,
-) -> requests.Response:
-    auth = (cuenta.username, cuenta.password) if cuenta else None
-    return requests.request(
-        metodo.upper(),
-        url,
-        auth=auth,
-        json=cuerpo,
-        headers=headers,
-        timeout=timeout,
-    )
-
-
-def _disparar(base_url: str, endpoint: Endpoint, cuenta: Cuenta) -> requests.Response:
-    return _request(
+def _disparar(base_url: str, endpoint: Endpoint, cuenta: Cuenta):
+    return request_http(
         endpoint.metodo,
         _armar_url(base_url, endpoint),
         cuenta=cuenta,
@@ -146,7 +125,7 @@ def auditar_controles_acceso(cfg: ConfigObjetivo) -> list[ResultadoAcceso]:
             raise ValueError(
                 f"control '{chequeo.id_control}': cuenta '{chequeo.cuenta}' no configurada"
             )
-        resp = _request(
+        resp = request_http(
             chequeo.metodo,
             cfg.base_url + chequeo.ruta,
             cuenta=cuenta,
@@ -181,12 +160,12 @@ def auditar_alcance_agente(cfg: ConfigObjetivo) -> list[HallazgoAgente]:
                 f"chequeo '{chequeo.nombre}': cuenta '{chequeo.cuenta}' no configurada"
             )
 
-        resp_directa = _request(
+        resp_directa = request_http(
             chequeo.direct_metodo,
             cfg.base_url + chequeo.direct_ruta,
             cuenta=cuenta,
         )
-        resp_agente = _request(
+        resp_agente = request_http(
             "POST",
             cfg.base_url + chequeo.agent_ruta,
             cuenta=cuenta,
