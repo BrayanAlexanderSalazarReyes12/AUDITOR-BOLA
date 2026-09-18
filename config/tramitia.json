@@ -159,7 +159,8 @@
           "buscar": "def puede_acceder(row) -> bool:\n    \"\"\"Verifica que la identidad actual tenga sesion valida sobre la solicitud.\"\"\"\n    usuario = current_user()\n    return usuario is not None\n",
           "reemplazar": "def puede_acceder(row) -> bool:\n    \"\"\"Autoriza al propietario del objeto o a un coordinador.\"\"\"\n    usuario = current_user()\n    return (\n        usuario[\"role\"] == COORDINADOR\n        or row[\"propietario\"] == usuario[\"username\"]\n    )\n"
         }
-      ]
+      ],
+      "requiere_reinicio": true
     },
     {
       "control_id": "P1-BOLA-002",
@@ -171,7 +172,8 @@
           "buscar": "def puede_acceder(row) -> bool:\n    \"\"\"Verifica que la identidad actual tenga sesion valida sobre la solicitud.\"\"\"\n    usuario = current_user()\n    return usuario is not None\n",
           "reemplazar": "def puede_acceder(row) -> bool:\n    \"\"\"Autoriza al propietario del objeto o a un coordinador.\"\"\"\n    usuario = current_user()\n    return (\n        usuario[\"role\"] == COORDINADOR\n        or row[\"propietario\"] == usuario[\"username\"]\n    )\n"
         }
-      ]
+      ],
+      "requiere_reinicio": true
     },
     {
       "control_id": "P1-SCOPE-003",
@@ -183,7 +185,8 @@
           "buscar": "def identidad_efectiva(usuario: dict) -> dict:\n    \"\"\"Identidad con la que se ejecutaran las herramientas del asistente.\n\n    Ver ADR-004: el asistente resuelve sus consultas con la cuenta tecnica de\n    la plataforma para no depender del perfil de cada analista.\n    \"\"\"\n    return dict(CUENTA_SERVICIO)\n",
           "reemplazar": "def identidad_efectiva(usuario: dict) -> dict:\n    \"\"\"Propaga la identidad real del solicitante hacia las herramientas.\"\"\"\n    return dict(usuario)\n"
         }
-      ]
+      ],
+      "requiere_reinicio": true
     },
     {
       "control_id": "P1-RBAC-004",
@@ -200,7 +203,8 @@
           "buscar": "@bp.get(\"/auditoria\")\n@authenticated\ndef auditoria():\n    \"\"\"Ultimos eventos registrados por la plataforma.\n\n    Lo consume el tablero de soporte para diagnosticar reclamos de usuarios sin\n    tener que pedir acceso al servidor.\n    \"\"\"\n    limite = request.args.get(\"limite\", type=int) or 100\n    eventos = trail()[-limite:]\n    return jsonify(total=len(eventos), eventos=eventos)\n",
           "reemplazar": "@bp.get(\"/auditoria\")\n@authenticated\ndef auditoria():\n    \"\"\"Ultimos eventos registrados, restringidos a coordinación.\"\"\"\n    if current_user()[\"role\"] != COORDINADOR:\n        return jsonify(error=\"acceso no autorizado\"), 403\n    limite = request.args.get(\"limite\", type=int) or 100\n    eventos = trail()[-limite:]\n    return jsonify(total=len(eventos), eventos=eventos)\n"
         }
-      ]
+      ],
+      "requiere_reinicio": true
     },
     {
       "control_id": "P2-CORS-001",
@@ -212,7 +216,8 @@
           "buscar": "        origen = request.headers.get(\"Origin\")\n        if origen:\n            response.headers[\"Access-Control-Allow-Origin\"] = origen\n            response.headers[\"Access-Control-Allow-Credentials\"] = \"true\"\n        return response\n",
           "reemplazar": "        origen = request.headers.get(\"Origin\")\n        permitidos = {\n            item.strip()\n            for item in os.getenv(\"TRAMITIA_CORS_ORIGINS\", \"\").split(\",\")\n            if item.strip()\n        }\n        if origen and origen in permitidos:\n            response.headers[\"Access-Control-Allow-Origin\"] = origen\n            response.headers[\"Access-Control-Allow-Credentials\"] = \"true\"\n            response.headers[\"Vary\"] = \"Origin\"\n        return response\n"
         }
-      ]
+      ],
+      "requiere_reinicio": true
     },
     {
       "control_id": "P2-SECRET-002",
@@ -224,7 +229,8 @@
           "buscar": "    app = Flask(__name__)\n    app.config.from_mapping(\n        DATABASE=os.getenv(\"TRAMITIA_DATABASE\", \"tramitia.sqlite3\"),\n        SECRET_KEY=os.getenv(\"TRAMITIA_SECRET\", SECRETO_POR_DEFECTO),\n",
           "reemplazar": "    app = Flask(__name__)\n    entorno = os.getenv(\"TRAMITIA_ENV\", \"development\").lower()\n    secreto = os.getenv(\"TRAMITIA_SECRET\")\n    if entorno == \"production\" and (not secreto or secreto == SECRETO_POR_DEFECTO):\n        raise RuntimeError(\"TRAMITIA_SECRET debe definirse con un valor seguro en producción\")\n    secreto = secreto or SECRETO_POR_DEFECTO\n    app.config.from_mapping(\n        DATABASE=os.getenv(\"TRAMITIA_DATABASE\", \"tramitia.sqlite3\"),\n        SECRET_KEY=secreto,\n"
         }
-      ]
+      ],
+      "requiere_reinicio": false
     },
     {
       "control_id": "P2-LIMIT-003",
@@ -241,7 +247,8 @@
           "buscar": "\n    usuario = current_user()\n    presupuesto = current_app.config[\"ASSISTANT_BUDGET\"]\n",
           "reemplazar": "\n    presupuesto = current_app.config[\"ASSISTANT_BUDGET\"]\n"
         }
-      ]
+      ],
+      "requiere_reinicio": true
     }
   ]
 }
