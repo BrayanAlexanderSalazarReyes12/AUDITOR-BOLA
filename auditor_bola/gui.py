@@ -663,8 +663,6 @@ class AuditorGUI(tk.Tk):
             self.proceso.start()
             self._wait_target_ready()
 
-        self.auto_manage_var.set(True)
-
         def restart_and_wait():
             self.proceso.restart()
             self._wait_target_ready()
