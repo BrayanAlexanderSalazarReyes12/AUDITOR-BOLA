@@ -28,8 +28,15 @@ class AuditorGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Auditor Correctivo de Seguridad — Dos Pilares")
-        self.geometry("1360x820")
-        self.minsize(1100, 680)
+
+        # Ajustar la ventana a la resolución disponible. En pantallas
+        # 1280x720 la altura fija de 820 ocultaba la barra de acciones.
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(1360, max(980, screen_w - 40))
+        height = min(820, max(620, screen_h - 80))
+        self.geometry(f"{width}x{height}")
+        self.minsize(min(980, width), min(620, height))
 
         self.config_path: Path | None = None
         self.cfg: ConfigObjetivo | None = None
@@ -44,8 +51,10 @@ class AuditorGUI(tk.Tk):
 
         self._build_header()
         self._build_runtime_bar()
-        self._build_notebook()
+
+        # Las acciones correctivas quedan visibles antes del área central.
         self._build_actions()
+        self._build_notebook()
         self._build_status()
         self._refresh_evidence_list()
         self._refresh_state()
