@@ -24,19 +24,36 @@ from .process_manager import LocalTargetProcess
 from .runner import diagnosticar, filas_gui
 
 
+def calcular_layout(screen_w: int, screen_h: int) -> tuple[int, int, bool]:
+    """Calcula tamaño inicial y modo compacto sin depender de Tk."""
+    compact_mode = screen_w < 1280 or screen_h < 760
+
+    margen_w = 40
+    margen_h = 80
+    max_w = 1360
+    max_h = 820
+
+    disponible_w = max(640, screen_w - margen_w)
+    disponible_h = max(500, screen_h - margen_h)
+
+    width = min(max_w, disponible_w)
+    height = min(max_h, disponible_h)
+    return width, height, compact_mode
+
+
 class AuditorGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Auditor Correctivo de Seguridad — Dos Pilares")
 
-        # Ajustar la ventana a la resolución disponible. En pantallas
-        # 1280x720 la altura fija de 820 ocultaba la barra de acciones.
+        # Inicializar el modo responsivo ANTES de construir cualquier
+        # sección que lo consulte.
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        width = min(1360, max(980, screen_w - 40))
-        height = min(820, max(620, screen_h - 80))
+        width, height, self.compact_mode = calcular_layout(screen_w, screen_h)
+
         self.geometry(f"{width}x{height}")
-        self.minsize(min(980, width), min(620, height))
+        self.minsize(min(760, width), min(520, height))
 
         self.config_path: Path | None = None
         self.cfg: ConfigObjetivo | None = None
