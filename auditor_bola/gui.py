@@ -453,7 +453,7 @@ class AuditorGUI(tk.Tk):
         )
         self.btn_correct_all = ttk.Button(
             frame,
-            text="Corregir todos los hallazgos corregibles",
+            text="Corregir todos los hallazgos",
             command=self._correct_all,
         )
         self.btn_show_profile = ttk.Button(
@@ -618,7 +618,7 @@ class AuditorGUI(tk.Tk):
             and self.cfg
             and correction_available(self.cfg, selected)
         )
-        corregibles = self._correctable_findings()
+        hallazgos = self._all_findings()
 
         normal_or_disabled = lambda ok: "normal" if ok and not self.busy else "disabled"
 
@@ -641,7 +641,7 @@ class AuditorGUI(tk.Tk):
             state=normal_or_disabled(can_correct)
         )
         self.btn_correct_all.configure(
-            state=normal_or_disabled(bool(corregibles and has_target))
+            state=normal_or_disabled(bool(hallazgos and has_target))
         )
         self.btn_save.configure(
             state=normal_or_disabled(self.resultado is not None)
@@ -667,19 +667,24 @@ class AuditorGUI(tk.Tk):
         else:
             self.lbl_process.configure(text="Proceso: no administrado")
 
-    def _correctable_findings(self) -> list[str]:
-        if not self.resultado or not self.cfg:
+    def _all_findings(self) -> list[str]:
+        if not self.resultado:
             return []
         controls: list[str] = []
         for row in filas_gui(self.resultado):
             control_id = row["id"]
-            if (
-                row["estado"] == "HALLAZGO"
-                and correction_available(self.cfg, control_id)
-                and control_id not in controls
-            ):
+            if row["estado"] == "HALLAZGO" and control_id not in controls:
                 controls.append(control_id)
         return controls
+
+    def _correctable_findings(self) -> list[str]:
+        if not self.cfg:
+            return []
+        return [
+            control_id
+            for control_id in self._all_findings()
+            if correction_available(self.cfg, control_id)
+        ]
 
     # ------------------------------------------------------------------
     # Selección de archivos / carpetas
@@ -837,11 +842,13 @@ class AuditorGUI(tk.Tk):
             + r["agente_vulnerable"]
             + r["pilar2_hallazgos"]
         )
+        corregibles = len(self._correctable_findings())
+        sin_receta = max(0, len(self._all_findings()) - corregibles)
         self.lbl_summary.configure(
             text=(
                 f"Sistema: {result['sistema']} | "
                 f"Hallazgos: {total} | Errores: {r['errores']} | "
-                f"Corregibles: {len(self._correctable_findings())}"
+                f"Con receta: {corregibles} | Sin receta: {sin_receta}"
             )
         )
         self.lbl_status.configure(text="Diagnóstico completo.")
@@ -940,23 +947,43 @@ class AuditorGUI(tk.Tk):
     def _correct_all(self):
         if not self.cfg or not self.target_root:
             return
-        controls = self._correctable_findings()
+
+        controls = self._all_findings()
         if not controls:
             messagebox.showinfo(
                 "Correcciones",
-                "No hay hallazgos con receta correctiva disponible.",
+                "No hay hallazgos pendientes.",
             )
             return
 
-        if not messagebox.askyesno(
-            "Corregir todos",
-            (
-                f"Se ejecutarán {len(controls)} ciclo(s) correctivo(s):\n\n"
-                + "\n".join(f"• {item}" for item in controls)
-                + "\n\nCada cambio tendrá backup, verificación y rollback "
-                  "automático si falla. ¿Continuar?"
-            ),
-        ):
+        corregibles = [
+            control_id
+            for control_id in controls
+            if correction_available(self.cfg, control_id)
+        ]
+        sin_receta = [
+            control_id
+            for control_id in controls
+            if not correction_available(self.cfg, control_id)
+        ]
+
+        resumen = (
+            f"Hallazgos detectados: {len(controls)}\n"
+            f"Con receta automática: {len(corregibles)}\n"
+            f"Sin receta automática: {len(sin_receta)}\n\n"
+            + "\n".join(f"• {item}" for item in controls)
+        )
+        if sin_receta:
+            resumen += (
+                "\n\nLos controles sin receta también serán registrados "
+                "como PENDIENTE_SIN_RECETA; no se omitirán."
+            )
+        resumen += (
+            "\n\nCada corrección automática tendrá backup, verificación "
+            "y rollback si falla. ¿Continuar?"
+        )
+
+        if not messagebox.askyesno("Corregir todos", resumen):
             return
 
         auto_manage = self.auto_manage_var.get()
@@ -981,12 +1008,15 @@ class AuditorGUI(tk.Tk):
                 if item.get("evidencia"):
                     last_evidence = Path(item["evidencia"])
                 if item.get("error"):
-                    self._log(f"{control}: ERROR - {item['error']}")
+                    self._log(f"{control}: {estado} - {item['error']}")
+                elif item.get("motivo"):
+                    self._log(f"{control}: {estado} - {item['motivo']}")
                 else:
                     self._log(f"{control}: {estado}")
+
             self._refresh_evidence_list(select_path=last_evidence)
             messagebox.showinfo(
-                "Corrección múltiple",
+                "Resultado del procesamiento",
                 "\n".join(lines),
             )
             self._diagnose()
@@ -994,7 +1024,7 @@ class AuditorGUI(tk.Tk):
         self._run_background(
             task,
             done,
-            f"Corrigiendo {len(controls)} control(es)…",
+            f"Procesando {len(controls)} hallazgo(s)…",
         )
 
     # ------------------------------------------------------------------

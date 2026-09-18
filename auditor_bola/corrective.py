@@ -46,9 +46,13 @@ def _replace_exact(texto: str, op: dict, control_id: str) -> str:
             f"{control_id}: replace_exact requiere buscar/reemplazar"
         )
     if buscar not in texto:
+        # Si el texto de reemplazo ya está presente, la operación es
+        # idempotente: otra corrección pudo haber resuelto el mismo bloque.
+        if reemplazar in texto:
+            return texto
         raise RuntimeError(
-            f"{control_id}: no se encontró el bloque esperado; "
-            "no se modifica el archivo"
+            f"{control_id}: no se encontró el bloque esperado ni la versión "
+            "corregida; no se modifica el archivo"
         )
     return texto.replace(buscar, reemplazar, max_reemplazos)
 
