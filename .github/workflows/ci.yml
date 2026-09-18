@@ -2,9 +2,6 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-      - auditor-dos-pilares
   pull_request:
     branches:
       - main

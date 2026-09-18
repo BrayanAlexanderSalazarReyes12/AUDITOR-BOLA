@@ -19,7 +19,8 @@ def sha256_file(path: str | Path) -> str:
 
 
 def _timestamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    # Microsegundos para evitar colisiones al corregir varios controles seguidos.
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
 
 @dataclass

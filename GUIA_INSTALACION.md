@@ -1,22 +1,12 @@
-# Guía de instalación — Auditor Correctivo de Seguridad de Dos Pilares
+# Guía de uso — Auditor Correctivo de Seguridad de Dos Pilares
 
-Esta guía instala y ejecuta el auditor contra cualquier aplicación que tenga un perfil JSON compatible. Tramitia, Blog y Tickets son ejemplos; el motor no depende de ninguno.
-
-## 1. Requisitos
-
-| Programa | Uso |
-|---|---|
-| Python 3.11+ | Ejecutar el auditor |
-| Git | Opcional, para clonar/versionar |
-| Tk/Tcl | Interfaz gráfica; viene con la instalación oficial de Python |
-
-## 2. Instalación
+## 1. Instalación
 
 ```bash
 python -m venv .venv
 ```
 
-Windows PowerShell:
+Windows:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -30,183 +20,184 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-## 3. Verificación
+Compruebe:
 
 ```bash
 pytest -v
 ```
 
-También existe CI para Python 3.11 y 3.12.
-
-## 4. Estructura
-
-```text
-auditor_bola/
-  config.py
-  transport.py
-  engine.py
-  agent_scope.py
-  pilar2.py
-  runner.py
-  corrective.py
-  evidence.py
-  cycle.py
-  process_manager.py
-  cli.py
-  gui.py
-
-config/
-  plantilla.json
-  blog.json
-  tickets.json
-  tramitia.json
-
-docs/
-  CREAR_PERFIL.md
-```
-
-## 5. Diagnosticar una aplicación
-
-Primero prepare un perfil. Para una aplicación nueva copie:
-
-```text
-config/plantilla.json
-```
-
-y complete sus cuentas, roles, rutas y controles.
-
-Después:
-
-```bash
-python -m auditor_bola.cli diagnose \
-  --config config/mi-aplicacion.json \
-  --target-root /ruta/al/codigo \
-  --out evidencias/diagnostico.json
-```
-
-`--target-root` es necesario para controles estáticos y correcciones. Si el perfil solo contiene controles HTTP, puede omitirse.
-
-## 6. Corregir un hallazgo
-
-Una corrección automática debe estar declarada en `correcciones` dentro del perfil.
-
-```bash
-python -m auditor_bola.cli correct \
-  --config config/mi-aplicacion.json \
-  --control P2-CONFIG-001 \
-  --target-root /ruta/al/codigo
-```
-
-El auditor:
-
-1. repite el hallazgo;
-2. guarda línea base;
-3. hace backup;
-4. calcula hash;
-5. aplica la receta;
-6. repite las pruebas;
-7. conserva evidencia;
-8. revierte el cambio si la verificación falla.
-
-## 7. Administrar el proceso objetivo
-
-El perfil puede declarar:
-
-```json
-{
-  "runtime": {
-    "comando_inicio": ["npm", "start"],
-    "directorio_trabajo": ".",
-    "espera_inicio": 2,
-    "variables": {}
-  }
-}
-```
-
-Entonces puede usar:
-
-```bash
-python -m auditor_bola.cli correct \
-  --config config/mi-aplicacion.json \
-  --control P1-BOLA-001 \
-  --target-root /ruta/al/codigo \
-  --manage-target
-```
-
-El comando puede ser Python, Java, Node, .NET u otro ejecutable disponible en la máquina.
-
-## 8. Interfaz gráfica
+## 2. Abrir la interfaz
 
 ```bash
 python -m auditor_bola.gui
 ```
 
-En la ventana:
+La GUI ya permite ejecutar el ciclo completo.
+
+## 3. Preparar el objetivo
+
+En la parte superior seleccione:
 
 1. **Perfil de aplicación (.json)**.
 2. **Carpeta de código local**.
-3. **Iniciar objetivo local**, si el perfil declara runtime.
-4. **Diagnosticar**.
-5. Seleccionar un control.
-6. **Corregir seleccionado**, si existe receta.
-7. Guardar evidencia.
+3. **Carpeta de evidencias**.
 
-## 9. Autenticación
+Para una aplicación nueva use `config/plantilla.json`.
 
-El perfil soporta:
+## 4. Administrar la aplicación
 
-- `basic`
-- `bearer`
-- `header`
-- `none`
+Si el perfil contiene `runtime.comando_inicio`, estarán disponibles:
 
-Consulte `docs/CREAR_PERFIL.md` para ejemplos.
+- **Iniciar objetivo**
+- **Detener**
+- **Reiniciar**
 
-## 10. Probar con los sistemas simulados
+La opción **Gestionar reinicio automáticamente al corregir** hace que el auditor inicie/reinicie el objetivo durante el ciclo correctivo. Si el sistema ya está levantado externamente y no desea que el auditor lo administre, desmarque esa casilla.
 
-Los mocks Blog y Tickets siguen siendo controles del propio auditor.
+## 5. Diagnosticar
 
-Ejecute:
+Pulse:
 
-```bash
-pytest -v
-```
+**Diagnosticar P1 + P2**
 
-Las pruebas levantan los sistemas simulados automáticamente.
+La tabla muestra:
 
-## 11. Caso de estudio Tramitia
+- Pilar.
+- ID del control.
+- Descripción.
+- Cuenta.
+- Estado.
+- Si existe corrección automática.
+- Detalle observado.
 
-Para el laboratorio:
+Colores:
 
-```bash
-python -m auditor_bola.cli diagnose \
-  --config config/tramitia.json \
-  --target-root /ruta/a/tramitia-app
-```
+- rojo/rosado: `HALLAZGO`;
+- verde: `SIN_HALLAZGO`;
+- amarillo: `ERROR`.
 
-Tramitia es un **perfil de ejemplo**. Sus rutas, cuentas, runtime y correcciones viven en `config/tramitia.json`, no dentro del motor.
+## 6. Revisar una corrección
 
-## 12. Integrar otra aplicación
+Seleccione una fila.
 
-No edite `engine.py`, `pilar2.py` o `corrective.py`.
+La pestaña **Detalle / Corrección** muestra:
 
-Cree:
+- control;
+- estado;
+- detalle;
+- receta declarada;
+- archivo que será modificado;
+- operaciones configuradas.
+
+## 7. Corregir un hallazgo
+
+Seleccione un hallazgo que tenga **Corrección = Sí** y pulse:
+
+**Corregir seleccionado**
+
+El auditor:
+
+1. repite el diagnóstico;
+2. confirma el hallazgo;
+3. crea una sesión de evidencia;
+4. guarda línea base;
+5. hace backup del archivo;
+6. registra SHA-256;
+7. aplica la receta;
+8. reinicia si corresponde;
+9. repite la prueba;
+10. marca `CORREGIDO` si pasa;
+11. si falla, restaura el backup automáticamente.
+
+## 8. Corregir todos
+
+Pulse:
+
+**Corregir todos los hallazgos corregibles**
+
+El auditor obtiene los controles únicos en estado `HALLAZGO` que tengan receta y ejecuta los ciclos uno por uno.
+
+Si una corrección falla, las siguientes continúan; el resultado final indica cada estado.
+
+## 9. Verificar manualmente
+
+Seleccione cualquier control y pulse:
+
+**Verificar seleccionado**
+
+Se repite el diagnóstico y se guarda una nueva evidencia de verificación sin modificar código.
+
+## 10. Evidencias
+
+Abra la pestaña **Evidencias**.
+
+Allí puede:
+
+- listar todas las sesiones;
+- ver `manifest.json`;
+- ver `correccion.json`;
+- ver el diff;
+- abrir la carpeta en el sistema operativo;
+- comprobar rollbacks anteriores.
+
+## 11. Revertir manualmente
+
+Seleccione una sesión correctiva en **Evidencias** y pulse:
+
+**Revertir esta corrección**
+
+El auditor restaura el backup, reinicia opcionalmente y compara el SHA-256 restaurado contra el hash de la línea base.
+
+El resultado queda en:
 
 ```text
-config/mi-aplicacion.json
+verification/manual_rollback.json
 ```
 
-a partir de la plantilla.
+## 12. Guardar reporte
 
-Si aparece un tipo de autenticación, protocolo o control que todavía no existe, se implementa como capacidad reusable del auditor y luego puede utilizarse en cualquier perfil.
+Después de un diagnóstico pulse:
 
-## Errores frecuentes
+**Guardar reporte actual**
 
-| Error | Acción |
-|---|---|
-| `ConnectionRefusedError` | Verifique `base_url` y que el objetivo esté arriba |
-| `No module named _tkinter` | Instale Python oficial con Tcl/Tk |
-| `No module named auditor_bola` | Ejecute desde la raíz del proyecto y active el venv |
-| `ERROR` en un control estático | Compruebe `--target-root` y las rutas del perfil |
-| Corrección no disponible | Declare una receta para el control en el perfil |
-| Una receta no encuentra el texto | La versión del código no coincide con la receta; el auditor no modifica el archivo |
+Esto exporta el resultado completo visible a JSON.
+
+## 13. Sistemas nuevos
+
+Para integrar otra aplicación no edite los motores Python.
+
+Copie:
+
+```text
+config/plantilla.json
+```
+
+y configure:
+
+- `base_url`;
+- cuentas y autenticación;
+- roles;
+- endpoints;
+- controles;
+- runtime;
+- recetas.
+
+Consulte `docs/CREAR_PERFIL.md`.
+
+## 14. Nota sobre correcciones
+
+Una corrección automática existe únicamente cuando el perfil declara una receta. El auditor no inventa cambios sobre código desconocido.
+
+Si un hallazgo aparece con **Corrección = No**, puede seguir diagnosticándose y verificándose, pero para corregirlo automáticamente debe agregarse una receta reutilizable/segura al perfil.
+
+## 15. Tramitia
+
+Para el caso de estudio seleccione:
+
+```text
+config/tramitia.json
+```
+
+y como carpeta de código la copia local de `tramitia-app` correspondiente a la versión prevista por el perfil.
+
+Tramitia es solo un perfil de ejemplo; la GUI y el motor son genéricos.

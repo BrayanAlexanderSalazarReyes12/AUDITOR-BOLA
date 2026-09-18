@@ -1,3 +1,3 @@
-"""TRAMITIA — Auditor Correctivo de Seguridad de Dos Pilares."""
+"""Auditor Correctivo de Seguridad de Dos Pilares."""
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
