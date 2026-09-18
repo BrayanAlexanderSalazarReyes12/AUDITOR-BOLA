@@ -1,12 +1,13 @@
 # Auditor Correctivo de Seguridad — Dos Pilares
 
-Motor determinista para **diagnosticar, corregir, verificar y conservar evidencia** sobre aplicaciones y repositorios de código autorizados.
+Motor determinista para **diagnosticar, corregir, verificar, revertir y conservar evidencia** sobre aplicaciones y repositorios de código autorizados.
 
 El repositorio nació como `AUDITOR-BOLA`, pero la versión actual ya no está limitada a BOLA ni a Tramitia. El diseño separa:
 
 - **motor genérico**: lógica reutilizable;
 - **perfil JSON**: lo que cambia entre aplicaciones;
-- **evidencia**: línea base, hashes, diff, verificación y rollback.
+- **ciclo correctivo**: diagnóstico → backup → corrección → verificación → rollback;
+- **evidencia**: línea base, hashes, diff, verificación y restauración.
 
 Los dos pilares cubiertos son:
 
@@ -15,9 +16,71 @@ Los dos pilares cubiertos son:
 
 La integridad de la evidencia es transversal y no se presenta como un tercer pilar.
 
-## Objetivo final
+## Interfaz gráfica completa
 
-Para auditar otra aplicación **no se modifica el motor**. Se crea un perfil, por ejemplo:
+Ejecute:
+
+```bash
+python -m auditor_bola.gui
+```
+
+La ventana permite realizar todo el ciclo sin usar la terminal:
+
+1. **Perfil de aplicación (.json)**: carga la definición del sistema.
+2. **Carpeta de código local**: selecciona la copia autorizada que puede inspeccionarse/corregirse.
+3. **Carpeta de evidencias**: elige dónde guardar línea base, backups, diff y resultados.
+4. **Iniciar objetivo**: inicia el sistema usando `runtime.comando_inicio` del perfil.
+5. **Detener / Reiniciar**: administra el proceso local.
+6. **Diagnosticar P1 + P2**: ejecuta todos los controles.
+7. **Verificar seleccionado**: repite un control y guarda evidencia de verificación.
+8. **Corregir seleccionado**: aplica la receta, reinicia opcionalmente, verifica y hace rollback automático si falla.
+9. **Corregir todos los hallazgos corregibles**: procesa de forma secuencial todos los controles con receta.
+10. **Evidencias**: muestra manifest, corrección, diff y rollback.
+11. **Revertir esta corrección**: restaura manualmente el backup de una sesión y valida el SHA-256.
+12. **Guardar reporte actual**: exporta el diagnóstico visible.
+13. **Ver perfil JSON**: permite revisar desde la GUI la configuración usada.
+
+La tabla indica explícitamente si cada hallazgo tiene **Corrección: Sí/No**.
+
+## Ciclo correctivo
+
+```text
+DIAGNOSTICAR
+    ↓
+CONFIRMAR HALLAZGO
+    ↓
+GUARDAR LÍNEA BASE
+    ↓
+BACKUP + SHA-256
+    ↓
+APLICAR RECETA
+    ↓
+REINICIAR (opcional)
+    ↓
+VERIFICAR
+    ↓
+¿EL HALLAZGO DESAPARECIÓ?
+   /                 \
+ SÍ                   NO
+ ↓                     ↓
+CORREGIDO          ROLLBACK
+                       ↓
+                 VALIDAR HASH
+```
+
+Estados:
+
+- `HALLAZGO`
+- `SIN_HALLAZGO`
+- `CORREGIDO`
+- `NO_CORREGIDO`
+- `ERROR`
+
+Un parche escrito **no** equivale a una corrección: el control debe pasar después del cambio.
+
+## Objetivo genérico
+
+Para auditar otra aplicación **no se modifica el motor**. Se crea un perfil:
 
 ```text
 config/
@@ -28,27 +91,36 @@ config/
   mi-aplicacion.json
 ```
 
-El perfil describe cuentas, roles, autenticación, endpoints, controles, arranque local y, opcionalmente, recetas correctivas.
+El perfil describe:
 
-Tramitia 2.4.0-rc2 es el caso de estudio principal, no una dependencia del auditor.
+- cuentas;
+- roles;
+- autenticación;
+- endpoints;
+- controles;
+- archivos a inspeccionar;
+- comando de arranque;
+- recetas correctivas.
 
-## Qué es genérico
+Tramitia 2.4.0-rc2 es un caso de estudio, no una dependencia del auditor.
+
+## Capacidades reutilizables
 
 - BOLA basado en propiedad de objetos.
-- RBAC/ABAC basado en acceso esperado vs. acceso real.
-- Comparación de alcance entre API directa y agente/asistente.
+- RBAC/ABAC basado en acceso esperado vs. real.
+- Comparación de alcance API directa vs. agente/asistente.
 - CORS.
 - Políticas de códigos HTTP.
 - Inspección de patrones en código/configuración.
 - Contenedores con usuario no root.
 - Autenticación Basic, Bearer, headers personalizados o ninguna.
-- Arranque/reinicio mediante comando configurable.
+- Runtime configurable para Python, Java, Node, .NET u otros.
 - Correcciones de texto `replace_exact` y `regex_replace`.
 - Backup, SHA-256, diff, verificación y rollback.
+- Corrección múltiple desde GUI.
+- Rollback manual desde evidencia.
 
-Las inspecciones y correcciones de archivos son independientes del lenguaje: pueden trabajar sobre Java, JavaScript, PHP, C#, Go, Python, configuración, Dockerfiles, etc.
-
-Para flujos especializados como SSO/MFA interactivo o protocolos no HTTP se añade un adaptador reusable; no se codifica una excepción para una aplicación concreta.
+Las inspecciones y correcciones de archivos son independientes del lenguaje: pueden trabajar con Java, JavaScript, PHP, C#, Go, Python, Dockerfiles y archivos de configuración.
 
 ## Instalación
 
@@ -70,21 +142,12 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-## Interfaz gráfica
+Después:
 
 ```bash
+pytest -v
 python -m auditor_bola.gui
 ```
-
-Flujo:
-
-1. Seleccionar el perfil JSON de la aplicación.
-2. Seleccionar la copia local del código cuando se usarán controles estáticos/correcciones.
-3. Iniciar opcionalmente el objetivo con el comando declarado en el perfil.
-4. Diagnosticar P1 y P2.
-5. Seleccionar un hallazgo.
-6. Aplicar una receta correctiva, si está declarada.
-7. Verificar y conservar evidencia.
 
 ## CLI
 
@@ -106,7 +169,7 @@ python -m auditor_bola.cli correct \
   --target-root /ruta/al/codigo
 ```
 
-Si el perfil declara `runtime.comando_inicio`, el auditor puede administrar el proceso:
+Si el perfil declara `runtime.comando_inicio`:
 
 ```bash
 python -m auditor_bola.cli correct \
@@ -116,22 +179,26 @@ python -m auditor_bola.cli correct \
   --manage-target
 ```
 
-## Estados
+## Evidencia generada
 
-Diagnóstico:
+```text
+evidencias/
+└── <sesion>/
+    ├── manifest.json
+    ├── baseline/
+    │   └── resultados.json
+    ├── cambios/
+    │   ├── correccion.json
+    │   ├── <control>.diff
+    │   └── backup/
+    └── verification/
+        ├── resultados.json
+        ├── manual.json
+        ├── rollback.json
+        └── manual_rollback.json
+```
 
-- `HALLAZGO`
-- `SIN_HALLAZGO`
-- `ERROR`
-
-Ciclo correctivo:
-
-- `CORREGIDO`
-- `NO_CORREGIDO`
-- `SIN_HALLAZGO`
-- `ERROR`
-
-Un parche escrito no equivale a una corrección: la prueba original debe pasar después del cambio.
+Cada sesión usa un identificador temporal con microsegundos para evitar colisiones durante correcciones múltiples.
 
 ## Arquitectura
 
@@ -151,18 +218,14 @@ auditor_bola/
   gui.py
 
 config/
-  plantilla.json       base para cualquier aplicación
-  tramitia.json        caso de estudio
-  blog.json            sistema simulado
-  tickets.json         sistema simulado
+  plantilla.json
+  tramitia.json
+  blog.json
+  tickets.json
 
 docs/
   CREAR_PERFIL.md
 ```
-
-## Caso Tramitia
-
-`config/tramitia.json` demuestra que los detalles de Tramitia viven en el perfil: rutas, cuentas, comandos y parches. Los motores no contienen rutas `tramitia/*.py` ni reglas específicas de ese sistema.
 
 ## Crear un perfil nuevo
 
@@ -173,12 +236,24 @@ config/plantilla.json
 docs/CREAR_PERFIL.md
 ```
 
-La regla es: **una nueva aplicación se integra con configuración; una nueva capacidad universal se integra como extensión reusable.**
+La regla es: **una nueva aplicación se integra con configuración; una nueva capacidad universal se integra como extensión reusable**.
 
-## Pruebas
+## Pruebas y CI
 
 ```bash
 pytest -v
 ```
 
-La suite incluye sistemas simulados distintos, controles del Pilar 2, autenticación configurable y pruebas del corrector/rollback.
+La suite incluye:
+
+- BOLA positivo y negativo;
+- Pilar 2;
+- configuración;
+- autenticación configurable;
+- corrector genérico;
+- ciclo completo de corrección;
+- verificación manual;
+- rollback por evidencia;
+- no colisión entre sesiones.
+
+GitHub Actions ejecuta la suite en Python 3.11 y 3.12.
