@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 reportes/*.json
 .pytest_cache/
+evidencias/
