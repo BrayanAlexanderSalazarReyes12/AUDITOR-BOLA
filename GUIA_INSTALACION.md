@@ -1,170 +1,212 @@
-# Guía completa — Auditor genérico de BOLA
+# Guía de instalación — Auditor Correctivo de Seguridad de Dos Pilares
 
-Todo lo necesario para instalar, probar y ejecutar el auditor en una máquina
-nueva, desde cero. Sin IA en ningún punto del motor: todo lo que decide si
-algo es una falla o no es comparación de código HTTP contra lo que declaraste
-en un archivo JSON.
+Esta guía instala y ejecuta el auditor contra cualquier aplicación que tenga un perfil JSON compatible. Tramitia, Blog y Tickets son ejemplos; el motor no depende de ninguno.
 
-## 0. Qué vas a instalar (una sola vez)
+## 1. Requisitos
 
-| Programa | Para qué | Dónde conseguirlo |
-|---|---|---|
-| Python 3.11 o superior | Correr todo el proyecto | https://www.python.org/downloads/ (marca "tcl/tk and IDLE" en el instalador, si no ya la GUI no abre) |
-| Git (opcional) | Si van a versionarlo en GitHub | https://git-scm.com/downloads |
+| Programa | Uso |
+|---|---|
+| Python 3.11+ | Ejecutar el auditor |
+| Git | Opcional, para clonar/versionar |
+| Tk/Tcl | Interfaz gráfica; viene con la instalación oficial de Python |
 
-No se necesita ninguna base de datos, servidor externo, ni cuenta en la nube.
-Todo corre en tu máquina.
-
-## 1. Estructura del proyecto (lo que te entrego)
-
-```
-auditor-generico-bola/
-├── auditor_bola/              <- el paquete (el "backend")
-│   ├── __init__.py
-│   ├── config.py              <- lee y valida el JSON del sistema a auditar
-│   ├── engine.py               <- el motor: BOLA + alcance del agente
-│   ├── agent_scope.py          <- lógica del chequeo de alcance del agente
-│   ├── cli.py                  <- interfaz de línea de comandos
-│   └── gui.py                  <- interfaz gráfica (Tkinter)
-├── config/                     <- 3 sistemas de ejemplo, listos para usar
-│   ├── blog.json                (con un bug BOLA a propósito)
-│   ├── tickets.json              (sin bugs, control negativo)
-│   └── tramitia.json             (el sistema real de la materia)
-├── tests/
-│   ├── sistema_falso_blog.py    <- mini API Flask con el bug
-│   ├── sistema_falso_tickets.py <- mini API Flask sin bugs
-│   └── test_engine.py           <- pruebas automatizadas (pytest)
-├── requirements.txt
-├── .gitignore
-└── README.md
-```
-
-## 2. Instalación (una sola vez por máquina)
+## 2. Instalación
 
 ```bash
-# 1. Ubícate en la carpeta del proyecto
-cd auditor-generico-bola
-
-# 2. Crea el entorno virtual
 python -m venv .venv
-# (en Windows con "python" bloqueado por el alias de la tienda, usa: py -3.12 -m venv .venv)
-
-# 3. Actívalo
-source .venv/Scripts/activate      # Git Bash en Windows
-# .venv\Scripts\activate           # cmd o PowerShell
-# source .venv/bin/activate        # Linux / Mac
-
-# 4. Instala las dependencias
-pip install -r requirements.txt
 ```
 
-`requirements.txt` instala: `requests` (para las peticiones HTTP),
-`flask` (solo para los sistemas de prueba falsos) y `pytest` (para las
-pruebas). Tkinter **no** aparece ahí porque no se instala con pip: viene
-incluido en el propio Python.
+Windows PowerShell:
 
-## 3. Verificar que todo quedó bien instalado
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Linux/macOS:
+
+```bash
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+## 3. Verificación
 
 ```bash
 pytest -v
 ```
 
-Debe mostrar `3 passed`. Si falla aquí, algo del paso 2 no quedó bien —
-no sigas hasta que esto pase en verde.
+También existe CI para Python 3.11 y 3.12.
 
-## 4. Probarlo contra los sistemas de ejemplo (sin tocar Tramitia)
+## 4. Estructura
 
-Necesitas **dos terminales**: una para el "sistema falso" y otra para el
-auditor.
+```text
+auditor_bola/
+  config.py
+  transport.py
+  engine.py
+  agent_scope.py
+  pilar2.py
+  runner.py
+  corrective.py
+  evidence.py
+  cycle.py
+  process_manager.py
+  cli.py
+  gui.py
 
-**Terminal A** (deja esto corriendo, no la cierres):
-```bash
-source .venv/Scripts/activate
-python -c "from tests.sistema_falso_blog import crear_app_blog; crear_app_blog().run(port=5100)"
+config/
+  plantilla.json
+  blog.json
+  tickets.json
+  tramitia.json
+
+docs/
+  CREAR_PERFIL.md
 ```
 
-**Terminal B**:
-```bash
-source .venv/Scripts/activate
-python -m auditor_bola.cli --config config/blog.json --out reportes/evidencia.json
+## 5. Diagnosticar una aplicación
+
+Primero prepare un perfil. Para una aplicación nueva copie:
+
+```text
+config/plantilla.json
 ```
 
-Salida esperada: `BOLA confirmados: 2` (el bug de `maria` accediendo a los
-posts de `juan`). Si ves eso, el motor funciona correctamente.
+y complete sus cuentas, roles, rutas y controles.
 
-## 5. Auditar Tramitia de verdad
+Después:
 
-**Terminal A** (Tramitia, no el auditor):
 ```bash
-cd tramitia-app
-source .venv/Scripts/activate
-python run.py
+python -m auditor_bola.cli diagnose \
+  --config config/mi-aplicacion.json \
+  --target-root /ruta/al/codigo \
+  --out evidencias/diagnostico.json
 ```
 
-**Terminal B** (el auditor, en su propia carpeta):
+`--target-root` es necesario para controles estáticos y correcciones. Si el perfil solo contiene controles HTTP, puede omitirse.
+
+## 6. Corregir un hallazgo
+
+Una corrección automática debe estar declarada en `correcciones` dentro del perfil.
+
 ```bash
-cd auditor-generico-bola
-source .venv/Scripts/activate
-python -m auditor_bola.cli --config config/tramitia.json --out reportes/evidencia_tramitia.json
+python -m auditor_bola.cli correct \
+  --config config/mi-aplicacion.json \
+  --control P2-CONFIG-001 \
+  --target-root /ruta/al/codigo
 ```
 
-Salida esperada contra la versión sin parchar: `BOLA confirmados: 2` y
-`[VULNERABLE] escalada via agente (H-04)`.
+El auditor:
 
-## 6. Usar la interfaz gráfica en vez de la terminal
+1. repite el hallazgo;
+2. guarda línea base;
+3. hace backup;
+4. calcula hash;
+5. aplica la receta;
+6. repite las pruebas;
+7. conserva evidencia;
+8. revierte el cambio si la verificación falla.
 
-Con el sistema objetivo corriendo (Tramitia o uno de los falsos, igual que
-en los pasos 4 y 5):
+## 7. Administrar el proceso objetivo
+
+El perfil puede declarar:
+
+```json
+{
+  "runtime": {
+    "comando_inicio": ["npm", "start"],
+    "directorio_trabajo": ".",
+    "espera_inicio": 2,
+    "variables": {}
+  }
+}
+```
+
+Entonces puede usar:
+
+```bash
+python -m auditor_bola.cli correct \
+  --config config/mi-aplicacion.json \
+  --control P1-BOLA-001 \
+  --target-root /ruta/al/codigo \
+  --manage-target
+```
+
+El comando puede ser Python, Java, Node, .NET u otro ejecutable disponible en la máquina.
+
+## 8. Interfaz gráfica
 
 ```bash
 python -m auditor_bola.gui
 ```
 
-1. Botón **"Elegir configuración (.json)"** → elige el archivo de
-   `config/` que corresponda al sistema que dejaste corriendo.
-2. Botón **"Ejecutar auditoría"**.
-3. La tabla se llena sola: filas rosadas = BOLA confirmado.
-4. Botón **"Guardar evidencia (.json)"** para exportar el resultado.
+En la ventana:
 
-## 7. Auditar un sistema nuevo que no sea ninguno de los tres
+1. **Perfil de aplicación (.json)**.
+2. **Carpeta de código local**.
+3. **Iniciar objetivo local**, si el perfil declara runtime.
+4. **Diagnosticar**.
+5. Seleccionar un control.
+6. **Corregir seleccionado**, si existe receta.
+7. Guardar evidencia.
 
-No se toca ningún archivo `.py`. Solo se escribe un JSON nuevo en `config/`:
+## 9. Autenticación
 
-```json
-{
-  "sistema": "nombre-libre",
-  "base_url": "http://host:puerto",
-  "cuentas": [
-    {"username": "user_bajo", "password": "clave1", "role": "normal"},
-    {"username": "user_alto", "password": "clave2", "role": "admin"}
-  ],
-  "roles_privilegiados": ["admin"],
-  "endpoints": [
-    {
-      "metodo": "GET",
-      "ruta": "/api/recurso/{id}",
-      "id_prueba": "1",
-      "propietario_esperado": "user_bajo"
-    }
-  ]
-}
-```
+El perfil soporta:
 
-Guárdalo como `config/mi_sistema.json` y corre:
+- `basic`
+- `bearer`
+- `header`
+- `none`
+
+Consulte `docs/CREAR_PERFIL.md` para ejemplos.
+
+## 10. Probar con los sistemas simulados
+
+Los mocks Blog y Tickets siguen siendo controles del propio auditor.
+
+Ejecute:
+
 ```bash
-python -m auditor_bola.cli --config config/mi_sistema.json --out reportes/evidencia.json
+pytest -v
 ```
 
-Si el sistema también tiene un agente conversacional que pudiera exponer
-más de lo debido, agrega además la sección `"chequeos_agente"` (ver
-`config/tramitia.json` como ejemplo real ya funcional).
+Las pruebas levantan los sistemas simulados automáticamente.
 
-## 8. Errores comunes y qué hacer
+## 11. Caso de estudio Tramitia
 
-| Error en pantalla | Causa | Solución |
-|---|---|---|
-| `ConnectionRefusedError` / `Max retries exceeded` | El sistema objetivo no está corriendo, o el puerto de `base_url` no coincide | Verifica que el Terminal A esté realmente arriba (`curl base_url/health` o similar) |
-| `No module named _tkinter` | Python instalado sin soporte de Tk | Reinstala Python desde python.org marcando "tcl/tk and IDLE" |
-| `No module named 'auditor_bola'` | No estás parado en la carpeta del proyecto, o el venv no está activado | `cd auditor-generico-bola` y vuelve a activar el entorno |
-| `FileNotFoundError` al elegir el JSON | Ruta con espacios o caracteres raros | Usa rutas simples, sin tildes ni espacios, para la carpeta del proyecto |
-| Todos los hallazgos salen `BOLA confirmado` incluso para el propietario legítimo | El `username` en `config/*.json` no coincide exactamente con `propietario_esperado` | Revisa mayúsculas/minúsculas y espacios en el JSON |
+Para el laboratorio:
+
+```bash
+python -m auditor_bola.cli diagnose \
+  --config config/tramitia.json \
+  --target-root /ruta/a/tramitia-app
+```
+
+Tramitia es un **perfil de ejemplo**. Sus rutas, cuentas, runtime y correcciones viven en `config/tramitia.json`, no dentro del motor.
+
+## 12. Integrar otra aplicación
+
+No edite `engine.py`, `pilar2.py` o `corrective.py`.
+
+Cree:
+
+```text
+config/mi-aplicacion.json
+```
+
+a partir de la plantilla.
+
+Si aparece un tipo de autenticación, protocolo o control que todavía no existe, se implementa como capacidad reusable del auditor y luego puede utilizarse en cualquier perfil.
+
+## Errores frecuentes
+
+| Error | Acción |
+|---|---|
+| `ConnectionRefusedError` | Verifique `base_url` y que el objetivo esté arriba |
+| `No module named _tkinter` | Instale Python oficial con Tcl/Tk |
+| `No module named auditor_bola` | Ejecute desde la raíz del proyecto y active el venv |
+| `ERROR` en un control estático | Compruebe `--target-root` y las rutas del perfil |
+| Corrección no disponible | Declare una receta para el control en el perfil |
+| Una receta no encuentra el texto | La versión del código no coincide con la receta; el auditor no modifica el archivo |
