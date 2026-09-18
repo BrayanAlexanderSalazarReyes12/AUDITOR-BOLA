@@ -87,20 +87,11 @@ class ChequeoPilar2:
 
 @dataclass
 class Correccion:
-    """Receta de corrección declarativa.
-
-    El motor solo conoce estrategias genéricas. El perfil del objetivo define
-    archivo y transformación concreta.
-    """
+    """Receta declarativa compuesta por operaciones genéricas."""
 
     control_id: str
     archivo: str
-    estrategia: str = "replace_exact"  # replace_exact | regex_replace
-    buscar: str | None = None
-    reemplazar: str | None = None
-    patron: str | None = None
-    sustitucion: str | None = None
-    max_reemplazos: int = 1
+    operaciones: list[dict] = field(default_factory=list)
     descripcion: str | None = None
 
 
@@ -180,7 +171,7 @@ def cargar_config(path: str | Path) -> ConfigObjetivo:
 
     return ConfigObjetivo(
         sistema=datos["sistema"],
-        base_url=datos["base_url"].rstrip("/"),
+        base_url=datos.get("base_url", "").rstrip("/"),
         cuentas=cuentas,
         endpoints=endpoints,
         roles_privilegiados=datos.get("roles_privilegiados", []),
