@@ -1,7 +1,7 @@
-"""Carga y validación de la configuración del objetivo a auditar.
+"""Configuración declarativa del auditor.
 
-La configuración es la única frontera entre el motor y el sistema objetivo.
-El formato es JSON puro y permite declarar controles de los dos pilares:
+El motor no conoce nombres de aplicaciones, frameworks ni rutas concretas.
+Todo lo específico del sistema objetivo vive en un perfil JSON.
 
 Pilar 1: Identidad y Control de Acceso.
 Pilar 2: Arquitectura y Configuración.
@@ -17,8 +17,11 @@ from pathlib import Path
 @dataclass
 class Cuenta:
     username: str
-    password: str
     role: str
+    password: str | None = None
+    auth_type: str = "basic"  # basic | bearer | header | none
+    token: str | None = None
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -35,8 +38,6 @@ class Endpoint:
 
 @dataclass
 class ChequeoAgente:
-    """Compara la API directa contra un agente con la misma cuenta."""
-
     nombre: str
     cuenta: str
     direct_metodo: str
@@ -55,8 +56,6 @@ class ChequeoAgente:
 
 @dataclass
 class ChequeoAcceso:
-    """Control RBAC/ABAC puntual no basado en propiedad de objetos."""
-
     id_control: str
     nombre: str
     cuenta: str
@@ -69,15 +68,6 @@ class ChequeoAcceso:
 
 @dataclass
 class ChequeoPilar2:
-    """Control declarativo de arquitectura/configuración.
-
-    Tipos soportados:
-    - cors_reflection: detecta reflexión de Origin con credenciales.
-    - http_status_policy: valida que una petición sensible sea rechazada.
-    - source_contains: busca un patrón inseguro en un archivo local.
-    - docker_non_root: verifica que el Dockerfile declare USER no root.
-    """
-
     id_control: str
     nombre: str
     tipo: str
@@ -96,6 +86,35 @@ class ChequeoPilar2:
 
 
 @dataclass
+class Correccion:
+    """Receta de corrección declarativa.
+
+    El motor solo conoce estrategias genéricas. El perfil del objetivo define
+    archivo y transformación concreta.
+    """
+
+    control_id: str
+    archivo: str
+    estrategia: str = "replace_exact"  # replace_exact | regex_replace
+    buscar: str | None = None
+    reemplazar: str | None = None
+    patron: str | None = None
+    sustitucion: str | None = None
+    max_reemplazos: int = 1
+    descripcion: str | None = None
+
+
+@dataclass
+class RuntimeConfig:
+    """Cómo iniciar/reiniciar una copia local del objetivo."""
+
+    comando_inicio: list[str] = field(default_factory=list)
+    directorio_trabajo: str = "."
+    espera_inicio: float = 1.2
+    variables: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class ConfigObjetivo:
     sistema: str
     base_url: str
@@ -105,12 +124,20 @@ class ConfigObjetivo:
     chequeos_agente: list[ChequeoAgente] = field(default_factory=list)
     chequeos_acceso: list[ChequeoAcceso] = field(default_factory=list)
     chequeos_pilar2: list[ChequeoPilar2] = field(default_factory=list)
+    correcciones: list[Correccion] = field(default_factory=list)
+    runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     version_objetivo: str | None = None
 
     def cuenta_por_username(self, username: str) -> Cuenta | None:
         for cuenta in self.cuentas:
             if cuenta.username == username:
                 return cuenta
+        return None
+
+    def correccion_por_control(self, control_id: str) -> Correccion | None:
+        for correccion in self.correcciones:
+            if correccion.control_id == control_id:
+                return correccion
         return None
 
 
@@ -122,7 +149,7 @@ def _tuple_codigos(datos: dict, campo: str) -> None:
 def cargar_config(path: str | Path) -> ConfigObjetivo:
     datos = json.loads(Path(path).read_text(encoding="utf-8"))
 
-    cuentas = [Cuenta(**c) for c in datos["cuentas"]]
+    cuentas = [Cuenta(**c) for c in datos.get("cuentas", [])]
 
     endpoints: list[Endpoint] = []
     for raw in datos.get("endpoints", []):
@@ -146,6 +173,11 @@ def cargar_config(path: str | Path) -> ConfigObjetivo:
         _tuple_codigos(item, "codigos_seguros")
         chequeos_pilar2.append(ChequeoPilar2(**item))
 
+    correcciones = [
+        Correccion(**item) for item in datos.get("correcciones", [])
+    ]
+    runtime = RuntimeConfig(**datos.get("runtime", {}))
+
     return ConfigObjetivo(
         sistema=datos["sistema"],
         base_url=datos["base_url"].rstrip("/"),
@@ -155,5 +187,7 @@ def cargar_config(path: str | Path) -> ConfigObjetivo:
         chequeos_agente=chequeos_agente,
         chequeos_acceso=chequeos_acceso,
         chequeos_pilar2=chequeos_pilar2,
+        correcciones=correcciones,
+        runtime=runtime,
         version_objetivo=datos.get("version_objetivo"),
     )
