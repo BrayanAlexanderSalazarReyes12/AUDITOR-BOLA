@@ -533,9 +533,20 @@ class AuditorGUI(tk.Tk):
             try:
                 result = task()
             except Exception as exc:
-                self.after(0, lambda: self._background_error(exc))
+                # Python elimina la variable del except al salir del bloque.
+                # Capturarla como argumento por defecto conserva el error
+                # hasta que Tkinter ejecute el callback diferido.
+                self.after(
+                    0,
+                    lambda error=exc: self._background_error(error),
+                )
                 return
-            self.after(0, lambda: self._background_success(result, on_success))
+
+            self.after(
+                0,
+                lambda value=result, callback=on_success:
+                    self._background_success(value, callback),
+            )
 
         threading.Thread(target=worker, daemon=True).start()
 
