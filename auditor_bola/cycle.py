@@ -1,4 +1,4 @@
-"""Ciclo correctivo: diagnosticar -> corregir -> verificar -> rollback si falla."""
+"""Ciclo correctivo genérico: diagnosticar -> corregir -> verificar -> rollback."""
 
 from __future__ import annotations
 
@@ -42,18 +42,20 @@ def ciclo_correctivo(
         "estado_inicial": estado_inicial,
         "estado_final": None,
         "rollback": False,
+        "evidencia": str(evidence.root),
     }
 
     if estado_inicial == "SIN_HALLAZGO":
         manifest["estado_final"] = "SIN_HALLAZGO"
         evidence.write_json("manifest.json", manifest)
         return manifest
+
     if estado_inicial in {None, "ERROR"}:
         manifest["estado_final"] = "ERROR"
         evidence.write_json("manifest.json", manifest)
         return manifest
 
-    correccion = apply_correction(control_id, target_root, evidence)
+    correccion = apply_correction(cfg, control_id, target_root, evidence)
     evidence.write_json("cambios/correccion.json", correccion.as_dict())
 
     if reiniciar:
@@ -72,7 +74,9 @@ def ciclo_correctivo(
             reiniciar()
         restaurado = diagnosticar(cfg, target_root)
         evidence.write_json("verification/rollback.json", restaurado)
-        manifest["estado_final"] = "NO_CORREGIDO" if estado_despues == "HALLAZGO" else "ERROR"
+        manifest["estado_final"] = (
+            "NO_CORREGIDO" if estado_despues == "HALLAZGO" else "ERROR"
+        )
 
     evidence.write_json("manifest.json", manifest)
     return manifest
