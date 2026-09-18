@@ -63,68 +63,122 @@ class AuditorGUI(tk.Tk):
     # Construcción de interfaz
     # ------------------------------------------------------------------
     def _build_header(self):
-        frame = ttk.LabelFrame(self, text="Objetivo", padding=10)
-        frame.pack(fill="x", padx=10, pady=(10, 5))
+        frame = ttk.LabelFrame(self, text="Objetivo", padding=8)
+        frame.pack(fill="x", padx=8, pady=(8, 4))
 
-        ttk.Button(
-            frame,
-            text="Perfil de aplicación (.json)",
-            command=self._choose_config,
-        ).grid(row=0, column=0, sticky="w")
-        self.lbl_config = ttk.Label(frame, text="Sin perfil seleccionado")
-        self.lbl_config.grid(row=0, column=1, sticky="w", padx=(8, 22))
+        items = [
+            (
+                "Perfil de aplicación (.json)",
+                self._choose_config,
+                "config",
+                "Sin perfil seleccionado",
+            ),
+            (
+                "Carpeta de código local",
+                self._choose_target,
+                "target",
+                "Sin carpeta",
+            ),
+            (
+                "Carpeta de evidencias",
+                self._choose_evidence_base,
+                "evidence",
+                str(self.evidence_base),
+            ),
+        ]
 
-        ttk.Button(
-            frame,
-            text="Carpeta de código local",
-            command=self._choose_target,
-        ).grid(row=0, column=2, sticky="w")
-        self.lbl_target = ttk.Label(frame, text="Sin carpeta")
-        self.lbl_target.grid(row=0, column=3, sticky="w", padx=(8, 22))
-
-        ttk.Button(
-            frame,
-            text="Carpeta de evidencias",
-            command=self._choose_evidence_base,
-        ).grid(row=0, column=4, sticky="w")
-        self.lbl_evidence = ttk.Label(frame, text=str(self.evidence_base))
-        self.lbl_evidence.grid(row=0, column=5, sticky="w", padx=(8, 0))
-
-        frame.columnconfigure(5, weight=1)
+        if self.compact_mode:
+            for row, (text, command, key, value) in enumerate(items):
+                ttk.Button(frame, text=text, command=command).grid(
+                    row=row, column=0, sticky="ew", padx=(0, 8), pady=2
+                )
+                label = ttk.Label(
+                    frame,
+                    text=value,
+                    anchor="w",
+                    wraplength=max(300, self.winfo_screenwidth() - 320),
+                )
+                label.grid(row=row, column=1, sticky="ew", pady=2)
+                setattr(self, f"lbl_{key}", label)
+            frame.columnconfigure(0, weight=0)
+            frame.columnconfigure(1, weight=1)
+        else:
+            for index, (text, command, key, value) in enumerate(items):
+                col = index * 2
+                ttk.Button(frame, text=text, command=command).grid(
+                    row=0, column=col, sticky="w", padx=(0, 6)
+                )
+                label = ttk.Label(
+                    frame, text=value, anchor="w", wraplength=260
+                )
+                label.grid(
+                    row=0,
+                    column=col + 1,
+                    sticky="ew",
+                    padx=(0, 14),
+                )
+                setattr(self, f"lbl_{key}", label)
+                frame.columnconfigure(col + 1, weight=1)
 
     def _build_runtime_bar(self):
         frame = ttk.LabelFrame(self, text="Ejecución y diagnóstico", padding=8)
-        frame.pack(fill="x", padx=10, pady=5)
+        frame.pack(fill="x", padx=8, pady=4)
 
         self.btn_start = ttk.Button(
             frame, text="Iniciar objetivo", command=self._start_target
         )
-        self.btn_start.pack(side="left")
-
         self.btn_stop = ttk.Button(
             frame, text="Detener", command=self._stop_target
         )
-        self.btn_stop.pack(side="left", padx=(6, 0))
-
         self.btn_restart = ttk.Button(
             frame, text="Reiniciar", command=self._restart_target
         )
-        self.btn_restart.pack(side="left", padx=(6, 16))
-
-        ttk.Checkbutton(
+        self.btn_diagnose = ttk.Button(
+            frame, text="Diagnosticar P1 + P2", command=self._diagnose
+        )
+        self.chk_auto_manage = ttk.Checkbutton(
             frame,
             text="Gestionar reinicio automáticamente al corregir",
             variable=self.auto_manage_var,
             command=self._refresh_state,
-        ).pack(side="left")
-
-        self.lbl_process = ttk.Label(frame, text="Proceso: no administrado")
-        self.lbl_process.pack(side="left", padx=16)
-
-        self.btn_diagnose = ttk.Button(
-            frame, text="Diagnosticar P1 + P2", command=self._diagnose
         )
-        self.btn_diagnose.pack(side="right")
+        self.lbl_process = ttk.Label(
+            frame, text="Proceso: no administrado", anchor="w"
+        )
+
+        if self.compact_mode:
+            widgets = [
+                (self.btn_start, 0, 0),
+                (self.btn_stop, 0, 1),
+                (self.btn_restart, 0, 2),
+                (self.btn_diagnose, 0, 3),
+            ]
+            for widget, row, col in widgets:
+                widget.grid(
+                    row=row, column=col, sticky="ew", padx=3, pady=2
+                )
+                frame.columnconfigure(col, weight=1)
+
+            self.chk_auto_manage.grid(
+                row=1, column=0, columnspan=3, sticky="w", padx=3, pady=2
+            )
+            self.lbl_process.grid(
+                row=1, column=3, sticky="e", padx=3, pady=2
+            )
+        else:
+            self.btn_start.grid(row=0, column=0, padx=3, pady=2, sticky="ew")
+            self.btn_stop.grid(row=0, column=1, padx=3, pady=2, sticky="ew")
+            self.btn_restart.grid(row=0, column=2, padx=3, pady=2, sticky="ew")
+            self.chk_auto_manage.grid(
+                row=0, column=3, padx=12, pady=2, sticky="w"
+            )
+            self.lbl_process.grid(
+                row=0, column=4, padx=10, pady=2, sticky="ew"
+            )
+            self.btn_diagnose.grid(
+                row=0, column=5, padx=3, pady=2, sticky="ew"
+            )
+            frame.columnconfigure(4, weight=1)
 
     def _build_notebook(self):
         self.notebook = ttk.Notebook(self)
@@ -156,14 +210,13 @@ class AuditorGUI(tk.Tk):
             "detalle",
         )
 
-        # Todos los widgets administrados con grid pertenecen al mismo
-        # contenedor. Antes el Treeview era hijo de tab_results mientras
-        # holder se administraba con pack, lo que provocaba TclError.
         holder = ttk.Frame(self.tab_results)
         holder.pack(fill="both", expand=True)
+        holder.rowconfigure(0, weight=1)
+        holder.columnconfigure(0, weight=1)
 
         self.table = ttk.Treeview(
-            holder, columns=columns, show="headings", height=20
+            holder, columns=columns, show="headings", height=12
         )
         titles = {
             "pilar": "Pilar",
@@ -174,18 +227,24 @@ class AuditorGUI(tk.Tk):
             "correccion": "Corrección",
             "detalle": "Detalle",
         }
-        widths = {
+        base_widths = {
             "pilar": 55,
-            "id": 125,
-            "control": 300,
-            "cuenta": 120,
-            "estado": 120,
-            "correccion": 100,
-            "detalle": 440,
+            "id": 120,
+            "control": 240,
+            "cuenta": 115,
+            "estado": 115,
+            "correccion": 95,
+            "detalle": 360,
         }
         for col in columns:
             self.table.heading(col, text=titles[col])
-            self.table.column(col, width=widths[col], anchor="w")
+            self.table.column(
+                col,
+                width=base_widths[col],
+                minwidth=55 if col == "pilar" else 80,
+                stretch=col in {"control", "detalle"},
+                anchor="w",
+            )
 
         self.table.tag_configure("hallazgo", background="#f8d7da")
         self.table.tag_configure("ok", background="#d4edda")
@@ -204,114 +263,237 @@ class AuditorGUI(tk.Tk):
         self.table.grid(row=0, column=0, sticky="nsew")
         scroll_y.grid(row=0, column=1, sticky="ns")
         scroll_x.grid(row=1, column=0, sticky="ew")
-        holder.rowconfigure(0, weight=1)
-        holder.columnconfigure(0, weight=1)
+
+        holder.bind("<Configure>", self._resize_results_columns)
+
+    def _resize_results_columns(self, event=None):
+        if not hasattr(self, "table"):
+            return
+        width = max(
+            600,
+            (event.width if event is not None else self.table.winfo_width()) - 28,
+        )
+
+        fixed = {
+            "pilar": 55,
+            "id": 120,
+            "cuenta": 110,
+            "estado": 110,
+            "correccion": 90,
+        }
+        fixed_total = sum(fixed.values())
+        flexible = max(260, width - fixed_total)
+        control_width = max(150, int(flexible * 0.38))
+        detail_width = max(210, flexible - control_width)
+
+        for col, col_width in fixed.items():
+            self.table.column(col, width=col_width)
+        self.table.column("control", width=control_width)
+        self.table.column("detalle", width=detail_width)
 
     def _build_detail_tab(self):
+        self.tab_detail.rowconfigure(0, weight=1)
+        self.tab_detail.columnconfigure(0, weight=1)
+
         self.detail_text = tk.Text(
-            self.tab_detail, wrap="word", font=("Consolas", 10)
+            self.tab_detail,
+            wrap="none",
+            font=("Consolas", 10),
+            undo=False,
         )
-        scroll = ttk.Scrollbar(
+        scroll_y = ttk.Scrollbar(
             self.tab_detail,
             orient="vertical",
             command=self.detail_text.yview,
         )
-        self.detail_text.configure(yscrollcommand=scroll.set)
-        self.detail_text.pack(side="left", fill="both", expand=True)
-        scroll.pack(side="right", fill="y")
+        scroll_x = ttk.Scrollbar(
+            self.tab_detail,
+            orient="horizontal",
+            command=self.detail_text.xview,
+        )
+        self.detail_text.configure(
+            yscrollcommand=scroll_y.set,
+            xscrollcommand=scroll_x.set,
+        )
+        self.detail_text.grid(row=0, column=0, sticky="nsew")
+        scroll_y.grid(row=0, column=1, sticky="ns")
+        scroll_x.grid(row=1, column=0, sticky="ew")
 
     def _build_evidence_tab(self):
-        left = ttk.Frame(self.tab_evidence, padding=6)
-        left.pack(side="left", fill="y")
-        right = ttk.Frame(self.tab_evidence, padding=6)
-        right.pack(side="left", fill="both", expand=True)
+        orient = tk.VERTICAL if self.compact_mode else tk.HORIZONTAL
+        pane = tk.PanedWindow(
+            self.tab_evidence,
+            orient=orient,
+            sashwidth=6,
+            relief="flat",
+            bd=0,
+        )
+        pane.pack(fill="both", expand=True)
 
-        ttk.Label(left, text="Sesiones").pack(anchor="w")
-        self.evidence_list = tk.Listbox(left, width=34, height=20)
-        self.evidence_list.pack(fill="y", expand=True, pady=(4, 8))
+        left = ttk.Frame(pane, padding=6)
+        right = ttk.Frame(pane, padding=6)
+        pane.add(left, minsize=180, stretch="always")
+        pane.add(right, minsize=260, stretch="always")
+
+        left.rowconfigure(1, weight=1)
+        left.columnconfigure(0, weight=1)
+        right.rowconfigure(0, weight=1)
+        right.columnconfigure(0, weight=1)
+
+        ttk.Label(left, text="Sesiones").grid(
+            row=0, column=0, sticky="w", pady=(0, 4)
+        )
+        self.evidence_list = tk.Listbox(
+            left,
+            height=7 if self.compact_mode else 14,
+            exportselection=False,
+        )
+        list_scroll = ttk.Scrollbar(
+            left, orient="vertical", command=self.evidence_list.yview
+        )
+        self.evidence_list.configure(yscrollcommand=list_scroll.set)
+        self.evidence_list.grid(row=1, column=0, sticky="nsew")
+        list_scroll.grid(row=1, column=1, sticky="ns")
         self.evidence_list.bind(
             "<<ListboxSelect>>", lambda _e: self._preview_selected_evidence()
         )
 
+        buttons = ttk.Frame(left)
+        buttons.grid(
+            row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0)
+        )
+        buttons.columnconfigure(0, weight=1)
+        buttons.columnconfigure(1, weight=1)
         ttk.Button(
-            left, text="Actualizar", command=self._refresh_evidence_list
-        ).pack(fill="x")
+            buttons, text="Actualizar", command=self._refresh_evidence_list
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 3))
         ttk.Button(
-            left, text="Abrir carpeta", command=self._open_selected_evidence
-        ).pack(fill="x", pady=(5, 0))
+            buttons, text="Abrir carpeta", command=self._open_selected_evidence
+        ).grid(row=0, column=1, sticky="ew", padx=(3, 0))
         self.btn_rollback = ttk.Button(
-            left,
+            buttons,
             text="Revertir esta corrección",
             command=self._rollback_selected_evidence,
         )
-        self.btn_rollback.pack(fill="x", pady=(5, 0))
+        self.btn_rollback.grid(
+            row=1, column=0, columnspan=2, sticky="ew", pady=(5, 0)
+        )
 
         self.evidence_text = tk.Text(
-            right, wrap="word", font=("Consolas", 10)
+            right, wrap="none", font=("Consolas", 10)
         )
-        scroll = ttk.Scrollbar(
+        scroll_y = ttk.Scrollbar(
             right, orient="vertical", command=self.evidence_text.yview
         )
-        self.evidence_text.configure(yscrollcommand=scroll.set)
-        self.evidence_text.pack(side="left", fill="both", expand=True)
-        scroll.pack(side="right", fill="y")
+        scroll_x = ttk.Scrollbar(
+            right, orient="horizontal", command=self.evidence_text.xview
+        )
+        self.evidence_text.configure(
+            yscrollcommand=scroll_y.set,
+            xscrollcommand=scroll_x.set,
+        )
+        self.evidence_text.grid(row=0, column=0, sticky="nsew")
+        scroll_y.grid(row=0, column=1, sticky="ns")
+        scroll_x.grid(row=1, column=0, sticky="ew")
 
     def _build_log_tab(self):
+        self.tab_log.rowconfigure(0, weight=1)
+        self.tab_log.columnconfigure(0, weight=1)
+
         self.log_text = tk.Text(
-            self.tab_log, wrap="word", font=("Consolas", 10), state="disabled"
+            self.tab_log,
+            wrap="none",
+            font=("Consolas", 10),
+            state="disabled",
         )
-        scroll = ttk.Scrollbar(
+        scroll_y = ttk.Scrollbar(
             self.tab_log, orient="vertical", command=self.log_text.yview
         )
-        self.log_text.configure(yscrollcommand=scroll.set)
-        self.log_text.pack(side="left", fill="both", expand=True)
-        scroll.pack(side="right", fill="y")
+        scroll_x = ttk.Scrollbar(
+            self.tab_log, orient="horizontal", command=self.log_text.xview
+        )
+        self.log_text.configure(
+            yscrollcommand=scroll_y.set,
+            xscrollcommand=scroll_x.set,
+        )
+        self.log_text.grid(row=0, column=0, sticky="nsew")
+        scroll_y.grid(row=0, column=1, sticky="ns")
+        scroll_x.grid(row=1, column=0, sticky="ew")
 
     def _build_actions(self):
         frame = ttk.LabelFrame(self, text="Acciones correctivas", padding=8)
-        frame.pack(fill="x", padx=10, pady=5)
+        frame.pack(fill="x", padx=8, pady=4)
 
         self.btn_verify = ttk.Button(
             frame,
             text="Verificar seleccionado",
             command=self._verify_selected,
         )
-        self.btn_verify.pack(side="left")
-
         self.btn_correct = ttk.Button(
             frame,
             text="Corregir seleccionado",
             command=self._correct_selected,
         )
-        self.btn_correct.pack(side="left", padx=(6, 0))
-
         self.btn_correct_all = ttk.Button(
             frame,
             text="Corregir todos los hallazgos corregibles",
             command=self._correct_all,
         )
-        self.btn_correct_all.pack(side="left", padx=(6, 0))
-
+        self.btn_show_profile = ttk.Button(
+            frame,
+            text="Ver perfil JSON",
+            command=self._show_profile,
+        )
         self.btn_save = ttk.Button(
             frame,
             text="Guardar reporte actual",
             command=self._save_report,
         )
-        self.btn_save.pack(side="right")
 
-        ttk.Button(
-            frame,
-            text="Ver perfil JSON",
-            command=self._show_profile,
-        ).pack(side="right", padx=(0, 6))
+        widgets = [
+            self.btn_verify,
+            self.btn_correct,
+            self.btn_correct_all,
+            self.btn_show_profile,
+            self.btn_save,
+        ]
+        columns = 2 if self.compact_mode else 5
+
+        for index, widget in enumerate(widgets):
+            row = index // columns
+            col = index % columns
+            widget.grid(
+                row=row,
+                column=col,
+                sticky="ew",
+                padx=3,
+                pady=2,
+            )
+
+        for col in range(columns):
+            frame.columnconfigure(col, weight=1)
 
     def _build_status(self):
-        frame = ttk.Frame(self, padding=(10, 4))
+        frame = ttk.Frame(self, padding=(8, 4))
         frame.pack(fill="x")
-        self.lbl_summary = ttk.Label(frame, text="Sin diagnóstico.")
-        self.lbl_summary.pack(side="left")
-        self.lbl_status = ttk.Label(frame, text="Listo.")
-        self.lbl_status.pack(side="right")
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=1)
+
+        self.lbl_summary = ttk.Label(
+            frame,
+            text="Sin diagnóstico.",
+            anchor="w",
+            wraplength=520 if not self.compact_mode else 340,
+        )
+        self.lbl_summary.grid(row=0, column=0, sticky="ew")
+
+        self.lbl_status = ttk.Label(
+            frame,
+            text="Listo.",
+            anchor="e",
+            wraplength=420 if not self.compact_mode else 260,
+        )
+        self.lbl_status.grid(row=0, column=1, sticky="ew")
 
     # ------------------------------------------------------------------
     # Utilidades
@@ -976,11 +1158,33 @@ class AuditorGUI(tk.Tk):
 
         window = tk.Toplevel(self)
         window.title(f"Perfil — {self.config_path.name}")
-        window.geometry("900x650")
-        widget = tk.Text(window, wrap="none", font=("Consolas", 10))
+        screen_w = window.winfo_screenwidth()
+        screen_h = window.winfo_screenheight()
+        width = min(900, max(640, screen_w - 120))
+        height = min(650, max(460, screen_h - 160))
+        window.geometry(f"{width}x{height}")
+
+        holder = ttk.Frame(window)
+        holder.pack(fill="both", expand=True)
+        holder.rowconfigure(0, weight=1)
+        holder.columnconfigure(0, weight=1)
+
+        widget = tk.Text(holder, wrap="none", font=("Consolas", 10))
+        scroll_y = ttk.Scrollbar(
+            holder, orient="vertical", command=widget.yview
+        )
+        scroll_x = ttk.Scrollbar(
+            holder, orient="horizontal", command=widget.xview
+        )
+        widget.configure(
+            yscrollcommand=scroll_y.set,
+            xscrollcommand=scroll_x.set,
+        )
         widget.insert("1.0", text)
         widget.configure(state="disabled")
-        widget.pack(fill="both", expand=True)
+        widget.grid(row=0, column=0, sticky="nsew")
+        scroll_y.grid(row=0, column=1, sticky="ns")
+        scroll_x.grid(row=1, column=0, sticky="ew")
 
     def _save_report(self):
         if not self.resultado:
