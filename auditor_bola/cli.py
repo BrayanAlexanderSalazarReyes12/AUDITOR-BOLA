@@ -1,57 +1,101 @@
-"""CLI: python -m auditor_bola.cli --config config/sistema.json --out reportes/evidencia.json"""
+"""CLI del auditor correctivo de dos pilares."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from .config import cargar_config
-from .engine import auditar, auditar_alcance_agente
+from .cycle import ciclo_correctivo
+from .evidence import EvidenceSession
+from .process_manager import LocalTargetProcess
+from .runner import diagnosticar
+
+
+def _diagnose(args) -> int:
+    cfg = cargar_config(args.config)
+    resultado = diagnosticar(cfg, args.target_root)
+
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(
+            json.dumps(resultado, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    else:
+        evidence = EvidenceSession.create(args.evidence_dir)
+        evidence.write_json("baseline/resultados.json", resultado)
+        print(f"Evidencia: {evidence.root}")
+
+    r = resultado["resumen"]
+    print(f"Sistema: {cfg.sistema} {cfg.version_objetivo or ''}".strip())
+    print(
+        "Hallazgos: "
+        f"BOLA={r['bola_confirmados']} | acceso={r['acceso_vulnerable']} | "
+        f"agente={r['agente_vulnerable']} | pilar2={r['pilar2_hallazgos']} | errores={r['errores']}"
+    )
+    total = (
+        r["bola_confirmados"]
+        + r["acceso_vulnerable"]
+        + r["agente_vulnerable"]
+        + r["pilar2_hallazgos"]
+    )
+    return 1 if total else 0
+
+
+def _correct(args) -> int:
+    cfg = cargar_config(args.config)
+    proceso = None
+    reiniciar = None
+    if args.manage_target:
+        proceso = LocalTargetProcess(args.target_root)
+        proceso.start()
+        reiniciar = proceso.restart
+
+    try:
+        manifest = ciclo_correctivo(
+            cfg,
+            args.control,
+            args.target_root,
+            evidence_base=args.evidence_dir,
+            reiniciar=reiniciar,
+        )
+    finally:
+        if proceso:
+            proceso.stop()
+
+    print(json.dumps(manifest, ensure_ascii=False, indent=2))
+    return 0 if manifest["estado_final"] in {"CORREGIDO", "SIN_HALLAZGO"} else 1
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Auditor genérico de BOLA (Broken Object Level Authorization)")
-    ap.add_argument("--config", required=True, help="ruta al YAML del sistema objetivo")
-    ap.add_argument("--out", default="evidencia_bola.json", help="ruta del JSON de evidencia")
+    ap = argparse.ArgumentParser(
+        description="TRAMITIA — Auditor Correctivo de Seguridad de Dos Pilares"
+    )
+    sub = ap.add_subparsers(dest="command", required=True)
+
+    diag = sub.add_parser("diagnose", help="diagnostica Pilar 1 y Pilar 2")
+    diag.add_argument("--config", required=True)
+    diag.add_argument("--target-root", help="copia local del código objetivo")
+    diag.add_argument("--out", help="JSON de salida")
+    diag.add_argument("--evidence-dir", default="evidencias")
+    diag.set_defaults(func=_diagnose)
+
+    corr = sub.add_parser("correct", help="aplica y verifica una corrección")
+    corr.add_argument("--config", required=True)
+    corr.add_argument("--control", required=True)
+    corr.add_argument("--target-root", required=True)
+    corr.add_argument("--evidence-dir", default="evidencias")
+    corr.add_argument(
+        "--manage-target",
+        action="store_true",
+        help="el auditor inicia/reinicia la copia local con python run.py",
+    )
+    corr.set_defaults(func=_correct)
+
     args = ap.parse_args()
-
-    cfg = cargar_config(args.config)
-    hallazgos = auditar(cfg)
-    confirmados = [h for h in hallazgos if h.confirmado_bola]
-
-    hallazgos_agente = auditar_alcance_agente(cfg) if cfg.chequeos_agente else []
-    vulnerables_agente = [h for h in hallazgos_agente if h.resultado.vulnerable]
-
-    salida = {
-        "sistema": cfg.sistema,
-        "base_url": cfg.base_url,
-        "total_pruebas": len(hallazgos),
-        "bola_confirmados": len(confirmados),
-        "hallazgos": [h.as_dict() for h in hallazgos],
-        "chequeos_agente": [h.as_dict() for h in hallazgos_agente],
-        "alcance_agente_vulnerable": len(vulnerables_agente),
-    }
-
-    with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(salida, f, ensure_ascii=False, indent=2)
-
-    print(f"Sistema: {cfg.sistema}")
-    print(f"Pruebas BOLA ejecutadas: {len(hallazgos)}")
-    print(f"BOLA confirmados: {len(confirmados)}")
-    for h in confirmados:
-        print(f"  ! {h.metodo} {h.endpoint} — {h.cuenta} ({h.rol}) accedió sin deberlo (HTTP {h.http_status})")
-
-    if hallazgos_agente:
-        print(f"\nChequeos de alcance del agente: {len(hallazgos_agente)}")
-        for h in hallazgos_agente:
-            r = h.resultado
-            marca = "VULNERABLE" if r.vulnerable else "ok"
-            print(f"  [{marca}] {h.nombre_chequeo} ({h.cuenta}): "
-                  f"api_directa={r.cantidad_api_directa} agente={r.cantidad_agente} exceso={r.exceso}")
-
-    print(f"\nEvidencia completa en: {args.out}")
-    sys.exit(1 if (confirmados or vulnerables_agente) else 0)
+    sys.exit(args.func(args))
 
 
 if __name__ == "__main__":
