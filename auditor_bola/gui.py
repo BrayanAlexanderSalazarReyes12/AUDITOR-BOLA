@@ -29,15 +29,14 @@ class AuditorGUI(tk.Tk):
         super().__init__()
         self.title("Auditor Correctivo de Seguridad — Dos Pilares")
 
-        # Adaptar la ventana al espacio real disponible. El modo compacto
-        # reorganiza controles y pestañas cuando la resolución es reducida.
+        # Ajustar la ventana a la resolución disponible. En pantallas
+        # 1280x720 la altura fija de 820 ocultaba la barra de acciones.
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        width = min(1360, max(760, screen_w - 40))
-        height = min(820, max(560, screen_h - 80))
-        self.compact_mode = width < 1100 or height < 680
+        width = min(1360, max(980, screen_w - 40))
+        height = min(820, max(620, screen_h - 80))
         self.geometry(f"{width}x{height}")
-        self.minsize(min(760, width), min(560, height))
+        self.minsize(min(980, width), min(620, height))
 
         self.config_path: Path | None = None
         self.cfg: ConfigObjetivo | None = None
