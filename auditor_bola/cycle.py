@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from .config import ConfigObjetivo
-from .corrective import CorrectionResult, apply_correction, rollback
+from .corrective import (
+    CorrectionResult,
+    apply_correction,
+    correction_available,
+    rollback,
+)
 from .evidence import EvidenceSession, sha256_file
 from .runner import diagnosticar, filas_gui
 
@@ -21,6 +26,16 @@ def estado_control(resultado: dict, control_id: str) -> str | None:
     if any(fila["estado"] == "HALLAZGO" for fila in filas):
         return "HALLAZGO"
     return "SIN_HALLAZGO"
+
+
+def controles_hallazgo(resultado: dict) -> list[str]:
+    """Devuelve todos los controles únicos actualmente en HALLAZGO."""
+    controles: list[str] = []
+    for fila in filas_gui(resultado):
+        control_id = fila["id"]
+        if fila["estado"] == "HALLAZGO" and control_id not in controles:
+            controles.append(control_id)
+    return controles
 
 
 def verificar_control(
@@ -57,6 +72,33 @@ def verificar_control(
     return payload
 
 
+def _rollback_seguro(
+    correccion: CorrectionResult,
+    target_root: str | Path,
+    evidence: EvidenceSession,
+    reiniciar: Callable[[], None] | None,
+    manifest: dict,
+) -> None:
+    """Intenta restaurar el archivo y documenta cualquier fallo del rollback."""
+    try:
+        rollback(correccion, target_root)
+        manifest["rollback"] = True
+
+        if reiniciar:
+            try:
+                reiniciar()
+            except Exception as exc:
+                manifest["rollback_restart_error"] = str(exc)
+
+        try:
+            restaurado = diagnosticar(manifest["_cfg"], target_root)
+            evidence.write_json("verification/rollback.json", restaurado)
+        except Exception as exc:
+            manifest["rollback_verification_error"] = str(exc)
+    except Exception as exc:
+        manifest["rollback_error"] = str(exc)
+
+
 def ciclo_correctivo(
     cfg: ConfigObjetivo,
     control_id: str,
@@ -66,10 +108,27 @@ def ciclo_correctivo(
     reiniciar: Callable[[], None] | None = None,
 ) -> dict:
     evidence = EvidenceSession.create(evidence_base)
-    baseline = diagnosticar(cfg, target_root)
-    evidence.write_json("baseline/resultados.json", baseline)
 
+    try:
+        baseline = diagnosticar(cfg, target_root)
+    except Exception as exc:
+        manifest = {
+            "sistema": cfg.sistema,
+            "version_objetivo": cfg.version_objetivo,
+            "control": control_id,
+            "tipo": "CICLO_CORRECTIVO",
+            "estado_inicial": "ERROR",
+            "estado_final": "ERROR",
+            "rollback": False,
+            "error": f"falló el diagnóstico inicial: {exc}",
+            "evidencia": str(evidence.root),
+        }
+        evidence.write_json("manifest.json", manifest)
+        return manifest
+
+    evidence.write_json("baseline/resultados.json", baseline)
     estado_inicial = estado_control(baseline, control_id)
+
     manifest = {
         "sistema": cfg.sistema,
         "version_objetivo": cfg.version_objetivo,
@@ -91,31 +150,57 @@ def ciclo_correctivo(
         evidence.write_json("manifest.json", manifest)
         return manifest
 
-    correccion = apply_correction(cfg, control_id, target_root, evidence)
-    evidence.write_json("cambios/correccion.json", correccion.as_dict())
+    if not correction_available(cfg, control_id):
+        manifest["estado_final"] = "PENDIENTE_SIN_RECETA"
+        manifest["motivo"] = (
+            "El hallazgo fue detectado, pero el perfil no declara una receta "
+            "automática segura para este control."
+        )
+        evidence.write_json("manifest.json", manifest)
+        return manifest
 
-    if reiniciar:
-        reiniciar()
+    correccion: CorrectionResult | None = None
 
-    verificacion = diagnosticar(cfg, target_root)
-    evidence.write_json("verification/resultados.json", verificacion)
-    estado_despues = estado_control(verificacion, control_id)
+    try:
+        correccion = apply_correction(cfg, control_id, target_root, evidence)
+        evidence.write_json("cambios/correccion.json", correccion.as_dict())
 
-    if estado_despues == "SIN_HALLAZGO":
-        manifest["estado_final"] = "CORREGIDO"
-    else:
-        rollback(correccion, target_root)
-        manifest["rollback"] = True
         if reiniciar:
             reiniciar()
-        restaurado = diagnosticar(cfg, target_root)
-        evidence.write_json("verification/rollback.json", restaurado)
+
+        verificacion = diagnosticar(cfg, target_root)
+        evidence.write_json("verification/resultados.json", verificacion)
+        estado_despues = estado_control(verificacion, control_id)
+
+        if estado_despues == "SIN_HALLAZGO":
+            manifest["estado_final"] = "CORREGIDO"
+            evidence.write_json("manifest.json", manifest)
+            return manifest
+
+        manifest["_cfg"] = cfg
+        _rollback_seguro(
+            correccion, target_root, evidence, reiniciar, manifest
+        )
+        manifest.pop("_cfg", None)
         manifest["estado_final"] = (
             "NO_CORREGIDO" if estado_despues == "HALLAZGO" else "ERROR"
         )
+        evidence.write_json("manifest.json", manifest)
+        return manifest
 
-    evidence.write_json("manifest.json", manifest)
-    return manifest
+    except Exception as exc:
+        manifest["error"] = str(exc)
+        manifest["estado_final"] = "ERROR"
+
+        if correccion is not None:
+            manifest["_cfg"] = cfg
+            _rollback_seguro(
+                correccion, target_root, evidence, reiniciar, manifest
+            )
+            manifest.pop("_cfg", None)
+
+        evidence.write_json("manifest.json", manifest)
+        return manifest
 
 
 def corregir_controles(
@@ -126,35 +211,36 @@ def corregir_controles(
     evidence_base: str | Path = "evidencias",
     reiniciar: Callable[[], None] | None = None,
 ) -> list[dict]:
-    """Ejecuta ciclos correctivos secuenciales para controles únicos."""
+    """Procesa todos los controles indicados sin omitir los que no tienen receta."""
     vistos: set[str] = set()
     resultados: list[dict] = []
+
     for control_id in control_ids:
         if control_id in vistos:
             continue
         vistos.add(control_id)
+
         try:
-            resultados.append(
-                ciclo_correctivo(
-                    cfg,
-                    control_id,
-                    target_root,
-                    evidence_base=evidence_base,
-                    reiniciar=reiniciar,
-                )
+            resultado = ciclo_correctivo(
+                cfg,
+                control_id,
+                target_root,
+                evidence_base=evidence_base,
+                reiniciar=reiniciar,
             )
         except Exception as exc:
-            resultados.append(
-                {
-                    "sistema": cfg.sistema,
-                    "version_objetivo": cfg.version_objetivo,
-                    "control": control_id,
-                    "tipo": "CICLO_CORRECTIVO",
-                    "estado_final": "ERROR",
-                    "error": str(exc),
-                    "evidencia": None,
-                }
-            )
+            resultado = {
+                "sistema": cfg.sistema,
+                "version_objetivo": cfg.version_objetivo,
+                "control": control_id,
+                "tipo": "CICLO_CORRECTIVO",
+                "estado_final": "ERROR",
+                "error": str(exc),
+                "evidencia": None,
+            }
+
+        resultados.append(resultado)
+
     return resultados
 
 
