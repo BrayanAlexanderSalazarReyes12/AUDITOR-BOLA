@@ -1288,6 +1288,12 @@ class AIAssistantMixin:
         if not proposal or not control:
             return
 
+        row = (
+            self._selected_row_data()
+            if hasattr(self, "_selected_row_data")
+            else None
+        ) or {}
+
         if not messagebox.askyesno(
             "Aplicar receta generada por Gemma",
             (
@@ -1296,7 +1302,9 @@ class AIAssistantMixin:
                 f"Enfoque: {proposal.enfoque}\n"
                 f"Riesgo declarado: {proposal.riesgo}\n\n"
                 "Gemma solo propuso la receta. El auditor hará backup, "
-                "aplicación, verificación y rollback si corresponde.\n\n"
+                "aplicación, verificación y rollback si corresponde. "
+                "Si queda CORREGIDO, la receta se guardará además en la "
+                "biblioteca reutilizable del auditor.\n\n"
                 "¿Deseas continuar?"
             ),
         ):
@@ -1328,16 +1336,46 @@ class AIAssistantMixin:
                     correccion=self.ai_current_recipe,
                     resultado=result,
                 )
+
+            if result.get("estado_final") == "CORREGIDO":
+                provider = self.ai_provider
+                library_path = guardar_receta_biblioteca(
+                    self.ai_current_recipe,
+                    sistema=self.cfg.sistema,
+                    version_objetivo=self.cfg.version_objetivo,
+                    metodo=row.get("metodo"),
+                    ruta=row.get("ruta"),
+                    tipo_control=row.get("tipo_control"),
+                    titulo=selected_proposal.titulo,
+                    fuente="gemma",
+                    proveedor=provider.provider_name if provider else None,
+                    modelo=provider.model_id if provider else None,
+                    verificada=True,
+                )
+                result["receta_biblioteca"] = str(library_path)
+
             return result
 
         def done(result):
             estado = result.get("estado_final")
+            library_path = result.get("receta_biblioteca")
             self._log(
                 f"Receta Gemma {proposal.id} aplicada a {control}: {estado}"
             )
+            if library_path:
+                self._log(
+                    f"Receta verificada guardada en biblioteca: {library_path}"
+                )
+
+            mensaje = f"{control}: {estado}"
+            if library_path:
+                mensaje += (
+                    "\n\nLa receta validada quedó guardada también en:\n"
+                    f"{library_path}"
+                )
             messagebox.showinfo(
                 "Resultado de receta Gemma",
-                f"{control}: {estado}",
+                mensaje,
             )
             self._diagnose()
 
@@ -1360,49 +1398,68 @@ class AIAssistantMixin:
         if not proposal or not control:
             return
 
+        row = (
+            self._selected_row_data()
+            if hasattr(self, "_selected_row_data")
+            else None
+        ) or {}
+
         if not messagebox.askyesno(
-            "Guardar receta en perfil",
+            "Guardar receta",
             (
                 f"Se guardará la propuesta {proposal.id} como receta "
-                f"persistente de {control} en:\n\n{self.config_path}\n\n"
+                f"persistente de {control} en el perfil actual y también "
+                "en la biblioteca reutilizable del auditor.\n\n"
+                f"Perfil: {self.config_path}\n"
+                f"Biblioteca: {biblioteca_por_defecto()}\n\n"
                 "¿Continuar?"
             ),
         ):
             return
 
-        raw_text = self.config_path.read_text(encoding="utf-8")
-        data = json.loads(raw_text)
-        corrections = [
-            item
-            for item in data.get("correcciones", [])
-            if item.get("control_id") != control
-        ]
-        corrections.append(asdict(self.ai_current_recipe))
-        data["correcciones"] = corrections
+        raw_text, data = self._write_recipe_to_profile(
+            self.ai_current_recipe
+        )
 
         if self.ai_session_dir:
             (self.ai_session_dir / "perfil_antes.json").write_text(
                 raw_text, encoding="utf-8"
             )
-
-        self.config_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
-        self._install_ai_recipe_in_memory()
-
-        if self.ai_session_dir:
             (self.ai_session_dir / "perfil_despues.json").write_text(
                 json.dumps(data, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
 
+        provider = self.ai_provider
+        library_path = guardar_receta_biblioteca(
+            self.ai_current_recipe,
+            sistema=self.cfg.sistema,
+            version_objetivo=self.cfg.version_objetivo,
+            metodo=row.get("metodo"),
+            ruta=row.get("ruta"),
+            tipo_control=row.get("tipo_control"),
+            titulo=proposal.titulo,
+            fuente="gemma",
+            proveedor=provider.provider_name if provider else None,
+            modelo=provider.model_id if provider else None,
+            verificada=False,
+        )
+
         self._log(
             f"Receta Gemma {proposal.id} guardada en perfil para {control}."
         )
-        messagebox.showinfo(
-            "Perfil actualizado",
-            f"La receta de {control} quedó guardada en el perfil.",
+        self._log(
+            f"Receta reutilizable guardada en biblioteca: {library_path}"
         )
+        messagebox.showinfo(
+            "Receta guardada",
+            (
+                f"La receta de {control} quedó guardada en el perfil y en "
+                f"la biblioteca del auditor:\n\n{library_path}\n\n"
+                "Se marcará como verificada cuando una aplicación del ciclo "
+                "correctivo finalice en CORREGIDO."
+            ),
+        )
+        self._refresh_recipe_library()
         self._refresh_ai_state()
+
