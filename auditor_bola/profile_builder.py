@@ -1538,6 +1538,57 @@ def _extract_accounts_from_text(
         if candidate:
             found.append(candidate)
 
+    # Pares sin comillas, comunes en README, manuales, .env y YAML.
+    loose_user_pattern = re.compile(
+        r"(?im)^\\s*(?:[-*+]\\s*)?(?:\\*\\*)?(?:username|user|usuario|login|email|correo|nombre_usuario|user_name)(?:\\*\\*)?\\s*[:=]\\s*(.+?)\\s*$"
+    )
+    loose_password_pattern = re.compile(
+        r"(?im)^\\s*(?:[-*+]\\s*)?(?:\\*\\*)?(?:password|pass|passwd|clave|contrasena|contraseña|pwd)(?:\\*\\*)?\\s*[:=]\\s*(.+?)\\s*$"
+    )
+    loose_role_pattern = re.compile(
+        r"(?im)^\\s*(?:[-*+]\\s*)?(?:\\*\\*)?(?:role|rol|perfil|authority|authorities|tipo_usuario|user_role)(?:\\*\\*)?\\s*[:=]\\s*(.+?)\\s*$"
+    )
+
+    for user_match in loose_user_pattern.finditer(text):
+        start = max(0, user_match.start() - 800)
+        end = min(len(text), user_match.end() + 1400)
+        window = text[start:end]
+        pass_match = loose_password_pattern.search(window)
+        role_match = loose_role_pattern.search(window)
+        candidate = _account_from_mapping(
+            {
+                "username": _clean_literal(user_match.group(1)),
+                "password": _clean_literal(pass_match.group(1)) if pass_match else None,
+                "role": _clean_literal(role_match.group(1)) if role_match else "USER",
+            },
+            source=source,
+            confidence=(
+                "alta"
+                if _source_kind(source) == "configuracion" and pass_match
+                else "media"
+            ),
+        )
+        if candidate:
+            found.append(candidate)
+
+    # Credenciales Basic embebidas en URLs de manuales/configuración.
+    for match in re.finditer(
+        r"https?://([^/\\s:@]+):([^@\\s/]+)@[^/\\s]+",
+        text,
+        re.I,
+    ):
+        candidate = _account_from_mapping(
+            {
+                "username": match.group(1),
+                "password": match.group(2),
+                "role": "USER",
+            },
+            source=source,
+            confidence="media",
+        )
+        if candidate:
+            found.append(candidate)
+
     spring_pattern = re.compile(
         r"withUser\(\s*['\"]([^'\"]+)['\"]\s*\)"
         r".{0,500}?password\(\s*['\"]([^'\"]+)['\"]\s*\)"
