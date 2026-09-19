@@ -769,6 +769,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         )
 
         self._refresh_process_state()
+        self._refresh_ai_state()
 
     def _refresh_process_state(self):
         if self._process_running():
@@ -1367,6 +1368,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self.detail_text.delete("1.0", "end")
         if not values:
             self._refresh_state()
+            self._ai_sync_selected_control()
             return
 
         control = values[1]
