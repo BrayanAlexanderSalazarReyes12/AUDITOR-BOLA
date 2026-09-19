@@ -51,14 +51,15 @@ def test_windows_envuelve_archivo_cmd_con_cmd_exe(tmp_path):
             },
         )
 
-    assert command[:4] == [
+    assert command[:5] == [
         r"C:\Windows\System32\cmd.exe",
         "/d",
         "/s",
         "/c",
+        "call",
     ]
-    assert "npm.cmd" in command[4]
-    assert "start" in command[4]
+    assert command[5] == r"C:\Program Files\nodejs\npm.cmd"
+    assert command[6:] == ["start"]
 
 
 def test_windows_resuelve_launcher_local_gradlew_bat(tmp_path):
@@ -79,14 +80,15 @@ def test_windows_resuelve_launcher_local_gradlew_bat(tmp_path):
             },
         )
 
-    assert command[:4] == [
+    assert command[:5] == [
         r"C:\Windows\System32\cmd.exe",
         "/d",
         "/s",
         "/c",
+        "call",
     ]
-    assert "gradlew.bat" in command[4]
-    assert "bootRun" in command[4]
+    assert command[5].lower().endswith("gradlew.bat")
+    assert command[6:] == ["bootRun"]
 
 
 def test_script_python_local_usa_interprete_actual(tmp_path):
