@@ -1,3 +1,4 @@
+; Release build v1.1.5
 #define MyAppName "Aegis Auditor"
 #define MyAppVersion "1.1.5"
 #define MyAppPublisher "Aegis Auditor Project"
