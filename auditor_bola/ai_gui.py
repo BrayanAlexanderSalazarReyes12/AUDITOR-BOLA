@@ -758,12 +758,18 @@ class AIAssistantMixin:
 
         def task():
             reiniciar = self._prepare_restart_callback([control])
+            selector = (
+                self._selected_selector()
+                if hasattr(self, "_selected_selector")
+                else None
+            )
             result = ciclo_correctivo(
                 self.cfg,
                 control,
                 self.target_root,
                 evidence_base=self.evidence_base,
                 reiniciar=reiniciar,
+                selector=selector,
             )
             marcar_uso_receta(
                 candidate.path,
