@@ -190,9 +190,20 @@ def _iter_source_files(
         special_text_name = (
             name == ".env"
             or name.startswith(".env.")
-            or name in {"passwd", "users", "accounts", "usuarios", "seed", "seeds"}
+            or name.startswith("readme")
+            or name.startswith("manual")
+            or name.startswith("guide")
+            or name.startswith("guia")
+            or name in {
+                "passwd", "users", "accounts", "usuarios",
+                "seed", "seeds", "dockerfile", "makefile", "procfile",
+            }
         )
-        if suffix not in TEXT_EXTENSIONS and not special_text_name:
+        if (
+            suffix not in TEXT_EXTENSIONS
+            and not special_text_name
+            and not _looks_like_text_file(path)
+        ):
             continue
         count += 1
         yield path, relative
@@ -1362,6 +1373,8 @@ def _clean_literal(value: Any) -> str | None:
     if value is None:
         return None
     text = str(value).strip().strip("'").strip('"')
+    text = text.strip(chr(96)).strip()
+    text = re.sub(r"\s*\|\s*$", "", text).strip()
     if not text:
         return None
     lower = text.lower()
@@ -1424,6 +1437,7 @@ def _account_from_mapping(
         "username": username,
         "role": role,
         "archivo": source,
+        "tipo_fuente": _source_kind(source),
         "confianza": confidence,
         "password_literal": bool(password),
     }
