@@ -515,3 +515,20 @@ La suite incluye:
 - no colisión entre sesiones.
 
 GitHub Actions ejecuta la suite en Python 3.11 y 3.12.
+
+
+## Licencia
+
+Aegis Auditor se distribuye bajo la **Apache License 2.0**.
+
+Esto permite usar, estudiar, modificar y redistribuir el software, incluyendo
+uso comercial, siempre que se conserven la licencia y los avisos aplicables.
+
+Consulte:
+
+- `LICENSE`: texto completo de Apache License 2.0.
+- `NOTICE`: atribución y avisos del proyecto.
+
+Las dependencias de terceros conservan sus propias licencias. La licencia del
+código no concede por sí sola derechos adicionales sobre marcas, nombres o
+identidad visual del proyecto.
