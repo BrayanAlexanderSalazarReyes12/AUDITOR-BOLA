@@ -28,18 +28,40 @@ La guía cubre carga del perfil, diagnóstico, corrección individual y múltipl
 
 ## Asistente IA de recetas
 
-La versión 2.2 incorpora generación asistida de recetas correctivas. Para un hallazgo seleccionado, la GUI puede solicitar tres alternativas —**MINIMA, ESTRUCTURAL y ALTERNATIVA**—, mostrar su diff antes de escribir y dejar que el usuario seleccione cuál someter al ciclo determinista de corrección.
+La versión actual usa **Gemma `lab-coder` del Laboratorio UTB** reutilizando
+la configuración local de OpenCode. El auditor busca automáticamente:
 
-La IA propone; el usuario decide; el auditor verifica.
+```text
+~/.config/opencode/opencode.json
+```
 
-Configuración rápida en PowerShell:
+y toma del proveedor `llmlab` la `baseURL`, el modelo `lab-coder` y la
+referencia local de la API key. No es necesario copiar credenciales al perfil
+del auditor.
+
+Para un hallazgo seleccionado, la GUI solicita tres alternativas
+—**MINIMA, ESTRUCTURAL y ALTERNATIVA**— mediante el endpoint compatible:
+
+```text
+<baseURL>/chat/completions
+```
+
+Luego muestra el diff antes de escribir y permite al usuario elegir qué receta
+someter al ciclo determinista de backup, aplicación, reinicio, verificación y
+rollback.
+
+**Gemma propone; el usuario decide; el auditor verifica.**
+
+Ejecute normalmente:
 
 ```powershell
-$env:OPENAI_API_KEY="TU_CLAVE"
 python -m auditor_bola.gui
 ```
 
-La clave nunca se guarda en el perfil JSON. Consulte:
+La pestaña **Asistente IA** mostrará el proveedor, modelo y ruta de OpenCode
+detectados. La API key nunca se guarda en las evidencias del auditor.
+
+Consulte:
 
 ```text
 docs/ASISTENTE_IA.md
