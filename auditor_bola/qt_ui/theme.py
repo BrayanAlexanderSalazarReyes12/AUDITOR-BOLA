@@ -41,6 +41,25 @@ QFrame#Sidebar {
     background: #071925;
     border-right: 1px solid #14384F;
 }
+QWidget#BrandBox {
+    background: transparent;
+    border: none;
+}
+QLabel#BrandLogo {
+    background: transparent;
+    border: none;
+}
+QLabel#BrandPillars {
+    color: #8FA9BC;
+    font-size: 10px;
+    line-height: 1.35;
+    background: transparent;
+    border: none;
+}
+QFrame#BrandDivider {
+    background: #14384F;
+    border: none;
+}
 QFrame#Topbar,
 QFrame#Card,
 QFrame#Panel,
