@@ -38,9 +38,11 @@ class AuditPage(ctk.CTkFrame):
             width=190,
         ).grid(row=0, column=1, sticky="e")
 
-        metrics = ctk.CTkFrame(self, fg_color="transparent")
-        metrics.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        metrics.grid_columnconfigure((0, 1, 2), weight=1)
+        self.metrics = ctk.CTkFrame(self, fg_color="transparent")
+        self.metrics.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        metrics = self.metrics
+        for column in range(3):
+            metrics.grid_columnconfigure(column, weight=1)
 
         self.p1_card = MetricCard(metrics, "Pilar 1", "0 hallazgos", "Identidad y Control de Acceso")
         self.p1_card.grid(row=0, column=0, sticky="ew", padx=(0, 5))
@@ -51,15 +53,17 @@ class AuditPage(ctk.CTkFrame):
         self.total_card = MetricCard(metrics, "Estado global", "Sin diagnóstico", "P1 + P2")
         self.total_card.grid(row=0, column=2, sticky="ew", padx=(5, 0))
 
-        actions = ctk.CTkFrame(
+        self.actions = ctk.CTkFrame(
             self,
             fg_color=COLORS["surface"],
             corner_radius=10,
             border_width=1,
             border_color=COLORS["border_soft"],
         )
-        actions.grid(row=2, column=0, sticky="ew", pady=(0, 10))
-        actions.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        self.actions.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        actions = self.actions
+        for column in range(4):
+            actions.grid_columnconfigure(column, weight=1)
 
         app.btn_verify = ActionButton(
             actions, "✓ Verificar seleccionado", app._verify_selected, "success"
@@ -132,3 +136,75 @@ class AuditPage(ctk.CTkFrame):
         app.table.tag_configure("ok", background="#143A34", foreground="#C9FFF0")
         app.table.tag_configure("error", background="#46371D", foreground="#FFE7A5")
         app.table.bind("<<TreeviewSelect>>", app._on_result_selected)
+
+
+    def set_compact(self, compact: bool, ultra: bool = False):
+        cards = [self.p1_card, self.p2_card, self.total_card]
+
+        if ultra:
+            for index, card in enumerate(cards):
+                card.grid(
+                    row=index,
+                    column=0,
+                    columnspan=3,
+                    sticky="ew",
+                    padx=0,
+                    pady=(0, 6 if index < 2 else 0),
+                )
+            for column in range(3):
+                self.metrics.grid_columnconfigure(column, weight=1)
+
+            buttons = [
+                self.app.btn_verify,
+                self.app.btn_correct,
+                self.app.btn_correct_all,
+                self.app.btn_ai_open,
+            ]
+            for index, button in enumerate(buttons):
+                button.grid(
+                    row=index // 2,
+                    column=index % 2,
+                    sticky="ew",
+                    padx=(
+                        12 if index % 2 == 0 else 5,
+                        5 if index % 2 == 0 else 12,
+                    ),
+                    pady=5,
+                )
+            self.actions.grid_columnconfigure(0, weight=1)
+            self.actions.grid_columnconfigure(1, weight=1)
+            self.actions.grid_columnconfigure(2, weight=0)
+            self.actions.grid_columnconfigure(3, weight=0)
+        else:
+            for index, card in enumerate(cards):
+                card.grid(
+                    row=0,
+                    column=index,
+                    columnspan=1,
+                    sticky="ew",
+                    padx=(
+                        0 if index == 0 else 5,
+                        0 if index == 2 else 5,
+                    ),
+                    pady=0,
+                )
+                self.metrics.grid_columnconfigure(index, weight=1)
+
+            buttons = [
+                self.app.btn_verify,
+                self.app.btn_correct,
+                self.app.btn_correct_all,
+                self.app.btn_ai_open,
+            ]
+            for index, button in enumerate(buttons):
+                button.grid(
+                    row=0,
+                    column=index,
+                    sticky="ew",
+                    padx=(
+                        12 if index == 0 else 5,
+                        12 if index == 3 else 5,
+                    ),
+                    pady=10,
+                )
+                self.actions.grid_columnconfigure(index, weight=1)
