@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#F4F7FB"/>
+  <rect x="0" y="0" width="1600" height="92" fill="#0B1F33"/>
+  <text x="70" y="58" font-family="Segoe UI,Arial" font-size="36" font-weight="700" fill="#FFFFFF">Figura 1 · Arquitectura basada en dos pilares</text>
+  
+  <rect x="110" y="170" width="380" height="520" rx="28" fill="#FFFFFF" stroke="#D8E1EB" stroke-width="3"/>
+  <rect x="1110" y="170" width="380" height="520" rx="28" fill="#FFFFFF" stroke="#D8E1EB" stroke-width="3"/>
+  <rect x="565" y="250" width="470" height="360" rx="28" fill="#0B1F33"/>
+  <circle cx="300" cy="275" r="64" fill="#24B6A6"/>
+  <text x="300" y="290" text-anchor="middle" font-family="Segoe UI,Arial" font-size="40" font-weight="700" fill="#FFFFFF">P1</text>
+  <text x="300" y="390" text-anchor="middle" font-family="Segoe UI,Arial" font-size="30" font-weight="700" fill="#0B1F33">Identidad y Control de Acceso</text>
+  <text x="170" y="450" font-family="Segoe UI,Arial" font-size="24" fill="#24364B">• BOLA / propiedad de objetos</text>
+  <text x="170" y="500" font-family="Segoe UI,Arial" font-size="24" fill="#24364B">• RBAC / acceso por rol</text>
+  <text x="170" y="550" font-family="Segoe UI,Arial" font-size="24" fill="#24364B">• Alcance por identidad</text>
+  <text x="170" y="600" font-family="Segoe UI,Arial" font-size="24" fill="#24364B">• Agentes / asistentes</text>
+
+  <circle cx="1300" cy="275" r="64" fill="#2D6CDF"/>
+  <text x="1300" y="290" text-anchor="middle" font-family="Segoe UI,Arial" font-size="40" font-weight="700" fill="#FFFFFF">P2</text>
+  <text x="1300" y="390" text-anchor="middle" font-family="Segoe UI,Arial" font-size="30" font-weight="700" fill="#0B1F33">Arquitectura y Configuración</text>
+  <text x="1170" y="450" font-family="Segoe UI,Arial" font-size="24" fill="#24364B">• CORS</text>
+  <text x="1170" y="500" font-family="Segoe UI,Arial" font-size="24" fill="#24364B">• Políticas HTTP</text>
+  <text x="1170" y="550" font-family="Segoe UI,Arial" font-size="24" fill="#24364B">• Patrones de código/config</text>
+  <text x="1170" y="600" font-family="Segoe UI,Arial" font-size="24" fill="#24364B">• Contenedores / runtime</text>
+
+  <text x="800" y="330" text-anchor="middle" font-family="Segoe UI,Arial" font-size="36" font-weight="700" fill="#FFFFFF">AEGIS AUDITOR</text>
+  <text x="800" y="385" text-anchor="middle" font-family="Segoe UI,Arial" font-size="24" fill="#B9C9D8">Motor correctivo multitecnología</text>
+  <rect x="650" y="430" width="300" height="72" rx="18" fill="#24B6A6"/>
+  <text x="800" y="476" text-anchor="middle" font-family="Segoe UI,Arial" font-size="25" font-weight="700" fill="#FFFFFF">Verificación dinámica</text>
+  <text x="800" y="555" text-anchor="middle" font-family="Segoe UI,Arial" font-size="22" fill="#B9C9D8">Perfil · Evidencias · IA · Rollback</text>
+
+  <path d="M490 430 C535 430 535 430 565 430" stroke="#24B6A6" stroke-width="8" fill="none"/>
+  <path d="M1035 430 C1080 430 1080 430 1110 430" stroke="#2D6CDF" stroke-width="8" fill="none"/>
+
+  <text x="70" y="858" font-family="Segoe UI,Arial" font-size="19" fill="#6B7C8F">Aegis Auditor · Security Remediation Studio</text>
+</svg>
