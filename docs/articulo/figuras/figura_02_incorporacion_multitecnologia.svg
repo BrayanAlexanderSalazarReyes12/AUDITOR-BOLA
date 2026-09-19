@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#F4F7FB"/>
+  <rect x="0" y="0" width="1600" height="92" fill="#0B1F33"/>
+  <text x="70" y="58" font-family="Segoe UI,Arial" font-size="36" font-weight="700" fill="#FFFFFF">Figura 2 · Incorporación multitecnología y perfil automático</text>
+  
+  <g font-family="Segoe UI,Arial">
+    <rect x="90" y="180" width="290" height="500" rx="26" fill="#FFFFFF" stroke="#D8E1EB" stroke-width="3"/>
+    <text x="235" y="235" text-anchor="middle" font-size="28" font-weight="700" fill="#0B1F33">Proyecto nuevo</text>
+    <text x="145" y="300" font-size="23" fill="#24364B">Java / Spring</text>
+    <text x="145" y="350" font-size="23" fill="#24364B">Node / Express</text>
+    <text x="145" y="400" font-size="23" fill="#24364B">Python / Flask</text>
+    <text x="145" y="450" font-size="23" fill="#24364B">PHP / Moodle</text>
+    <text x="145" y="500" font-size="23" fill="#24364B">.NET / Go / Ruby</text>
+    <text x="145" y="550" font-size="23" fill="#24364B">Docker / externos</text>
+
+    <rect x="520" y="180" width="560" height="500" rx="26" fill="#0B1F33"/>
+    <text x="800" y="245" text-anchor="middle" font-size="31" font-weight="700" fill="#FFFFFF">Asistente de incorporación</text>
+    <text x="610" y="320" font-size="23" fill="#B9C9D8">1. Detectar lenguaje y framework</text>
+    <text x="610" y="370" font-size="23" fill="#B9C9D8">2. Detectar runtime y manifests</text>
+    <text x="610" y="420" font-size="23" fill="#B9C9D8">3. Localizar endpoints candidatos</text>
+    <text x="610" y="470" font-size="23" fill="#B9C9D8">4. Confirmar cuentas y roles</text>
+    <text x="610" y="520" font-size="23" fill="#B9C9D8">5. Crear controles P1/P2</text>
+    <text x="610" y="570" font-size="23" fill="#B9C9D8">6. Generar config/&lt;sistema&gt;.json</text>
+
+    <rect x="1220" y="250" width="280" height="360" rx="26" fill="#FFFFFF" stroke="#24B6A6" stroke-width="4"/>
+    <text x="1360" y="315" text-anchor="middle" font-size="29" font-weight="700" fill="#0B1F33">Perfil operativo</text>
+    <text x="1270" y="380" font-size="22" fill="#24364B">base_url</text>
+    <text x="1270" y="425" font-size="22" fill="#24364B">cuentas / roles</text>
+    <text x="1270" y="470" font-size="22" fill="#24364B">runtime</text>
+    <text x="1270" y="515" font-size="22" fill="#24364B">endpoints</text>
+    <text x="1270" y="560" font-size="22" fill="#24364B">Pilar 1 + Pilar 2</text>
+
+    <path d="M380 430 L520 430" stroke="#24B6A6" stroke-width="8"/>
+    <polygon points="520,430 495,415 495,445" fill="#24B6A6"/>
+    <path d="M1080 430 L1220 430" stroke="#24B6A6" stroke-width="8"/>
+    <polygon points="1220,430 1195,415 1195,445" fill="#24B6A6"/>
+  </g>
+
+  <text x="70" y="858" font-family="Segoe UI,Arial" font-size="19" fill="#6B7C8F">Aegis Auditor · Security Remediation Studio</text>
+</svg>
