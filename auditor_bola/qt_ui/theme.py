@@ -424,6 +424,34 @@ QPushButton#PrimaryButton:hover {
         stop:1 #1594EB
     );
 }
+QPushButton#ExitButton {
+    background: #3A1720;
+    border: 1px solid #6E2D3B;
+    color: #FFC1CB;
+    font-weight: 700;
+}
+QPushButton#ExitButton:hover {
+    background: #58212E;
+    border-color: #B94B62;
+    color: #FFFFFF;
+}
+QPushButton#AccountsButton {
+    background: #0F3046;
+    border: 1px solid #1A5C82;
+    color: #B9E9FF;
+    font-weight: 700;
+}
+QPushButton#AccountsButton:hover {
+    background: #15405C;
+    border-color: #39C7FF;
+}
+QTableWidget#AccountsTable {
+    background: #071824;
+    border: 1px solid #173E58;
+    border-radius: 10px;
+    gridline-color: #14384F;
+    color: #DDEBF3;
+}
 QPushButton#SuccessButton {
     background: #31D3A2;
     border-color: #31D3A2;
