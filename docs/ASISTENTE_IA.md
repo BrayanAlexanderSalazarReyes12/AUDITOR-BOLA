@@ -77,6 +77,30 @@ Luego ejecute:
 python -m auditor_bola.gui
 ```
 
+## Carga automática del archivo relacionado
+
+Cuando se selecciona un resultado, la GUI conserva el método, la ruta y el
+tipo de control de esa fila. Con esos datos intenta resolver automáticamente
+el archivo fuente correspondiente.
+
+Ejemplo:
+
+```text
+P1-BOLA
+PATCH /reservas/{id}
+        ↓
+selección del hallazgo
+        ↓
+src/.../ReservaController.java
+        ↓
+archivo cargado automáticamente en Asistente IA
+```
+
+Si el perfil declara `archivos_fuente`, esa asociación tiene prioridad.
+Cuando no existe, el auditor utiliza una búsqueda genérica sobre el código.
+El botón **Elegir archivo** permanece disponible para sobrescribir la
+selección automática.
+
 ## Uso desde la interfaz
 
 1. Cargue un perfil.
@@ -84,7 +108,7 @@ python -m auditor_bola.gui
 3. Ejecute **Diagnosticar P1 + P2**.
 4. Seleccione un hallazgo.
 5. Pulse **Generar recetas con IA**.
-6. Si el auditor conoce el archivo relacionado lo propondrá automáticamente. Si no, pulse **Elegir archivo**.
+6. El auditor intenta cargar automáticamente el archivo relacionado. Si no encuentra uno adecuado, pulse **Elegir archivo**.
 7. Pulse **Generar 3 recetas con Gemma**.
 8. Compare las propuestas:
    - **MINIMA**: cambio pequeño y localizado.
