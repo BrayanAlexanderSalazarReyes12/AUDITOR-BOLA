@@ -663,3 +663,31 @@ def test_version_explicita_sobrescribe_la_detectada(tmp_path):
     )
 
     assert profile["version_objetivo"] == "9.9.9"
+
+
+def test_detecta_version_en_application_properties(tmp_path):
+    props = tmp_path / "src" / "main" / "resources" / "application.properties"
+    props.parent.mkdir(parents=True)
+    props.write_text(
+        "info.app.version=7.3.2\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    assert profile["version_objetivo"] == "7.3.2"
+    assert (
+        profile["metadata_detectada"]["version_fuente"]
+        == "src/main/resources/application.properties"
+    )
+
+
+def test_detecta_version_en_constante_python(tmp_path):
+    (tmp_path / "__version__.py").write_text(
+        '__version__ = "8.0.1"\n',
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    assert profile["version_objetivo"] == "8.0.1"
