@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -596,6 +596,37 @@ class AutoProfileDialog(AegisDialog):
         content.setSizes([420, 640])
         root.addWidget(content, 1)
 
+        self.analysis_progress_frame = QFrame()
+        self.analysis_progress_frame.setObjectName("InlineTaskProgress")
+        progress_layout = QHBoxLayout(self.analysis_progress_frame)
+        progress_layout.setContentsMargins(12, 8, 12, 8)
+        progress_layout.setSpacing(10)
+
+        self.analysis_progress_label = QLabel("Preparando análisis…")
+        self.analysis_progress_label.setObjectName("InlineTaskLabel")
+        progress_layout.addWidget(self.analysis_progress_label, 1)
+
+        self.analysis_progress_bar = QProgressBar()
+        self.analysis_progress_bar.setObjectName("InlineTaskBar")
+        self.analysis_progress_bar.setRange(0, 100)
+        self.analysis_progress_bar.setValue(0)
+        self.analysis_progress_bar.setMinimumWidth(180)
+        self.analysis_progress_bar.setMaximumWidth(320)
+        self.analysis_progress_bar.setTextVisible(False)
+        progress_layout.addWidget(self.analysis_progress_bar)
+
+        self.analysis_progress_percent = QLabel("0%")
+        self.analysis_progress_percent.setObjectName("InlineTaskPercent")
+        self.analysis_progress_percent.setFixedWidth(44)
+        self.analysis_progress_percent.setAlignment(
+            Qt.AlignmentFlag.AlignRight
+            | Qt.AlignmentFlag.AlignVCenter
+        )
+        progress_layout.addWidget(self.analysis_progress_percent)
+
+        self.analysis_progress_frame.hide()
+        root.addWidget(self.analysis_progress_frame)
+
         self.footer_frame = QFrame()
         self.footer_frame.setObjectName("DialogFooter")
         self.footer_frame.setSizePolicy(
@@ -632,6 +663,22 @@ class AutoProfileDialog(AegisDialog):
         footer.addWidget(self.save)
         root.addWidget(footer_frame)
 
+    def _set_analysis_progress(
+        self,
+        value: int,
+        text: str,
+        *,
+        visible: bool = True,
+    ) -> None:
+        value = max(0, min(100, int(value)))
+        self.analysis_progress_label.setText(text)
+        self.analysis_progress_bar.setValue(value)
+        self.analysis_progress_percent.setText(f"{value}%")
+        self.analysis_progress_frame.setVisible(visible)
+        if visible:
+            self.analysis_progress_frame.raise_()
+        QApplication.processEvents()
+
     def _select_project(self):
         selected = QFileDialog.getExistingDirectory(
             self,
@@ -640,16 +687,33 @@ class AutoProfileDialog(AegisDialog):
         if not selected:
             return
 
+        self._set_analysis_progress(
+            8,
+            "Preparando análisis del proyecto…",
+        )
+
         try:
             root = Path(selected).resolve()
             self.project_root = root
             self.stepper.set_step(1)
+            self._set_analysis_progress(
+                22,
+                "Detectando lenguajes, runtime y manifiestos…",
+            )
 
             self.detection = detect_project(root)
             self.stepper.set_step(2)
+            self._set_analysis_progress(
+                58,
+                "Analizando stack y endpoints candidatos…",
+            )
 
             self.draft = build_profile_draft(self.detection)
             self.stepper.set_step(3)
+            self._set_analysis_progress(
+                82,
+                "Construyendo perfil de configuración…",
+            )
 
             meta = self.draft.get("metadata_detectada") or {}
             lines = [
@@ -673,7 +737,13 @@ class AutoProfileDialog(AegisDialog):
             )
             self.path_label.setText(str(root))
             self.save.setEnabled(True)
+            self._set_analysis_progress(100, "Análisis completado")
+            QTimer.singleShot(
+                650,
+                self.analysis_progress_frame.hide,
+            )
         except Exception as exc:
+            self.analysis_progress_frame.hide()
             QMessageBox.critical(
                 self,
                 "No se pudo analizar",
