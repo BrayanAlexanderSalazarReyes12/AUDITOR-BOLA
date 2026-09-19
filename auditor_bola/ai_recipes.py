@@ -43,43 +43,55 @@ class AIRecipeProposal:
         return asdict(self)
 
 
-_SECRET_PATTERNS = [
-    re.compile(
-        r'(?i)(password|passwd|pwd|secret|token|api[_-]?key)'
-        r'(\s*[:=]\s*)(["\']?)([^\n"\']+)(["\']?)'
-    ),
-    re.compile(
-        r'(?i)(Authorization\s*[:=]\s*["\']?Bearer\s+)'
-        r'([^\s"\']+)'
-    ),
-    re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b"),
-    re.compile(
-        r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?"
-        r"-----END [A-Z ]*PRIVATE KEY-----",
-        re.DOTALL,
-    ),
-]
+_SENSITIVE_NAME = re.compile(
+    r"(?i)\b(password|passwd|pwd|secret|token|api[_-]?key)\b"
+)
+_BEARER = re.compile(
+    r'(?i)(Authorization\s*[:=,\(]\s*["\']?Bearer\s+)([^\s"\']+)'
+)
+_API_KEY_VALUE = re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b")
+_PRIVATE_KEY = re.compile(
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?"
+    r"-----END [A-Z ]*PRIVATE KEY-----",
+    re.DOTALL,
+)
+_QUOTED_ASSIGNMENT = re.compile(
+    r'([:=]\s*)(["\'])(.*?)(\2)'
+)
+_UNQUOTED_ASSIGNMENT = re.compile(
+    r"([:=]\s*)([^;,\s]+)"
+)
+
+
+def _redactar_linea_sensible(linea: str) -> str:
+    if not _SENSITIVE_NAME.search(linea):
+        return linea
+
+    if _QUOTED_ASSIGNMENT.search(linea):
+        return _QUOTED_ASSIGNMENT.sub(
+            lambda m: f"{m.group(1)}{m.group(2)}<REDACTED>{m.group(4)}",
+            linea,
+            count=1,
+        )
+
+    return _UNQUOTED_ASSIGNMENT.sub(
+        lambda m: f"{m.group(1)}<REDACTED>",
+        linea,
+        count=1,
+    )
 
 
 def redactar_secretos(texto: str) -> str:
     """Reduce el riesgo de enviar credenciales accidentales al proveedor IA."""
-    resultado = texto
-
-    def reemplazar_asignacion(match: re.Match) -> str:
-        return (
-            f"{match.group(1)}{match.group(2)}"
-            f"{match.group(3)}<REDACTED>{match.group(5)}"
-        )
-
-    resultado = _SECRET_PATTERNS[0].sub(reemplazar_asignacion, resultado)
-    resultado = _SECRET_PATTERNS[1].sub(
-        lambda m: f"{m.group(1)}<REDACTED>", resultado
+    resultado = _PRIVATE_KEY.sub("<REDACTED_PRIVATE_KEY>", texto)
+    resultado = _BEARER.sub(
+        lambda m: f"{m.group(1)}<REDACTED>",
+        resultado,
     )
-    resultado = _SECRET_PATTERNS[2].sub("<REDACTED_API_KEY>", resultado)
-    resultado = _SECRET_PATTERNS[3].sub(
-        "<REDACTED_PRIVATE_KEY>", resultado
-    )
-    return resultado
+    resultado = _API_KEY_VALUE.sub("<REDACTED_API_KEY>", resultado)
+
+    lineas = resultado.splitlines(keepends=True)
+    return "".join(_redactar_linea_sensible(linea) for linea in lineas)
 
 
 def _pistas_utiles(*textos: str) -> list[str]:
