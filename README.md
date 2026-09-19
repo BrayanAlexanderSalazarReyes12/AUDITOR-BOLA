@@ -98,6 +98,42 @@ La ventana permite realizar todo el ciclo sin usar la terminal:
 
 La tabla indica explícitamente si cada hallazgo tiene **Corrección: Sí/No**.
 
+## Verificación granular y reformulación de recetas IA
+
+Los controles pueden compartir el mismo `control_id` y aun así representar
+pruebas distintas. Por ejemplo:
+
+```text
+P1-BOLA | GET   /reservas/{id} | carlos
+P1-BOLA | PATCH /reservas/{id} | lucia
+P1-BOLA | PATCH /reservas/{id} | recepcion
+```
+
+Cuando se corrige una fila seleccionada, el auditor conserva su cuenta,
+método, ruta y tipo de control y verifica **esa fila exacta**. Al mismo tiempo
+compara las demás filas del mismo control para detectar regresiones.
+
+Una receta solo queda en `CORREGIDO` cuando:
+
+1. la fila objetivo pasa a `SIN_HALLAZGO`; y
+2. ninguna fila que antes estaba en `SIN_HALLAZGO` pasa a
+   `HALLAZGO` o `ERROR`.
+
+Si una receta no soluciona la fila objetivo o introduce una regresión, se hace
+rollback y se marca `NO_CORREGIDO`.
+
+Para mejorar una receta fallida, Gemma recibe en la siguiente ronda:
+
+- la fila objetivo exacta;
+- la matriz de pruebas del mismo control;
+- el resultado esperado y observado;
+- la receta anterior;
+- el diff que se intentó aplicar;
+- el resultado de verificación y las regresiones detectadas.
+
+La GUI pregunta si se desean generar **3 nuevas recetas reformuladas** usando
+esa retroalimentación, evitando repetir la misma solución fallida.
+
 ## Biblioteca reutilizable de recetas
 
 Las recetas aceptadas no quedan únicamente dentro del perfil de una
