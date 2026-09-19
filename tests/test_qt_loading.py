@@ -18,8 +18,8 @@ def _app():
     return app
 
 
-def test_version_is_1_1_1():
-    assert __version__ == "1.1.1"
+def test_version_is_1_1_2():
+    assert __version__ == "1.1.2"
 
 
 def test_startup_splash_reports_percentage():
