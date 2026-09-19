@@ -204,8 +204,9 @@ class Topbar(QFrame):
         self.quote.setMaximumWidth(270)
         layout.addWidget(self.quote)
 
-        account = QFrame()
-        account.setObjectName("SubtlePanel")
+        self.account_box = QFrame()
+        self.account_box.setObjectName("SubtlePanel")
+        account = self.account_box
         account_l = QHBoxLayout(account)
         account_l.setContentsMargins(10, 7, 10, 7)
         account_l.setSpacing(8)
@@ -228,13 +229,26 @@ class Topbar(QFrame):
 
         layout.addWidget(account)
 
-        new_btn = QPushButton("＋ Nuevo")
-        new_btn.clicked.connect(new_project)
-        layout.addWidget(new_btn)
+        self.new_btn = QPushButton("＋ Nuevo")
+        self.new_btn.clicked.connect(new_project)
+        layout.addWidget(self.new_btn)
 
-        load_btn = PrimaryButton("Cargar ▾")
-        load_btn.clicked.connect(load_center)
-        layout.addWidget(load_btn)
+        self.load_btn = PrimaryButton("Cargar ▾")
+        self.load_btn.clicked.connect(load_center)
+        layout.addWidget(self.load_btn)
+
+    def set_compact(self, compact: bool) -> None:
+        self.quote.setVisible(not compact)
+        if compact:
+            self.account_box.setMaximumWidth(180)
+            self.new_btn.setText("＋")
+            self.new_btn.setMaximumWidth(42)
+            self.load_btn.setText("Cargar")
+        else:
+            self.account_box.setMaximumWidth(16777215)
+            self.new_btn.setText("＋ Nuevo")
+            self.new_btn.setMaximumWidth(16777215)
+            self.load_btn.setText("Cargar ▾")
 
     def refresh(self, controller: AuditorController) -> None:
         self.project.setText(
