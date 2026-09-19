@@ -2377,20 +2377,29 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
 
 
 def main():
-    """Abre la interfaz moderna por defecto; legacy queda como fallback."""
+    """Compatibilidad: abre la interfaz Qt por defecto."""
+    ui = os.getenv("AEGIS_UI", "qt").strip().lower()
+
     if os.getenv("AEGIS_LEGACY_UI", "").strip().lower() in {
         "1",
         "true",
         "yes",
     }:
+        ui = "legacy"
+
+    if ui == "legacy":
         AuditorGUI().mainloop()
         return
 
-    # Import diferido para evitar ciclo: ui.app reutiliza AuditorGUI como
-    # backend visual durante la migración.
-    from .ui.app import ModernAuditorGUI
+    if ui in {"ctk", "customtkinter"}:
+        from .ui.app import ModernAuditorGUI
 
-    ModernAuditorGUI().mainloop()
+        ModernAuditorGUI().mainloop()
+        return
+
+    from .qt_ui.app import run_qt_app
+
+    raise SystemExit(run_qt_app())
 
 
 if __name__ == "__main__":
