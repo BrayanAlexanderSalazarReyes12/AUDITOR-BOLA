@@ -16,10 +16,10 @@ from .ai_recipes import (
     generar_tres_recetas,
     guardar_seleccion_ia,
     guardar_sesion_ia,
-    inferir_archivo_control,
     propuesta_a_correccion,
 )
 from .cycle import ciclo_correctivo
+from .source_locator import resolver_archivo_fuente
 
 
 class AIAssistantMixin:
@@ -297,14 +297,43 @@ class AIAssistantMixin:
         self.ai_detail_text.delete("1.0", "end")
 
         if self.cfg and control and self.target_root:
-            inferred = inferir_archivo_control(self.cfg, control)
-            if inferred and (self.target_root / inferred).exists():
-                self.ai_source_relative = inferred
-                self.lbl_ai_source.configure(text=inferred)
+            row = (
+                self._selected_row_data()
+                if hasattr(self, "_selected_row_data")
+                else None
+            ) or {}
+            resolution = resolver_archivo_fuente(
+                self.cfg,
+                self.target_root,
+                control_id=control,
+                metodo=row.get("metodo"),
+                ruta=row.get("ruta"),
+                descripcion=row.get("control"),
+            )
+
+            if (
+                resolution.archivo
+                and (self.target_root / resolution.archivo).exists()
+            ):
+                self.ai_source_relative = resolution.archivo
+                self.lbl_ai_source.configure(
+                    text=(
+                        f"{resolution.archivo}  "
+                        f"[auto: {resolution.confianza}; {resolution.origen}]"
+                    )
+                )
+                self._log(
+                    "Archivo IA detectado automáticamente para "
+                    f"{control}: {resolution.archivo} "
+                    f"(confianza {resolution.confianza})"
+                )
             else:
                 self.ai_source_relative = None
                 self.lbl_ai_source.configure(
-                    text="Seleccione el archivo relacionado con el hallazgo"
+                    text=(
+                        "No fue posible resolver el archivo automáticamente; "
+                        "puede seleccionarlo manualmente."
+                    )
                 )
         else:
             self.ai_source_relative = None
@@ -354,7 +383,12 @@ class AIAssistantMixin:
             return
 
         self.ai_source_relative = selected.relative_to(root).as_posix()
-        self.lbl_ai_source.configure(text=self.ai_source_relative)
+        self.lbl_ai_source.configure(
+            text=f"{self.ai_source_relative}  [selección manual]"
+        )
+        self._log(
+            f"Archivo IA seleccionado manualmente: {self.ai_source_relative}"
+        )
         self._refresh_ai_state()
 
     def _current_finding_data(self) -> tuple[str, str, str]:
