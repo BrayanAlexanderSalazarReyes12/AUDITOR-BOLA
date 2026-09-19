@@ -48,7 +48,7 @@ El menú superior separa **Archivo**, **Proyecto**, **Auditoría**, **Conocimien
 
 ## Interfaz moderna
 
-Aegis Auditor abre por defecto su nueva interfaz **CustomTkinter**, con dashboard, barra lateral, Centro de Carga, wizard de auto-configuración, vistas separadas de Pilar 1/Pilar 2, remediación IA, conocimiento, evidencias y reportes. La interfaz anterior puede abrirse temporalmente con `AEGIS_LEGACY_UI=1`.
+Aegis Auditor abre por defecto su interfaz profesional **PySide6 / Qt 6**, con dashboard, sidebar, Centro de Carga, auto-configuración, Auditoría P1/P2, remediación IA, conocimiento, evidencias y reportes. `AEGIS_UI=ctk` conserva la interfaz CustomTkinter como fallback y `AEGIS_LEGACY_UI=1` abre la interfaz histórica.
 
 ## Aplicaciones de escritorio
 
