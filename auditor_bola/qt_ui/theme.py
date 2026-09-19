@@ -121,6 +121,14 @@ QPlainTextEdit#DialogCodePreview {
     font-family: "Cascadia Mono", "Consolas", monospace;
     font-size: 10px;
 }
+QSplitter#DialogContentSplitter::handle {
+    background: #0A1823;
+    width: 6px;
+    border-radius: 3px;
+}
+QSplitter#DialogContentSplitter::handle:hover {
+    background: #1A5274;
+}
 QFrame#DialogFooter {
     background: #081824;
     border: 1px solid #14384F;
