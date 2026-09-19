@@ -4,7 +4,7 @@ El Asistente IA amplía el auditor cuando un hallazgo no tiene receta o cuando e
 
 ## Principio de seguridad
 
-La IA **no modifica código directamente**. El flujo es:
+Gemma **no modifica código directamente**. El flujo es:
 
 ```text
 HALLAZGO
@@ -26,26 +26,49 @@ backup → aplicar → reiniciar → verificar → rollback
 
 La decisión final permanece en el usuario.
 
-## Configurar la API
+## Proveedor IA: Gemma del Laboratorio UTB
 
-La clave no se guarda en el perfil JSON ni en el repositorio.
+El auditor reutiliza la configuración ya existente de OpenCode. Por defecto
+busca:
 
-En PowerShell:
-
-```powershell
-$env:OPENAI_API_KEY="TU_CLAVE"
+```text
+~/.config/opencode/opencode.json
 ```
 
-Opcionalmente puede cambiar el modelo:
+y utiliza el proveedor:
 
-```powershell
-$env:AUDITOR_AI_MODEL="gpt-6-astra"
+```text
+llmlab
 ```
 
-También puede cambiar el endpoint base:
+con el modelo:
+
+```text
+lab-coder
+```
+
+No es necesario volver a pegar una API key en la interfaz.
+
+Si en OpenCode la clave está declarada mediante una variable:
+
+```json
+"apiKey": "{env:UTB_LLM_API_KEY}"
+```
+
+esa variable debe existir en la misma sesión desde la que se ejecuta el
+auditor. Si OpenCode tiene una clave literal en su archivo local, el auditor
+puede leerla localmente, pero no la imprime ni la almacena en las evidencias.
+
+El endpoint usado por el auditor es:
+
+```text
+<baseURL>/chat/completions
+```
+
+Puede sobrescribir la ruta del archivo de OpenCode para pruebas con:
 
 ```powershell
-$env:AUDITOR_AI_BASE_URL="https://api.openai.com/v1"
+$env:OPENCODE_CONFIG="C:\ruta\a\opencode.json"
 ```
 
 Luego ejecute:
@@ -62,7 +85,7 @@ python -m auditor_bola.gui
 4. Seleccione un hallazgo.
 5. Pulse **Generar recetas con IA**.
 6. Si el auditor conoce el archivo relacionado lo propondrá automáticamente. Si no, pulse **Elegir archivo**.
-7. Pulse **Generar 3 recetas con IA**.
+7. Pulse **Generar 3 recetas con Gemma**.
 8. Compare las propuestas:
    - **MINIMA**: cambio pequeño y localizado.
    - **ESTRUCTURAL**: mejora de diseño o centralización.
