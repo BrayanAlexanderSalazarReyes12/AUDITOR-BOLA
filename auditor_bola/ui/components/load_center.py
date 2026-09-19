@@ -28,7 +28,8 @@ class LoadCenter(ctk.CTkToplevel):
         self.transient(master)
         self.grab_set()
 
-        self.grid_columnconfigure((0, 1), weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(
             self,
