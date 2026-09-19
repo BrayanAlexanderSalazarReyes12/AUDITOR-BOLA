@@ -168,7 +168,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.5' \
+            'Version: 1.1.6' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -197,13 +197,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-5:
-    name: Publicar Release v1.1.5
+  release-v1-1-6:
+    name: Publicar Release v1.1.6
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.5]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.6]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -221,11 +221,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.5
+          # Aegis Auditor v1.1.6
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.5
+          ## Novedades de v1.1.6
           - Corrige la versión de la aplicación analizada: ya no se asigna
             `1.0.0` por defecto.
           - Detecta la versión real desde package.json, pom.xml, Gradle,
@@ -246,6 +246,9 @@ jobs:
           - La URL base se asocia a la estrategia de runtime seleccionada.
           - Los perfiles antiguos se enriquecen automáticamente con fallbacks de runtime detectados.
           - Los diálogos secundarios y selectores de archivos Qt adoptan el diseño oscuro y maximizado de Aegis.
+          - La auditoría P1 + P2 ahora muestra progreso real por control, etapa y total procesado.
+          - Se elimina la sensación de bloqueo en porcentajes estimados como 42% durante diagnósticos largos.
+          - La barra y el modal reciben el avance del motor en segundo plano sin congelar la interfaz.
 
           ## Descargas
 
@@ -294,16 +297,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.5" >/dev/null 2>&1; then
-            gh release upload "v1.1.5" "${files[@]}" --clobber
-            gh release edit "v1.1.5" \
-              --title "Aegis Auditor v1.1.5" \
+          if gh release view "v1.1.6" >/dev/null 2>&1; then
+            gh release upload "v1.1.6" "${files[@]}" --clobber
+            gh release edit "v1.1.6" \
+              --title "Aegis Auditor v1.1.6" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.5" "${files[@]}" \
+            gh release create "v1.1.6" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.5" \
+              --title "Aegis Auditor v1.1.6" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
