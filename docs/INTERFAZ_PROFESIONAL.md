@@ -1,82 +1,89 @@
 # Interfaz profesional — Aegis Auditor
 
-Aegis Auditor usa **CustomTkinter** como capa visual principal y conserva la interfaz Tkinter anterior únicamente como fallback mediante:
+Aegis Auditor usa **PySide6 / Qt 6** como interfaz de escritorio principal.
+
+La decisión de migrar a Qt separa el motor de auditoría de la presentación y permite una experiencia de producto más cercana a una herramienta empresarial: mejor composición, escalado HiDPI, tablas, layouts responsivos, ventanas, diálogos y empaquetado nativo.
+
+## Interfaz predeterminada
+
+    python -m auditor_bola
+
+o:
+
+    python -m auditor_bola.gui
+
+abren la interfaz Qt.
+
+Para pruebas o compatibilidad todavía existen dos fallbacks:
+
+    AEGIS_UI=ctk
+
+abre la interfaz CustomTkinter anterior.
 
     AEGIS_LEGACY_UI=1
 
-La interfaz moderna abre por defecto desde `python -m auditor_bola` y desde los ejecutables de Windows, macOS y Linux.
+abre la interfaz Tkinter histórica.
 
-## Arquitectura visual
+Los ejecutables distribuidos abren Qt por defecto.
 
-    auditor_bola/ui/
-    ├── app.py
-    ├── theme.py
-    ├── router.py
-    ├── adapters.py
-    ├── project_wizard.py
-    ├── components/
-    │   ├── sidebar.py
-    │   ├── topbar.py
-    │   ├── load_center.py
-    │   ├── cards.py
-    │   ├── progress_steps.py
-    │   ├── status_badge.py
-    │   └── console.py
-    └── pages/
-        ├── home.py
-        ├── project.py
-        ├── audit.py
-        ├── knowledge.py
-        ├── reports.py
-        └── settings.py
+## Composición visual
 
-La capa visual reutiliza el motor de diagnóstico, corrección, rollback, evidencias y recetas existente; no contiene reglas específicas de una aplicación.
+La pantalla Inicio adopta la jerarquía del diseño de referencia:
 
-## Navegación
-
-- Inicio
-- Nuevo proyecto
-- Cargar / Importar
-- Auto-configuración
-- Auditoría P1 + P2
-- Correcciones con IA
-- Recetas y conocimiento
-- Evidencias
-- Reportes
-- Registro
-- Configuración
+- sidebar de producto con branding Aegis;
+- cabecera de bienvenida;
+- stepper horizontal del ciclo completo;
+- panel principal de ejecución y diagnóstico;
+- consola en tiempo real;
+- rail derecho con información del proyecto;
+- tarea actual y progreso;
+- vista previa del perfil JSON;
+- métricas compactas;
+- footer de estado.
 
 ## Centro de Carga
 
-El botón **Cargar / Importar** abre un centro único para incorporar:
+El botón **Cargar / Importar** abre un diálogo único y profesional para nueva aplicación, perfil JSON, código fuente, auditor-package.json, cuentas y roles, evidencias, recetas/medicinas y proveedor IA.
 
-1. nueva aplicación;
-2. perfil JSON;
-3. código fuente;
-4. `auditor-package.json`;
-5. cuentas y roles;
-6. evidencias;
-7. recetas y medicinas;
-8. proveedor IA.
+## Auto-configuración
 
-El centro es scrollable y se adapta a pantallas pequeñas.
+El wizard Qt analiza la carpeta seleccionada y detecta lenguaje, framework, manifiestos, runtime, URL sugerida, endpoints candidatos, roots de código y auditor-package.json. Después genera un perfil JSON reutilizable.
 
-## Nuevo proyecto / Auto-configuración
+## Pilar 1 y Pilar 2
 
-El wizard moderno está dividido en Proyecto, Runtime, Pilar 1, Pilar 2 y Perfil JSON. Detecta lenguaje, framework, manifiestos, runtime y endpoints candidatos. Permite completar cuentas, roles privilegiados, pruebas BOLA/RBAC y controles de Pilar 2 antes de guardar el perfil.
+La página Auditoría mantiene separados visualmente **Pilar 1 — Identidad y Control de Acceso** y **Pilar 2 — Arquitectura y Configuración**. Los resultados se normalizan en una tabla común sin acoplar la GUI a una tecnología específica.
 
-## Auditoría
+## Correcciones con IA
 
-La vista distingue explícitamente **Pilar 1 — Identidad y Control de Acceso** y **Pilar 2 — Arquitectura y Configuración**, con métricas separadas y una tabla única de controles normalizados.
+La página de IA permite seleccionar un hallazgo y archivo fuente, cargar OpenCode/Gemma, recuperar medicina reutilizable, generar tres propuestas, revisar y aplicar una opción, ejecutar backup + corrección + reinicio + verificación, revertir si falla y guardar medicina semántica cuando queda verificada.
 
-## Remediación IA
+## Evidencias y artículo
 
-La página de Correcciones con IA conserva control seleccionado, archivo fuente, proveedor/modelo, medicinas compatibles, parches exactos, tres propuestas, vista previa del diff, aplicación y verificación.
+La página Evidencias muestra sesiones persistentes y permite exportar una copia redactada para documentación o artículo sin backups de código ni campos sensibles.
 
-## Responsive
+## Responsive / HiDPI
 
-La interfaz responde al redimensionamiento de la ventana: escritorio, portátil y modo ultra compacto. Está pensada para funcionar desde 1024×600 hasta 4K.
+Qt 6 gestiona escalado HiDPI de forma nativa. Aegis añade dos composiciones: escritorio con sidebar completa y rail derecho; compacto con sidebar de iconos y rail derecho reubicado bajo el contenido. Cada página usa scroll cuando hace falta.
+
+## Arquitectura
+
+    auditor_bola/
+    ├── runner.py
+    ├── cycle.py
+    ├── process_manager.py
+    ├── profile_builder.py
+    ├── ai_recipes.py
+    ├── remediation_knowledge.py
+    └── qt_ui/
+        ├── app.py
+        ├── controller.py
+        ├── dialogs.py
+        ├── pages.py
+        ├── theme.py
+        └── widgets.py
+
+La carpeta qt_ui no contiene reglas de seguridad específicas de una aplicación. El comportamiento de auditoría sigue viviendo en el motor común.
 
 ## Distribución
 
-CustomTkinter y sus recursos se incluyen dentro de los paquetes PyInstaller. Los builds nativos siguen generándose para Windows, macOS Intel/ARM y Linux x64/ARM.
+PyInstaller empaqueta la interfaz Qt y el branding para Windows x64, macOS Intel, macOS Apple Silicon, Linux x64 y Linux ARM64. CustomTkinter permanece incluido temporalmente como fallback, pero no es la presentación predeterminada.
