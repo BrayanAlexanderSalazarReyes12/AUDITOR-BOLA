@@ -378,6 +378,12 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
         route = _normalize_route_path(route)
         if not route:
             return
+        lower_route = route.lower()
+        if re.search(
+            r"\.(?:css|js|mjs|map|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)(?:$|/)",
+            lower_route,
+        ):
+            return
         key = (method, route, source)
         found[key] = DetectedRoute(
             method=method,
@@ -867,6 +873,69 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
                                 "openapi",
                             )
 
+        # Referencias de cliente: ayudan a descubrir rutas usadas por
+        # JSP/HTML/JS cuando la declaración del servidor no es visible.
+        for match in re.finditer(
+            r"<form\b([^>]*?)\baction\s*=\s*['\"]([^'\"]+)['\"]([^>]*)>",
+            text,
+            re.I | re.S,
+        ):
+            attrs = match.group(1) + match.group(3)
+            method_match = re.search(
+                r"\bmethod\s*=\s*['\"](get|post)['\"]",
+                attrs,
+                re.I,
+            )
+            add(
+                method_match.group(1) if method_match else "GET",
+                match.group(2),
+                source,
+                "client-form-reference",
+            )
+
+        for match in re.finditer(
+            r"\bfetch\(\s*['\"]([^'\"]+)['\"]\s*(?:,\s*\{(.{0,1200}?)\})?",
+            text,
+            re.I | re.S,
+        ):
+            options = match.group(2) or ""
+            method_match = re.search(
+                r"\bmethod\s*:\s*['\"](GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)['\"]",
+                options,
+                re.I,
+            )
+            add(
+                method_match.group(1) if method_match else "GET",
+                match.group(1),
+                source,
+                "client-fetch-reference",
+            )
+
+        for match in re.finditer(
+            r"\baxios\.(get|post|put|patch|delete|options|head)"
+            r"\(\s*['\"]([^'\"]+)['\"]",
+            text,
+            re.I,
+        ):
+            add(
+                match.group(1),
+                match.group(2),
+                source,
+                "client-axios-reference",
+            )
+
+        for match in re.finditer(
+            r"\$\.(get|post)\(\s*['\"]([^'\"]+)['\"]",
+            text,
+            re.I,
+        ):
+            add(
+                match.group(1),
+                match.group(2),
+                source,
+                "client-jquery-reference",
+            )
+
         # Next.js API file-system routes.
         relative_posix = relative.as_posix()
         next_match = re.search(
@@ -918,6 +987,41 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
             item.path,
             item.method,
             item.source,
+        ),
+    )
+
+
+def _build_endpoint_inventory(
+    routes: list[DetectedRoute],
+) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+
+    for route in routes:
+        key = (route.method.upper(), route.path)
+        item = grouped.setdefault(
+            key,
+            {
+                "metodo": route.method.upper(),
+                "ruta": route.path,
+                "archivo": route.source,
+                "framework": route.framework,
+                "archivos": [],
+                "frameworks": [],
+            },
+        )
+        if route.source and route.source not in item["archivos"]:
+            item["archivos"].append(route.source)
+        if (
+            route.framework
+            and route.framework not in item["frameworks"]
+        ):
+            item["frameworks"].append(route.framework)
+
+    return sorted(
+        grouped.values(),
+        key=lambda item: (
+            item["ruta"],
+            item["metodo"],
         ),
     )
 
@@ -1445,6 +1549,10 @@ def build_profile_draft(
         "http://127.0.0.1:8000",
     )
 
+    endpoint_inventory = _build_endpoint_inventory(
+        detection.routes
+    )
+
     profile = {
         "sistema": _slug(name),
         "version_objetivo": version or "1.0.0",
@@ -1460,9 +1568,7 @@ def build_profile_draft(
         ),
         "runtime": detection.runtime,
         "endpoints": [],
-        "endpoints_detectados": [
-            route.as_dict() for route in detection.routes
-        ],
+        "endpoints_detectados": endpoint_inventory,
         "chequeos_agente": [],
         "chequeos_acceso": [],
         "chequeos_pilar2": [],
@@ -1476,7 +1582,8 @@ def build_profile_draft(
             "endpoints_candidatos": [
                 route.as_dict() for route in detection.routes
             ],
-            "total_endpoints_detectados": len(detection.routes),
+            "total_endpoints_detectados": len(endpoint_inventory),
+            "total_coincidencias_endpoint": len(detection.routes),
             "cuentas_candidatas": list(detection.account_sources),
             "archivos_cuentas_escaneados": True,
             "perfil_generado_automaticamente": True,
