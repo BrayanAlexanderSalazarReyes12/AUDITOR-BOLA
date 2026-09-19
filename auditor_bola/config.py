@@ -118,6 +118,8 @@ class RuntimeConfig:
     """
 
     modo: str = "process"  # process | command (legacy) | service | external
+    nombre: str = ""
+    origen: str = ""
     comando_inicio: list[str] = field(default_factory=list)
     comando_detener: list[str] = field(default_factory=list)
     comando_reinicio: list[str] = field(default_factory=list)
@@ -134,6 +136,11 @@ class RuntimeConfig:
     directorio_trabajo: str = "."
     espera_inicio: float = 1.2
     variables: dict[str, str] = field(default_factory=dict)
+
+    # Estrategias alternativas completas de runtime. Aegis prueba la
+    # estrategia principal y, si su ejecutable no está disponible, intenta
+    # estas alternativas en orden.
+    alternativas: list[dict] = field(default_factory=list)
 
 @dataclass
 class ConfigObjetivo:
