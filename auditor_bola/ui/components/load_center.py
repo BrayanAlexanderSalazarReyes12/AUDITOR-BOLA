@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import customtkinter as ctk
 
+from ...responsive import calculate_wizard_geometry
 from ..theme import COLORS, FONT_FAMILY
 
 
@@ -22,8 +23,17 @@ class LoadCenter(ctk.CTkToplevel):
     def __init__(self, master, callbacks: dict[str, callable]):
         super().__init__(master)
         self.title("Aegis Auditor — Cargar / Importar")
-        self.geometry("920x650")
-        self.minsize(760, 560)
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width, height, compact = calculate_wizard_geometry(
+            screen_w,
+            screen_h,
+        )
+        width = min(width, 960)
+        height = min(height, 680)
+        self.geometry(f"{width}x{height}")
+        self.minsize(min(720, width), min(520, height))
+        self.compact_mode = compact
         self.configure(fg_color=COLORS["bg"])
         self.transient(master)
         self.grab_set()
