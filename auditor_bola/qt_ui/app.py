@@ -60,35 +60,53 @@ class Sidebar(QFrame):
     def __init__(self, navigate, new_project, load_center, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
-        self.setFixedWidth(278)
+        self.setFixedWidth(292)
         self._compact = False
         self.buttons: dict[str, NavButton] = {}
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 15, 12, 12)
-        layout.setSpacing(5)
+        layout.setContentsMargins(14, 16, 14, 12)
+        layout.setSpacing(6)
 
         self.brand_box = QWidget()
-        brand = QVBoxLayout(self.brand_box)
-        brand.setContentsMargins(8, 4, 8, 10)
-        brand.setSpacing(6)
+        self.brand_box.setObjectName("BrandBox")
+        self.brand_layout = QVBoxLayout(self.brand_box)
+        self.brand_layout.setContentsMargins(8, 10, 8, 14)
+        self.brand_layout.setSpacing(10)
+        self.brand_layout.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
 
         self.brand_logo = QLabel()
+        self.brand_logo.setObjectName("BrandLogo")
         self.brand_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.brand_logo.setPixmap(brand_logo_pixmap(218))
-        self.brand_logo.setMinimumHeight(205)
-        brand.addWidget(self.brand_logo)
+        self.brand_logo.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        self._apply_full_brand_logo()
+        self.brand_layout.addWidget(
+            self.brand_logo,
+            0,
+            Qt.AlignmentFlag.AlignHCenter,
+        )
 
-        pillars = QLabel(
+        self.pillars = QLabel(
             "<span style='color:#39C7FF;font-weight:700'>Pilar 1:</span> "
             "Identidad y Control de Acceso<br>"
             "<span style='color:#39C7FF;font-weight:700'>Pilar 2:</span> "
             "Arquitectura y Configuración"
         )
-        pillars.setObjectName("Muted")
-        pillars.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pillars.setWordWrap(True)
-        brand.addWidget(pillars)
+        self.pillars.setObjectName("BrandPillars")
+        self.pillars.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.pillars.setWordWrap(True)
+        self.pillars.setContentsMargins(4, 4, 4, 0)
+        self.brand_layout.addWidget(self.pillars)
+
+        self.brand_divider = QFrame()
+        self.brand_divider.setObjectName("BrandDivider")
+        self.brand_divider.setFixedHeight(1)
+        self.brand_layout.addWidget(self.brand_divider)
 
         layout.addWidget(self.brand_box)
 
@@ -146,13 +164,40 @@ class Sidebar(QFrame):
             self.ai_status.setText("○ IA no configurada")
             self.ai_status.setStyleSheet(f"color:{COLORS['muted']};")
 
+    def _apply_full_brand_logo(self) -> None:
+        pixmap = brand_logo_pixmap(190)
+        if pixmap.isNull():
+            pixmap = brand_icon().pixmap(86, 86)
+        self.brand_logo.setPixmap(pixmap)
+        self.brand_logo.setFixedSize(pixmap.size())
+
+    def _apply_compact_brand_logo(self) -> None:
+        pixmap = brand_icon().pixmap(42, 42)
+        self.brand_logo.setPixmap(pixmap)
+        self.brand_logo.setFixedSize(52, 52)
+
     def set_compact(self, compact: bool) -> None:
         if compact == self._compact:
             return
+
         self._compact = compact
-        self.setFixedWidth(72 if compact else 278)
-        self.brand_box.setVisible(not compact)
+        self.setFixedWidth(76 if compact else 292)
+
+        if compact:
+            self.brand_layout.setContentsMargins(0, 8, 0, 8)
+            self.brand_layout.setSpacing(0)
+            self._apply_compact_brand_logo()
+            self.pillars.setVisible(False)
+            self.brand_divider.setVisible(False)
+        else:
+            self.brand_layout.setContentsMargins(8, 10, 8, 14)
+            self.brand_layout.setSpacing(10)
+            self._apply_full_brand_logo()
+            self.pillars.setVisible(True)
+            self.brand_divider.setVisible(True)
+
         self.footer.setVisible(not compact)
+
         for button in self.buttons.values():
             button.set_compact(compact)
 
