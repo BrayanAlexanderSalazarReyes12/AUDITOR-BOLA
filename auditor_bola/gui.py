@@ -601,6 +601,17 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
             return None
         return self.result_rows.get(selected[0])
 
+    def _selected_selector(self) -> dict | None:
+        row = self._selected_row_data()
+        if not row:
+            return None
+        return {
+            "cuenta": row.get("cuenta"),
+            "metodo": row.get("metodo"),
+            "ruta": row.get("ruta"),
+            "tipo_control": row.get("tipo_control"),
+        }
+
     def _selected_control(self) -> str | None:
         values = self._selected_values()
         return values[1] if values else None
@@ -992,12 +1003,15 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         if not control or not self.cfg:
             return
 
+        selector = self._selected_selector()
+
         def task():
             return verificar_control(
                 self.cfg,
                 control,
                 self.target_root,
                 evidence_base=self.evidence_base,
+                selector=selector,
             )
 
         def done(payload):
@@ -1029,6 +1043,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
 
         receta = self.cfg.correccion_por_control(control)
         archivo = receta.archivo if receta else "archivo configurado"
+        selector = self._selected_selector()
         if not messagebox.askyesno(
             "Aplicar corrección",
             (
@@ -1050,6 +1065,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
                 self.target_root,
                 evidence_base=self.evidence_base,
                 reiniciar=reiniciar,
+                selector=selector,
             )
 
         def done(manifest):
