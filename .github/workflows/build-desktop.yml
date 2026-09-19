@@ -168,7 +168,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.4' \
+            'Version: 1.1.5' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -197,13 +197,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-4:
-    name: Publicar Release v1.1.4
+  release-v1-1-5:
+    name: Publicar Release v1.1.5
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.4]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.5]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -221,11 +221,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.4
+          # Aegis Auditor v1.1.5
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.4
+          ## Novedades de v1.1.5
           - Corrige la versión de la aplicación analizada: ya no se asigna
             `1.0.0` por defecto.
           - Detecta la versión real desde package.json, pom.xml, Gradle,
@@ -240,6 +240,12 @@ jobs:
             nunca una versión inventada.
           - Se mantienen el escaneo de documentación, cuentas, endpoints,
             fullscreen, progreso, botón Salir y Apache License 2.0.
+          - El inicio de aplicaciones ahora selecciona la primera estrategia de runtime realmente ejecutable.
+          - Los perfiles Docker conservan alternativas nativas cuando Docker no está instalado o no está en PATH.
+          - El auditor evita ejecutar comandos de detención si el arranque falló.
+          - La URL base se asocia a la estrategia de runtime seleccionada.
+          - Los perfiles antiguos se enriquecen automáticamente con fallbacks de runtime detectados.
+          - Los diálogos secundarios y selectores de archivos Qt adoptan el diseño oscuro y maximizado de Aegis.
 
           ## Descargas
 
@@ -288,16 +294,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.4" >/dev/null 2>&1; then
-            gh release upload "v1.1.4" "${files[@]}" --clobber
-            gh release edit "v1.1.4" \
-              --title "Aegis Auditor v1.1.4" \
+          if gh release view "v1.1.5" >/dev/null 2>&1; then
+            gh release upload "v1.1.5" "${files[@]}" --clobber
+            gh release edit "v1.1.5" \
+              --title "Aegis Auditor v1.1.5" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.4" "${files[@]}" \
+            gh release create "v1.1.5" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.4" \
+              --title "Aegis Auditor v1.1.5" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
