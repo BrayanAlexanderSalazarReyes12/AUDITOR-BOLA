@@ -1069,6 +1069,18 @@ class ModernProfileWizard(ctk.CTkToplevel):
             }
         )
 
+        if messagebox.askyesno(
+            "Pilar 1 — Rol",
+            f"¿El rol '{role.strip()}' es privilegiado?",
+            parent=self,
+        ):
+            privileged_roles = self.profile.setdefault(
+                "roles_privilegiados",
+                [],
+            )
+            if role.strip() not in privileged_roles:
+                privileged_roles.append(role.strip())
+
         self._refresh_accounts()
         self._refresh_profile_preview()
 
