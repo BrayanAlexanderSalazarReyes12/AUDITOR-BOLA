@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import tkinter as tk
+
 import customtkinter as ctk
 
 from ..theme import COLORS, FONT_FAMILY
@@ -25,24 +27,52 @@ class Sidebar(ctk.CTkFrame):
         self.brand = ctk.CTkFrame(self, fg_color="transparent")
         self.brand.pack(fill="x", padx=18, pady=(18, 10))
 
-        shield = ctk.CTkFrame(
+        shield = tk.Canvas(
             self.brand,
-            width=86,
-            height=86,
-            corner_radius=24,
-            fg_color="#0E4164",
-            border_width=1,
-            border_color=COLORS["border"],
+            width=92,
+            height=92,
+            background=COLORS["sidebar"],
+            highlightthickness=0,
+            bd=0,
         )
         shield.pack(anchor="center")
-        shield.pack_propagate(False)
-
-        ctk.CTkLabel(
-            shield,
-            text="A",
-            text_color="#FFFFFF",
-            font=(FONT_FAMILY, 38, "bold"),
-        ).pack(expand=True)
+        shield.create_polygon(
+            46, 4,
+            82, 20,
+            77, 61,
+            46, 87,
+            15, 61,
+            10, 20,
+            fill="#0C88D3",
+            outline=COLORS["cyan"],
+            width=2,
+        )
+        shield.create_polygon(
+            46, 14,
+            70, 25,
+            67, 55,
+            46, 75,
+            25, 55,
+            22, 25,
+            fill="#0B2031",
+            outline="",
+        )
+        shield.create_line(
+            30, 45,
+            41, 56,
+            63, 32,
+            fill="#FFFFFF",
+            width=6,
+            capstyle=tk.ROUND,
+            joinstyle=tk.ROUND,
+        )
+        shield.create_text(
+            68,
+            68,
+            text="AI",
+            fill=COLORS["cyan"],
+            font=(FONT_FAMILY, 10, "bold"),
+        )
 
         ctk.CTkLabel(
             self.brand,
