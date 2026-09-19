@@ -253,3 +253,36 @@ def test_error_de_arranque_incluye_salida_real_del_proceso(tmp_path):
 
     assert "código 1" in str(exc.value)
     assert "ERROR_DE_PRUEBA" in str(exc.value)
+
+
+def test_windows_cmd_no_preescapa_comillas_de_ruta(tmp_path):
+    manager = _manager(tmp_path, ["npm", "install", "--no-audit"])
+
+    def fake_which(name, path=None):
+        if name == "npm":
+            return r"C:\Program Files\nodejs\npm.CMD"
+        return None
+
+    with patch("auditor_bola.process_manager.os.name", "nt"), patch(
+        "auditor_bola.process_manager.shutil.which",
+        side_effect=fake_which,
+    ):
+        command = manager._resolver_comando(
+            tmp_path,
+            {
+                "PATH": r"C:\Program Files\nodejs",
+                "COMSPEC": r"C:\Windows\System32\cmd.exe",
+            },
+        )
+
+    assert command == [
+        r"C:\Windows\System32\cmd.exe",
+        "/d",
+        "/s",
+        "/c",
+        "call",
+        r"C:\Program Files\nodejs\npm.CMD",
+        "install",
+        "--no-audit",
+    ]
+    assert all('\\"' not in part for part in command)
