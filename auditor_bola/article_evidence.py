@@ -88,7 +88,7 @@ def export_article_package(session_dir: str | Path, destination_root: str | Path
         "# Paquete de evidencia para artículo",
         "",
         f"- Sesión fuente: {source.name}",
-        f"- Exportado: {datetime.now().isoformat(timespec=\"seconds\")}",
+        f"- Exportado: {datetime.now().isoformat(timespec='seconds')}",
         "- Backups de código: excluidos",
         "- JSON: redactado por nombres de campos sensibles",
         "",
