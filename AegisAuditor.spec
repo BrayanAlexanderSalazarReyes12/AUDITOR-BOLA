@@ -1,12 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import sys
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
 hiddenimports = collect_submodules("auditor_bola")
 
-datas = [
+datas = collect_data_files("customtkinter") + [
     ("assets/aegis-auditor.svg", "assets"),
     ("assets/aegis-auditor.png", "assets"),
     ("config/plantilla.json", "config"),
