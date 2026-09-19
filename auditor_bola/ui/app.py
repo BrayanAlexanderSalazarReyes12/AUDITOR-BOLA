@@ -1546,6 +1546,29 @@ class ModernAuditorGUI(AuditorGUI):
             ),
         )
 
+    def _refresh_ai_state(self):
+        super()._refresh_ai_state()
+
+        if not hasattr(self, "sidebar"):
+            return
+
+        provider = getattr(self, "ai_provider", None)
+        if provider is None:
+            self.sidebar.ai_label.configure(
+                text="IA: no configurada",
+                text_color=COLORS["muted"],
+            )
+        else:
+            model = getattr(provider, "model_name", None) or getattr(
+                provider,
+                "model_id",
+                "Gemma",
+            )
+            self.sidebar.ai_label.configure(
+                text=f"IA: conectada · {model}",
+                text_color=COLORS["success"],
+            )
+
     def _refresh_project_page(self):
         if not hasattr(self, "project_page"):
             return
