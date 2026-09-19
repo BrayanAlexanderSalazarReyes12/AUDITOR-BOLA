@@ -6,6 +6,7 @@ import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from .config import ChequeoPilar2, ConfigObjetivo
 from .transport import request_http
@@ -151,7 +152,9 @@ def _docker_non_root(
 
 
 def auditar_pilar2(
-    cfg: ConfigObjetivo, source_root: str | Path | None = None
+    cfg: ConfigObjetivo,
+    source_root: str | Path | None = None,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> list[ResultadoPilar2]:
     root = Path(source_root).resolve() if source_root else None
     resultados: list[ResultadoPilar2] = []
@@ -183,5 +186,10 @@ def auditar_pilar2(
                 ts=_ts(),
             )
         resultados.append(resultado)
+        if progress_callback:
+            progress_callback(
+                "Pilar 2 · "
+                f"{chequeo.nombre} · {resultado.estado}"
+            )
 
     return resultados
