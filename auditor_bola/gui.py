@@ -16,6 +16,7 @@ from tkinter import filedialog, messagebox, ttk
 import requests
 
 from .ai_gui import AIAssistantMixin
+from .article_evidence import export_article_package
 from .config import ConfigObjetivo, cargar_config
 from .corrective import correction_available
 from .cycle import (
@@ -214,6 +215,10 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
             label="Guardar reporte actual…",
             command=self._save_report,
         )
+        archivo.add_command(
+            label="Exportar evidencia para artículo…",
+            command=self._export_article_evidence,
+        )
         archivo.add_separator()
         archivo.add_command(label="Salir", command=self.destroy)
         menubar.add_cascade(label="Archivo", menu=archivo)
@@ -358,6 +363,44 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self._refresh_state()
         self._ai_sync_selected_control()
         self.notebook.select(self.tab_dashboard)
+
+    def _export_article_evidence(self):
+        session = filedialog.askdirectory(
+            parent=self,
+            title="Selecciona una sesión de evidencias",
+            initialdir=str(self.evidence_base),
+        )
+        if not session:
+            return
+
+        destination = filedialog.askdirectory(
+            parent=self,
+            title="Selecciona la carpeta donde crear el paquete del artículo",
+            initialdir=str(Path.cwd() / "docs" / "articulo"),
+        )
+        if not destination:
+            return
+
+        try:
+            exported = export_article_package(session, destination)
+        except Exception as exc:
+            messagebox.showerror(
+                "No se pudo exportar la evidencia",
+                str(exc),
+                parent=self,
+            )
+            return
+
+        self._log(f"Evidencia para artículo exportada en: {exported}")
+        messagebox.showinfo(
+            "Paquete para artículo creado",
+            (
+                "Se creó una copia redactada para documentación.\n\n"
+                f"{exported}\n\n"
+                "La evidencia original no fue modificada."
+            ),
+            parent=self,
+        )
 
     def _show_about(self):
         messagebox.showinfo(
