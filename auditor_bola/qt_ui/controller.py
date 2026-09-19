@@ -209,22 +209,64 @@ class AuditorController(QObject):
     # ------------------------------------------------------------------
     # Runtime
     # ------------------------------------------------------------------
+    def _apply_runtime_status(self, status: dict) -> None:
+        if not self.cfg:
+            return
+
+        runtime_url = str(status.get("base_url") or "").rstrip("/")
+        if runtime_url:
+            self.cfg.base_url = runtime_url
+
+        name = status.get("nombre") or "runtime detectado"
+        origin = status.get("origen") or "-"
+        command = status.get("comando_inicio") or []
+        command_text = " ".join(str(item) for item in command)
+
+        self.log_message.emit(
+            f"Runtime seleccionado: {name} · origen={origin}"
+            + (
+                f" · comando={command_text}"
+                if command_text
+                else ""
+            )
+        )
+
+        discarded = status.get("alternativas_descartadas") or []
+        for item in discarded:
+            self.log_message.emit(
+                f"Runtime descartado: {item}"
+            )
+
+        if runtime_url:
+            self.log_message.emit(
+                f"Base URL activa: {runtime_url}"
+            )
+
     def start_target(self) -> None:
         def work():
             process = self._ensure_process()
-            process.start()
-            return True
+            return process.start()
+
+        def success(status):
+            self._apply_runtime_status(status or {})
+            self.log_message.emit("Objetivo iniciado.")
 
         self._run_async(
             "Iniciando aplicación objetivo…",
             work,
-            lambda _result: self.log_message.emit("Objetivo iniciado."),
+            success,
         )
 
     def stop_target(self) -> None:
+        if not self.proceso or not self.proceso.has_started():
+            self.log_message.emit(
+                "No hay una aplicación iniciada por Aegis para detener."
+            )
+            self.state_changed.emit()
+            return
+
         def work():
-            if self.proceso:
-                self.proceso.stop()
+            self.proceso.stop()
             return True
 
         self._run_async(
@@ -236,13 +278,16 @@ class AuditorController(QObject):
     def restart_target(self) -> None:
         def work():
             process = self._ensure_process()
-            process.restart()
-            return True
+            return process.restart()
+
+        def success(status):
+            self._apply_runtime_status(status or {})
+            self.log_message.emit("Objetivo reiniciado.")
 
         self._run_async(
             "Reiniciando aplicación objetivo…",
             work,
-            lambda _result: self.log_message.emit("Objetivo reiniciado."),
+            success,
         )
 
     # ------------------------------------------------------------------
