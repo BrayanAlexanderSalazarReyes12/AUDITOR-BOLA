@@ -24,6 +24,7 @@ from .source_locator import resolver_archivo_fuente
 from .remediation_knowledge import (
     KnowledgeCandidate,
     buscar_conocimiento,
+    crear_conocimiento_respaldo_verificado,
     guardar_conocimiento,
     knowledge_root,
     registrar_uso_conocimiento,
@@ -1849,7 +1850,50 @@ class AIAssistantMixin:
                                 encoding="utf-8",
                             )
                     except Exception as exc:
-                        result["conocimiento_error"] = str(exc)
+                        # La corrección ya fue demostrada dinámicamente. Un
+                        # fallo de la segunda llamada a Gemma no debe hacer que
+                        # el Auditor pierda ese aprendizaje. Guardamos una
+                        # medicina semántica mínima y verificada como respaldo.
+                        try:
+                            fallback = crear_conocimiento_respaldo_verificado(
+                                control_id=selected_control,
+                                descripcion=descripcion,
+                                tipo_control=row.get("tipo_control"),
+                                extension=extension,
+                            )
+                            fallback_path = guardar_conocimiento(
+                                fallback,
+                                caso_exitoso=caso,
+                            )
+                            result["conocimiento_aprendido"] = str(
+                                fallback_path
+                            )
+                            result["conocimiento_fallback"] = str(exc)
+
+                            if self.ai_session_dir:
+                                (
+                                    self.ai_session_dir
+                                    / "conocimiento_aprendido.json"
+                                ).write_text(
+                                    json.dumps(
+                                        {
+                                            "path": str(fallback_path),
+                                            "knowledge": asdict(fallback),
+                                            "modo": "fallback_verificado",
+                                            "motivo_fallback": str(exc),
+                                        },
+                                        ensure_ascii=False,
+                                        indent=2,
+                                    )
+                                    + "\n",
+                                    encoding="utf-8",
+                                )
+                        except Exception as fallback_exc:
+                            result["conocimiento_error"] = (
+                                "Falló la extracción semántica con IA: "
+                                f"{exc}. También falló el guardado de respaldo: "
+                                f"{fallback_exc}"
+                            )
             elif active_knowledge is not None:
                 try:
                     registrar_uso_conocimiento(
@@ -1867,6 +1911,7 @@ class AIAssistantMixin:
             knowledge_path = result.get("conocimiento_aprendido")
             reused_path = result.get("conocimiento_reutilizado")
             knowledge_error = result.get("conocimiento_error")
+            knowledge_fallback = result.get("conocimiento_fallback")
 
             self._log(
                 f"Receta Gemma {proposal.id} aplicada a {control}: {estado}"
@@ -1886,10 +1931,16 @@ class AIAssistantMixin:
                     "Medicina conocida validada también en este sistema: "
                     f"{reused_path}"
                 )
+            if knowledge_fallback:
+                self._log(
+                    "La corrección funcionó y se guardó una medicina "
+                    "verificada de respaldo porque la extracción enriquecida "
+                    f"con IA falló: {knowledge_fallback}"
+                )
             if knowledge_error:
                 self._log(
                     "La corrección funcionó, pero no se pudo "
-                    f"generalizar la medicina: {knowledge_error}"
+                    f"guardar ninguna medicina: {knowledge_error}"
                 )
 
             mensaje = f"{control}: {estado}"
@@ -1898,6 +1949,12 @@ class AIAssistantMixin:
                     "\n\nSe aprendió una medicina reutilizable en:\n"
                     f"{knowledge_path}"
                 )
+                if knowledge_fallback:
+                    mensaje += (
+                        "\n\nLa medicina se guardó en modo de respaldo "
+                        "verificado porque la extracción semántica enriquecida "
+                        "con IA no pudo completarse."
+                    )
             elif reused_path:
                 mensaje += (
                     "\n\nLa medicina conocida funcionó también en este "
