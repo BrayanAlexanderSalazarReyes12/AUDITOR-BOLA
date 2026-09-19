@@ -1,1 +1,3 @@
-from .app import ModernAuditorGUI\n
+from .app import ModernAuditorGUI
+
+__all__ = ["ModernAuditorGUI"]
