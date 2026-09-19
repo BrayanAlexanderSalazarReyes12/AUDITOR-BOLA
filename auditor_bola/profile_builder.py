@@ -1938,6 +1938,464 @@ def _extract_accounts(
     return ordered, evidence
 
 
+def _normalize_version_candidate(value: Any) -> str | None:
+    if value is None:
+        return None
+    version = str(value).strip().strip("'").strip('"').strip()
+    version = version.strip(chr(96)).strip()
+    if not version or len(version) > 96:
+        return None
+    if version.lower() in {
+        "unknown", "desconocida", "desconocido", "none",
+        "null", "undefined", "snapshot", "latest",
+    }:
+        return None
+    if "$" "{" in version or "#{" in version or "{{" in version:
+        return None
+    if version.startswith("$") or not re.search(r"\d", version):
+        return None
+    if len(version.split()) > 3:
+        return None
+    if re.match(r"^[vV]\d", version):
+        version = version[1:]
+    return version
+
+
+def _xml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _direct_xml_child(
+    root: ET.Element,
+    name: str,
+) -> ET.Element | None:
+    for child in list(root):
+        if _xml_local_name(child.tag).lower() == name.lower():
+            return child
+    return None
+
+
+def _xml_child_text(
+    root: ET.Element,
+    name: str,
+) -> str | None:
+    child = _direct_xml_child(root, name)
+    if child is None or child.text is None:
+        return None
+    return child.text.strip()
+
+
+def _resolve_maven_property(
+    pom_root: ET.Element,
+    value: str | None,
+) -> str | None:
+    if not value:
+        return value
+    match = re.fullmatch(
+        r"\$" + r"\{([^}]+)\}",
+        value.strip(),
+    )
+    if not match:
+        return value
+    key = match.group(1)
+    properties = _direct_xml_child(pom_root, "properties")
+    if properties is None:
+        return None
+    for child in list(properties):
+        if _xml_local_name(child.tag) == key and child.text:
+            return child.text.strip()
+    return None
+
+
+def _section_version(
+    text: str,
+    sections: set[str],
+) -> str | None:
+    current = ""
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(("#", ";")):
+            continue
+        section_match = re.match(r"^\[([^\]]+)\]\s*$", line)
+        if section_match:
+            current = section_match.group(1).strip().lower()
+            continue
+        if current not in sections:
+            continue
+        match = re.match(
+            r"^version\s*[=:]\s*['\"]?([^'\"#;]+)",
+            line,
+            re.I,
+        )
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def _detect_project_version(
+    root: Path,
+    descriptor: dict[str, Any] | None,
+) -> tuple[
+    str | None,
+    str | None,
+    str | None,
+    list[dict[str, Any]],
+]:
+    candidates: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(
+        value: Any,
+        source: str,
+        detector: str,
+        score: int,
+        confidence: str,
+    ) -> None:
+        version = _normalize_version_candidate(value)
+        if not version:
+            return
+        key = (version, source)
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append(
+            {
+                "version": version,
+                "archivo": source,
+                "tipo_fuente": _source_kind(source),
+                "detector": detector,
+                "confianza": confidence,
+                "prioridad": score,
+            }
+        )
+
+    if descriptor:
+        for key in (
+            "version",
+            "app_version",
+            "application_version",
+            "version_objetivo",
+        ):
+            if descriptor.get(key):
+                add(
+                    descriptor.get(key),
+                    "auditor-package.json",
+                    "descriptor:" + key,
+                    120,
+                    "alta",
+                )
+                break
+
+    for name in ("VERSION", "VERSION.txt", "version.txt", ".version"):
+        path = root / name
+        if path.is_file():
+            text = _read_text(path, limit=20_000)
+            first_line = next(
+                (line.strip() for line in text.splitlines() if line.strip()),
+                "",
+            )
+            add(first_line, name, "version-file", 115, "alta")
+
+    for name, detector_name in (
+        ("package.json", "npm"),
+        ("composer.json", "composer"),
+    ):
+        path = root / name
+        if path.is_file():
+            try:
+                payload = json.loads(_read_text(path))
+            except json.JSONDecodeError:
+                payload = {}
+            if isinstance(payload, dict):
+                add(
+                    payload.get("version"),
+                    name,
+                    detector_name,
+                    110,
+                    "alta",
+                )
+
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        add(
+            _section_version(
+                _read_text(pyproject),
+                {"project", "tool.poetry"},
+            ),
+            "pyproject.toml",
+            "python-project",
+            110,
+            "alta",
+        )
+
+    setup_cfg = root / "setup.cfg"
+    if setup_cfg.is_file():
+        add(
+            _section_version(_read_text(setup_cfg), {"metadata"}),
+            "setup.cfg",
+            "python-setup-cfg",
+            105,
+            "alta",
+        )
+
+    cargo = root / "Cargo.toml"
+    if cargo.is_file():
+        add(
+            _section_version(_read_text(cargo), {"package"}),
+            "Cargo.toml",
+            "cargo",
+            110,
+            "alta",
+        )
+
+    pubspec = root / "pubspec.yaml"
+    if pubspec.is_file():
+        match = re.search(
+            r"(?m)^\s*version\s*:\s*['\"]?([^#'\"]+)",
+            _read_text(pubspec),
+        )
+        add(
+            match.group(1).strip() if match else None,
+            "pubspec.yaml",
+            "pubspec",
+            110,
+            "alta",
+        )
+
+    pom = root / "pom.xml"
+    if pom.is_file():
+        try:
+            pom_root = ET.fromstring(_read_text(pom))
+        except ET.ParseError:
+            pom_root = None
+        if pom_root is not None:
+            project_version = _resolve_maven_property(
+                pom_root,
+                _xml_child_text(pom_root, "version"),
+            )
+            add(
+                project_version,
+                "pom.xml",
+                "maven-project-version",
+                112,
+                "alta",
+            )
+            if not project_version:
+                parent = _direct_xml_child(pom_root, "parent")
+                if parent is not None:
+                    add(
+                        _xml_child_text(parent, "version"),
+                        "pom.xml",
+                        "maven-parent-version",
+                        82,
+                        "media",
+                    )
+
+    for gradle_name in ("build.gradle", "build.gradle.kts"):
+        path = root / gradle_name
+        if path.is_file():
+            match = re.search(
+                r"(?m)^\s*version\s*(?:=|\s)\s*['\"]([^'\"]+)['\"]",
+                _read_text(path),
+            )
+            add(
+                match.group(1) if match else None,
+                gradle_name,
+                "gradle",
+                108,
+                "alta",
+            )
+
+    gradle_props = root / "gradle.properties"
+    if gradle_props.is_file():
+        match = re.search(
+            r"(?im)^\s*(?:version|appVersion|applicationVersion)"
+            r"\s*=\s*(.+?)\s*$",
+            _read_text(gradle_props),
+        )
+        add(
+            match.group(1) if match else None,
+            "gradle.properties",
+            "gradle-properties",
+            106,
+            "alta",
+        )
+
+    setup_py = root / "setup.py"
+    if setup_py.is_file():
+        match = re.search(
+            r"\bversion\s*=\s*['\"]([^'\"]+)['\"]",
+            _read_text(setup_py),
+            re.I,
+        )
+        add(
+            match.group(1) if match else None,
+            "setup.py",
+            "python-setup",
+            100,
+            "media",
+        )
+
+    csproj_paths = sorted(root.glob("*.csproj"))
+    if not csproj_paths:
+        csproj_paths = sorted(root.glob("*/*.csproj"))[:10]
+    for csproj in csproj_paths:
+        try:
+            xml_root = ET.fromstring(_read_text(csproj))
+        except ET.ParseError:
+            continue
+        value = None
+        detector = "dotnet"
+        for tag_name in (
+            "Version",
+            "VersionPrefix",
+            "AssemblyVersion",
+            "FileVersion",
+        ):
+            for element in xml_root.iter():
+                if (
+                    _xml_local_name(element.tag) == tag_name
+                    and element.text
+                ):
+                    value = element.text.strip()
+                    detector = "dotnet:" + tag_name
+                    break
+            if value:
+                break
+        add(
+            value,
+            csproj.relative_to(root).as_posix(),
+            detector,
+            108,
+            "alta",
+        )
+
+    mix = root / "mix.exs"
+    if mix.is_file():
+        match = re.search(
+            r"\bversion\s*:\s*['\"]([^'\"]+)['\"]",
+            _read_text(mix),
+        )
+        add(
+            match.group(1) if match else None,
+            "mix.exs",
+            "mix",
+            105,
+            "alta",
+        )
+
+    version_php = root / "version.php"
+    if version_php.is_file():
+        text = _read_text(version_php)
+        release_match = re.search(
+            r"\$(?:release|plugin->release)\s*=\s*['\"]([^'\"]+)['\"]",
+            text,
+            re.I,
+        )
+        add(
+            release_match.group(1) if release_match else None,
+            "version.php",
+            "php-release",
+            108,
+            "alta",
+        )
+        if not release_match:
+            numeric_match = re.search(
+                r"\$(?:version|plugin->version)\s*=\s*"
+                r"['\"]?([0-9][0-9A-Za-z.+_-]*)",
+                text,
+                re.I,
+            )
+            add(
+                numeric_match.group(1) if numeric_match else None,
+                "version.php",
+                "php-version",
+                88,
+                "media",
+            )
+
+    manifest_candidates = (
+        root / "META-INF" / "MANIFEST.MF",
+        root / "src" / "main" / "resources" / "META-INF" / "MANIFEST.MF",
+    )
+    for manifest in manifest_candidates:
+        if not manifest.is_file():
+            continue
+        match = re.search(
+            r"(?im)^(?:Implementation-Version|Bundle-Version|Specification-Version)"
+            r"\s*:\s*(.+?)\s*$",
+            _read_text(manifest),
+        )
+        add(
+            match.group(1) if match else None,
+            manifest.relative_to(root).as_posix(),
+            "java-manifest",
+            100,
+            "alta",
+        )
+
+    for path, relative in _iter_source_files(root, max_files=None):
+        name = path.name.lower()
+        if not (
+            path.suffix.lower() in DOCUMENT_EXTENSIONS
+            or name.startswith(("readme", "manual", "guide", "guia"))
+            or "changelog" in name
+            or "release" in name
+        ):
+            continue
+        text = _read_text(path, limit=MAX_TEXT_SCAN_BYTES)
+        if not text:
+            continue
+        patterns = (
+            (
+                r"(?im)^\s*(?:[-*#>]\s*)?"
+                r"(?:versi[oó]n\s+(?:actual|de\s+la\s+aplicaci[oó]n|del\s+sistema)"
+                r"|current\s+version|application\s+version|app\s+version)"
+                r"\s*[:= -]\s*([vV]?\d[0-9A-Za-z.+_-]*)",
+                78,
+                "media",
+                "documentation-explicit-version",
+            ),
+            (
+                r"(?im)^\s*(?:[-*#>]\s*)?"
+                r"(?:versi[oó]n|version)"
+                r"\s*[:= -]\s*([vV]?\d[0-9A-Za-z.+_-]*)",
+                58,
+                "baja",
+                "documentation-version",
+            ),
+        )
+        for pattern, score, confidence, detector in patterns:
+            match = re.search(pattern, text)
+            if match:
+                add(
+                    match.group(1),
+                    relative.as_posix(),
+                    detector,
+                    score,
+                    confidence,
+                )
+                break
+
+    candidates.sort(
+        key=lambda item: (
+            -int(item["prioridad"]),
+            len(Path(item["archivo"]).parts),
+            item["archivo"].lower(),
+        )
+    )
+    if not candidates:
+        return None, None, None, []
+
+    best = candidates[0]
+    return (
+        best["version"],
+        best["archivo"],
+        best["confianza"],
+        candidates,
+    )
+
+
 def detect_project(root: str | Path) -> ProjectDetection:
     root_path = Path(root).expanduser().resolve()
     if not root_path.exists() or not root_path.is_dir():
