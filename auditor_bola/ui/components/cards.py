@@ -22,27 +22,27 @@ class MetricCard(ctk.CTkFrame):
             self,
             text=title.upper(),
             text_color=COLORS["muted"],
-            font=(FONT_FAMILY, 11),
+            font=(FONT_FAMILY, 9),
             anchor="w",
-        ).grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 3))
+        ).grid(row=0, column=0, sticky="ew", padx=13, pady=(11, 2))
 
         self.value_label = ctk.CTkLabel(
             self,
             text=value,
             text_color=COLORS["text"],
-            font=(FONT_FAMILY, 20, "bold"),
+            font=(FONT_FAMILY, 16, "bold"),
             anchor="w",
         )
-        self.value_label.grid(row=1, column=0, sticky="ew", padx=16)
+        self.value_label.grid(row=1, column=0, sticky="ew", padx=13)
 
         self.subtitle_label = ctk.CTkLabel(
             self,
             text=subtitle,
             text_color=COLORS["muted_2"],
-            font=(FONT_FAMILY, 10),
+            font=(FONT_FAMILY, 9),
             anchor="w",
         )
-        self.subtitle_label.grid(row=2, column=0, sticky="ew", padx=16, pady=(2, 14))
+        self.subtitle_label.grid(row=2, column=0, sticky="ew", padx=13, pady=(1, 10))
 
     def set(self, value: str, subtitle: str | None = None):
         self.value_label.configure(text=value)
