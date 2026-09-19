@@ -714,3 +714,28 @@ QToolTip {
 
 def color(name: str) -> str:
     return COLORS[name]
+
+
+QMessageBox {
+    background: #081824;
+}
+QMessageBox QLabel {
+    background: transparent;
+    color: #DDEBF3;
+    font-size: 10px;
+    min-width: 360px;
+}
+QMessageBox QPushButton {
+    background: #0F3A51;
+    border: 1px solid #1A668C;
+    color: #EAF6FC;
+    border-radius: 8px;
+    min-width: 84px;
+    min-height: 34px;
+    padding: 0 14px;
+    font-weight: 700;
+}
+QMessageBox QPushButton:hover {
+    background: #14506F;
+    border-color: #39C7FF;
+}
