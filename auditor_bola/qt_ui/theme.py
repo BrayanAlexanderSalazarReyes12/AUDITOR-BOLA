@@ -38,7 +38,11 @@ QScrollArea > QWidget > QWidget {
     background: transparent;
 }
 QFrame#Sidebar {
-    background: #071925;
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 #081C2A,
+        stop:1 #06131E
+    );
     border-right: 1px solid #14384F;
 }
 QFrame#NavigationBox {
@@ -79,7 +83,15 @@ QFrame#BrandDivider {
     background: #14384F;
     border: none;
 }
-QFrame#Topbar,
+QFrame#Topbar {
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:1,
+        stop:0 #0D273A,
+        stop:1 #091B29
+    );
+    border: 1px solid #1A5274;
+    border-radius: 12px;
+}
 QFrame#Card,
 QFrame#Panel,
 QFrame#FooterBar {
@@ -193,13 +205,21 @@ QPushButton:pressed {
     background: #0E2B40;
 }
 QPushButton#PrimaryButton {
-    background: #169BFF;
-    border-color: #169BFF;
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 #18A6FF,
+        stop:1 #1187DF
+    );
+    border: 1px solid #27B4FF;
     color: #FFFFFF;
     font-weight: 700;
 }
 QPushButton#PrimaryButton:hover {
-    background: #0E84DC;
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 #29B4FF,
+        stop:1 #1594EB
+    );
 }
 QPushButton#SuccessButton {
     background: #31D3A2;
@@ -227,7 +247,11 @@ QPushButton#NavButton:hover {
     color: #FFFFFF;
 }
 QPushButton#NavButton[active="true"] {
-    background: #114E79;
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 #145B8C,
+        stop:1 #103B59
+    );
     color: #FFFFFF;
     font-weight: 700;
     border-left: 3px solid #38C8FF;
