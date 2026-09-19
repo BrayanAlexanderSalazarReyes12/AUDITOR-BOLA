@@ -234,3 +234,141 @@ def test_detecta_cuenta_en_env_y_ignora_dependencias(tmp_path):
 
     assert "localuser" in usernames
     assert "dependency-user" not in usernames
+
+
+def test_endpoint_inventory_no_se_limita_a_300(tmp_path):
+    routes = tmp_path / "routes.js"
+    routes.write_text(
+        "\n".join(
+            f"app.get('/api/items/{index}', handler);"
+            for index in range(350)
+        ),
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+    profile = build_profile_draft(detection)
+
+    assert len(detection.routes) >= 350
+    assert len(profile["endpoints_detectados"]) >= 350
+    assert (
+        profile["metadata_detectada"]["total_endpoints_detectados"]
+        >= 350
+    )
+
+
+def test_spring_combina_prefijo_de_controlador(tmp_path):
+    source = tmp_path / "src" / "UserController.java"
+    source.parent.mkdir()
+    source.write_text(
+        '@RestController\n'
+        '@RequestMapping("/api/users")\n'
+        'public class UserController {\n'
+        '  @GetMapping("/{id}")\n'
+        '  public Object get() { return null; }\n'
+        '  @PostMapping\n'
+        '  public Object create() { return null; }\n'
+        '}\n',
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+    routes = {(r.method, r.path) for r in detection.routes}
+
+    assert ("GET", "/api/users/{id}") in routes
+    assert ("POST", "/api/users") in routes
+
+
+def test_servlet_annotation_y_web_xml_entran_al_inventario(tmp_path):
+    servlet = tmp_path / "src" / "ApiServlet.java"
+    servlet.parent.mkdir()
+    servlet.write_text(
+        '@WebServlet(urlPatterns={"/api/a", "/api/b"})\n'
+        'public class ApiServlet {}\n',
+        encoding="utf-8",
+    )
+    webxml = tmp_path / "src" / "main" / "webapp" / "WEB-INF" / "web.xml"
+    webxml.parent.mkdir(parents=True)
+    webxml.write_text(
+        '<web-app><servlet-mapping>'
+        '<servlet-name>Legacy</servlet-name>'
+        '<url-pattern>/legacy/*</url-pattern>'
+        '</servlet-mapping></web-app>',
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    paths = {item["ruta"] for item in profile["endpoints_detectados"]}
+
+    assert "/api/a" in paths
+    assert "/api/b" in paths
+    assert "/legacy/*" in paths
+
+
+def test_aspnet_y_nextjs_se_detectan(tmp_path):
+    controller = tmp_path / "Controllers" / "OrdersController.cs"
+    controller.parent.mkdir()
+    controller.write_text(
+        '[Route("api/[controller]")]\n'
+        'public class OrdersController {\n'
+        ' [HttpGet("{id}")] public object Get() => null;\n'
+        '}\n',
+        encoding="utf-8",
+    )
+
+    route = tmp_path / "app" / "api" / "health" / "route.ts"
+    route.parent.mkdir(parents=True)
+    route.write_text(
+        'export async function GET() {}\n'
+        'export async function POST() {}\n',
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+    routes = {(r.method, r.path) for r in detection.routes}
+
+    assert ("GET", "/api/Orders/{id}") in routes
+    assert ("GET", "/api/health") in routes
+    assert ("POST", "/api/health") in routes
+
+
+def test_referencias_fetch_y_formulario_apoyan_descubrimiento(tmp_path):
+    page = tmp_path / "web" / "page.jsp"
+    page.parent.mkdir()
+    page.write_text(
+        '<form method="post" action="/auth/login"></form>\n'
+        '<script>fetch("/api/profile", {method: "PATCH"});</script>\n',
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    routes = {
+        (item["metodo"], item["ruta"])
+        for item in profile["endpoints_detectados"]
+    }
+
+    assert ("POST", "/auth/login") in routes
+    assert ("PATCH", "/api/profile") in routes
+
+
+def test_openapi_yaml_se_incorpora_al_json(tmp_path):
+    spec = tmp_path / "openapi.yaml"
+    spec.write_text(
+        'openapi: 3.0.0\n'
+        'paths:\n'
+        '  /api/orders:\n'
+        '    get:\n'
+        '      responses: {}\n'
+        '    post:\n'
+        '      responses: {}\n',
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    routes = {
+        (item["metodo"], item["ruta"])
+        for item in profile["endpoints_detectados"]
+    }
+
+    assert ("GET", "/api/orders") in routes
+    assert ("POST", "/api/orders") in routes
