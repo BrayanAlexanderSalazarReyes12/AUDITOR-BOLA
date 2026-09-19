@@ -193,3 +193,97 @@ def test_propuesta_se_convierte_a_receta_del_motor():
 
 def test_infiere_archivo_desde_receta_existente():
     assert ai.inferir_archivo_control(_cfg(), "P1-X") == "src/App.java"
+
+
+
+def test_contexto_ia_incluye_fila_objetivo_matriz_y_feedback_redactado(monkeypatch):
+    response_data = {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps(_payload_propuestas()),
+                }
+            }
+        ]
+    }
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return response_data
+
+    captured = {}
+
+    def fake_post(url, headers, json, timeout):
+        captured["json"] = json
+        return FakeResponse()
+
+    monkeypatch.setattr(ai.requests, "post", fake_post)
+
+    provider = ai.AIProviderConfig(
+        provider_id="llmlab",
+        provider_name="Laboratorio UTB",
+        model_id="lab-coder",
+        model_name="Gemma Lab",
+        base_url="https://lab.example/llm/v1",
+        api_key="clave-prueba",
+        config_path="/tmp/opencode.json",
+    )
+
+    _, context, _ = ai.generar_tres_recetas(
+        _cfg(),
+        control_id="P1-BOLA",
+        descripcion="BOLA PATCH /reservas/{id}",
+        detalle="HTTP 200 · esperado=False real=True",
+        source_relative="src/App.java",
+        source_text="return true;\n",
+        provider=provider,
+        metadata_hallazgo={
+            "cuenta": "lucia",
+            "metodo": "PATCH",
+            "ruta": "/reservas/{id}",
+            "estado": "HALLAZGO",
+        },
+        matriz_pruebas=[
+            {
+                "cuenta": "carlos",
+                "metodo": "PATCH",
+                "ruta": "/reservas/{id}",
+                "estado": "SIN_HALLAZGO",
+            },
+            {
+                "cuenta": "lucia",
+                "metodo": "PATCH",
+                "ruta": "/reservas/{id}",
+                "estado": "HALLAZGO",
+            },
+        ],
+        intento_anterior={
+            "resultado": {"estado_final": "NO_CORREGIDO"},
+            "api_key": "NO-DEBE-SALIR",
+            "correccion_aplicada": {
+                "diff": 'String token = "secreto";'
+            },
+        },
+    )
+
+    assert context["hallazgo_objetivo"]["cuenta"] == "lucia"
+    assert len(context["matriz_de_pruebas_del_mismo_control"]) == 2
+    assert (
+        context["intento_anterior_fallido"]["resultado"]["estado_final"]
+        == "NO_CORREGIDO"
+    )
+    assert (
+        context["intento_anterior_fallido"]["api_key"]
+        == "<REDACTED>"
+    )
+    serialized = json.dumps(context, ensure_ascii=False)
+    assert "NO-DEBE-SALIR" not in serialized
+    assert "secreto" not in serialized
+
+    system_prompt = captured["json"]["messages"][0]["content"]
+    assert "NO repitas la misma solución" in system_prompt
+    assert "SIN_HALLAZGO" in system_prompt
