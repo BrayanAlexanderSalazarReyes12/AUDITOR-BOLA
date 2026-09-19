@@ -507,11 +507,6 @@ QComboBox#AccountsAuthCombo::drop-down {
     border-top-right-radius: 8px;
     border-bottom-right-radius: 8px;
 }
-QComboBox#AccountsAuthCombo::down-arrow {
-    image: none;
-    width: 0;
-    height: 0;
-}
 QListView#AccountsComboPopup,
 QComboBox#AccountsAuthCombo QAbstractItemView {
     background: #081824;
