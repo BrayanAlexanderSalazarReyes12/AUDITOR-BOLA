@@ -678,13 +678,22 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         )
 
         findings = 0
+        p1_findings = 0
+        p2_findings = 0
         if self.resultado:
-            findings = sum(
-                1
-                for row in filas_gui(self.resultado)
-                if row.get("estado") == "HALLAZGO"
-            )
-        self.dashboard_findings_value.configure(text=str(findings))
+            for row in filas_gui(self.resultado):
+                if row.get("estado") != "HALLAZGO":
+                    continue
+                findings += 1
+                pillar = str(row.get("pilar") or "").upper()
+                if pillar in {"1", "P1", "PILAR 1"}:
+                    p1_findings += 1
+                elif pillar in {"2", "P2", "PILAR 2"}:
+                    p2_findings += 1
+
+        self.dashboard_findings_value.configure(
+            text=f"{findings} · P1 {p1_findings} / P2 {p2_findings}"
+        )
 
     def _build_results_tab(self):
         columns = (
