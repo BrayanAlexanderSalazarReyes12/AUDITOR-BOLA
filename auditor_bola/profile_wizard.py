@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import tkinter as tk
 from pathlib import Path
@@ -10,6 +11,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Callable
 
 from .app_paths import default_config_dir, resource_path
+from .responsive import calculate_wizard_geometry
 from .profile_builder import (
     ProjectDetection,
     build_profile_draft,
@@ -34,14 +36,30 @@ class ProfileWizard(tk.Toplevel):
         super().__init__(master)
         self.title("Aegis Auditor — Incorporar aplicación")
         self.configure(background="#06111d")
-        icon_path = resource_path("assets", "aegis-auditor.ico")
-        if icon_path.exists():
+
+        self._icon_image = None
+        png_icon = resource_path("assets", "aegis-auditor.png")
+        ico_icon = resource_path("assets", "aegis-auditor.ico")
+        if png_icon.exists():
             try:
-                self.iconbitmap(default=str(icon_path))
+                self._icon_image = tk.PhotoImage(file=str(png_icon))
+                self.iconphoto(True, self._icon_image)
+            except tk.TclError:
+                self._icon_image = None
+        if os.name == "nt" and ico_icon.exists():
+            try:
+                self.iconbitmap(default=str(ico_icon))
             except tk.TclError:
                 pass
-        self.geometry("1120x760")
-        self.minsize(860, 620)
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width, height, self.compact_mode = calculate_wizard_geometry(
+            screen_w,
+            screen_h,
+        )
+        self.geometry(f"{width}x{height}")
+        self.minsize(min(760, width), min(520, height))
         self.transient(master)
         self.on_saved = on_saved
         self.project_root: Path | None = None
@@ -57,6 +75,7 @@ class ProfileWizard(tk.Toplevel):
         self.auto_prepare_var = tk.BooleanVar(value=False)
 
         self._build_ui()
+        self._apply_compact_layout()
         if hasattr(master, "_apply_dark_native_widgets"):
             master._apply_dark_native_widgets(self)
 
@@ -432,6 +451,24 @@ class ProfileWizard(tk.Toplevel):
             text="Actualizar vista previa",
             command=self._refresh_profile_preview,
         ).grid(row=2, column=0, sticky="e", pady=(10, 0))
+
+    def _apply_compact_layout(self):
+        """Reduce densidad del asistente en laptops y pantallas pequeñas."""
+        if not self.compact_mode:
+            return
+
+        try:
+            self.notebook.tab(self.tab_summary, text="Proyecto")
+            self.notebook.tab(self.tab_runtime, text="Runtime")
+            self.notebook.tab(self.tab_accounts, text="Cuentas")
+            self.notebook.tab(self.tab_routes, text="Pilar 1")
+            self.notebook.tab(self.tab_p2, text="Pilar 2")
+            self.notebook.tab(self.tab_json, text="JSON")
+        except tk.TclError:
+            pass
+
+        if hasattr(self, "lbl_detection"):
+            self.lbl_detection.configure(wraplength=620)
 
     def _choose_project(self):
         selected = filedialog.askdirectory(
