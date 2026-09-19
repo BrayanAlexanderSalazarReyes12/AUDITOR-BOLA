@@ -99,10 +99,10 @@ class Sidebar(QFrame):
     """
 
     EXPANDED_WIDTH = 300
-    CONDENSED_WIDTH = 190
+    CONDENSED_WIDTH = 204
     COMPACT_WIDTH = 76
     BRAND_MIN_HEIGHT = 252
-    BRAND_CONDENSED_HEIGHT = 158
+    BRAND_CONDENSED_HEIGHT = 146
 
     def __init__(self, navigate, new_project, load_center, parent=None):
         super().__init__(parent)
@@ -352,14 +352,18 @@ class Sidebar(QFrame):
             self.brand_box.setMaximumHeight(
                 self.BRAND_CONDENSED_HEIGHT
             )
-            self.brand_layout.setContentsMargins(8, 8, 8, 8)
-            self.brand_layout.setSpacing(3)
-            self._apply_full_brand_logo(68)
+            self.brand_layout.setContentsMargins(8, 7, 8, 7)
+            self.brand_layout.setSpacing(2)
+            self._apply_full_brand_logo(62)
 
             self.brand_name.show()
             self.brand_tagline.setText(
-                "PILAR 1 + PILAR 2 · MULTIPLATAFORMA"
+                "<b>P1 + P2</b><br>MULTIPLATAFORMA"
             )
+            self.brand_tagline.setTextFormat(
+                Qt.TextFormat.RichText
+            )
+            self.brand_tagline.setWordWrap(True)
             self.brand_tagline.show()
             self.pillars.hide()
             self.brand_divider.show()
@@ -379,6 +383,10 @@ class Sidebar(QFrame):
             self.brand_tagline.setText(
                 "AUDITORÍA · CORRECCIÓN · APRENDIZAJE"
             )
+            self.brand_tagline.setTextFormat(
+                Qt.TextFormat.PlainText
+            )
+            self.brand_tagline.setWordWrap(False)
             self.brand_tagline.show()
             self.pillars.show()
             self.brand_divider.show()
@@ -406,14 +414,15 @@ class Topbar(QFrame):
     def __init__(self, new_project, load_center, parent=None):
         super().__init__(parent)
         self.setObjectName("Topbar")
-        self.setMinimumHeight(82)
+        self.setMinimumHeight(70)
+        self.setMaximumHeight(78)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 10, 12, 10)
-        layout.setSpacing(14)
+        layout.setContentsMargins(14, 7, 10, 7)
+        layout.setSpacing(12)
 
         icon = QLabel()
-        icon.setPixmap(brand_icon().pixmap(54, 54))
+        icon.setPixmap(brand_icon().pixmap(46, 46))
         layout.addWidget(icon)
 
         titles = QVBoxLayout()
@@ -434,7 +443,7 @@ class Topbar(QFrame):
         self.quote.setObjectName("Muted")
         self.quote.setWordWrap(True)
         self.quote.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.quote.setMaximumWidth(270)
+        self.quote.setMaximumWidth(240)
         layout.addWidget(self.quote)
 
         self.account_box = QFrame()
