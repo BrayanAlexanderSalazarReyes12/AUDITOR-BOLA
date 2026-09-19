@@ -1,3 +1,4 @@
+# release-trigger: v1.1.6-progress-fix
 name: Build desktop executables
 
 on:
