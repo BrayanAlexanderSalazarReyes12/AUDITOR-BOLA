@@ -64,8 +64,10 @@ jobs:
           python - <<'PY'
           from PySide6.QtWidgets import QApplication
           from auditor_bola.qt_ui.app import AegisMainWindow
+          from auditor_bola.qt_ui.widgets import brand_logo_pixmap
 
           app = QApplication([])
+          assert not brand_logo_pixmap(180).isNull()
           window = AegisMainWindow()
           window.show()
           app.processEvents()
