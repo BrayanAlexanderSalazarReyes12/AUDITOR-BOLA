@@ -2650,6 +2650,39 @@ def _detect_project_version(
     )
 
 
+def detect_runtime_profile(
+    root: str | Path,
+) -> tuple[dict[str, Any], str]:
+    """Detecta únicamente estrategias de runtime para un proyecto.
+
+    Se usa para complementar perfiles antiguos sin repetir el escaneo
+    completo de cuentas y endpoints.
+    """
+    root_path = Path(root).expanduser().resolve()
+    if not root_path.exists() or not root_path.is_dir():
+        raise FileNotFoundError(root_path)
+
+    descriptor = _load_package_descriptor(root_path)
+    languages, frameworks, _manifests = _detect_stack(
+        root_path
+    )
+
+    if descriptor:
+        language = descriptor.get("language")
+        if language and str(language) not in languages:
+            languages.append(str(language))
+        for framework in descriptor.get("framework") or []:
+            if str(framework) not in frameworks:
+                frameworks.append(str(framework))
+
+    return _detect_runtime(
+        root_path,
+        sorted(set(languages)),
+        sorted(set(frameworks)),
+        descriptor,
+    )
+
+
 def detect_project(root: str | Path) -> ProjectDetection:
     root_path = Path(root).expanduser().resolve()
     if not root_path.exists() or not root_path.is_dir():
