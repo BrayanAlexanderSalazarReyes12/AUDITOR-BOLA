@@ -546,6 +546,18 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
             )
 
         for match in re.finditer(
+            r"@(Get|Post|Put|Patch|Delete)Mapping\b(?!\s*\()",
+            text,
+            re.I,
+        ):
+            add(
+                match.group(1),
+                spring_prefix or "/",
+                source,
+                "spring",
+            )
+
+        for match in re.finditer(
             r"@RequestMapping\((.{0,1200}?)\)",
             text,
             re.I | re.S,
@@ -556,6 +568,11 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
                 block,
                 re.I,
             )
+            if not route_match:
+                route_match = re.search(
+                    r"^\s*['\"]([^'\"]+)['\"]",
+                    block,
+                )
             if not route_match:
                 continue
             methods = re.findall(
@@ -935,6 +952,49 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
                 source,
                 "client-jquery-reference",
             )
+
+        # OpenAPI/Swagger YAML inventories.
+        if suffix in {".yaml", ".yml"} and (
+            "openapi" in name
+            or "swagger" in name
+        ):
+            current_openapi_path: str | None = None
+            in_paths = False
+            paths_indent = 0
+            for line in text.splitlines():
+                if re.match(r"^\s*paths\s*:\s*$", line):
+                    in_paths = True
+                    paths_indent = len(line) - len(line.lstrip())
+                    current_openapi_path = None
+                    continue
+                if not in_paths:
+                    continue
+                stripped = line.strip()
+                indent = len(line) - len(line.lstrip())
+                if stripped and indent <= paths_indent:
+                    in_paths = False
+                    current_openapi_path = None
+                    continue
+                route_match = re.match(
+                    r"^\s*(/[^:]+)\s*:\s*$",
+                    line,
+                )
+                if route_match:
+                    current_openapi_path = route_match.group(1)
+                    continue
+                if current_openapi_path:
+                    method_match = re.match(
+                        r"^\s*(get|post|put|patch|delete|options|head)\s*:\s*$",
+                        line,
+                        re.I,
+                    )
+                    if method_match:
+                        add(
+                            method_match.group(1),
+                            current_openapi_path,
+                            source,
+                            "openapi",
+                        )
 
         # Next.js API file-system routes.
         relative_posix = relative.as_posix()
