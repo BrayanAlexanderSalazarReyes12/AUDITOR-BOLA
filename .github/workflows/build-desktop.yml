@@ -14,6 +14,8 @@ on:
       - "scripts/generate_app_icons.py"
       - "installer/**"
       - "assets/**"
+      - "LICENSE"
+      - "NOTICE"
       - ".github/workflows/build-desktop.yml"
 
 jobs:
@@ -166,7 +168,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.0' \
+            'Version: 1.1.1' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -195,13 +197,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1:
-    name: Publicar Release v1.1.0
+  release-v1-1-1:
+    name: Publicar Release v1.1.1
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.0]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.1]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -219,15 +221,21 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.0
+          # Aegis Auditor v1.1.1
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.0
+          ## Novedades de v1.1.1
           - Pantalla de arranque fullscreen con porcentaje de carga.
           - La ventana principal abre siempre en pantalla completa.
+          - Botón visible `✕ Salir` para cerrar Aegis desde fullscreen.
           - Las tareas asíncronas muestran progreso visible con porcentaje.
           - El análisis de nuevos proyectos muestra progreso por etapas.
+          - Detección genérica de cuentas y roles en código, JSON, SQL, CSV,
+            .env, properties y otros archivos de texto relevantes.
+          - Editor manual de cuentas para sistemas donde los usuarios viven
+            en base de datos, LDAP, SSO u otros servicios externos.
+          - Apache License 2.0 y NOTICE incluidos en instaladores y paquetes.
           - Interfaz responsive en Windows, macOS y Linux.
 
           ## Descargas
@@ -277,16 +285,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.0" >/dev/null 2>&1; then
-            gh release upload "v1.1.0" "${files[@]}" --clobber
-            gh release edit "v1.1.0" \
-              --title "Aegis Auditor v1.1.0" \
+          if gh release view "v1.1.1" >/dev/null 2>&1; then
+            gh release upload "v1.1.1" "${files[@]}" --clobber
+            gh release edit "v1.1.1" \
+              --title "Aegis Auditor v1.1.1" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.0" "${files[@]}" \
+            gh release create "v1.1.1" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.0" \
+              --title "Aegis Auditor v1.1.1" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
