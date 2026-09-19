@@ -1,0 +1,185 @@
+name: Build desktop executables
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "auditor_bola/**"
+      - "aegis_auditor.py"
+      - "AegisAuditor.spec"
+      - "requirements-runtime.txt"
+      - "requirements-build.txt"
+      - "scripts/generate_app_icons.py"
+      - "installer/**"
+      - "assets/**"
+      - ".github/workflows/build-desktop.yml"
+
+jobs:
+  windows-x64:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencias de construcción
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+      - name: Generar iconos
+        run: python scripts/generate_app_icons.py
+      - name: Construir ejecutable
+        run: pyinstaller --clean --noconfirm AegisAuditor.spec
+      - name: Instalar Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+      - name: Construir instalador
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc installer\AegisAuditor.iss
+      - name: Checksums
+        shell: pwsh
+        run: |
+          (Get-FileHash dist\AegisAuditor.exe -Algorithm SHA256).Hash.ToLower() + "  AegisAuditor.exe" | Out-File -Encoding ascii dist\AegisAuditor.exe.sha256
+          (Get-FileHash dist\AegisAuditor-Setup.exe -Algorithm SHA256).Hash.ToLower() + "  AegisAuditor-Setup.exe" | Out-File -Encoding ascii dist\AegisAuditor-Setup.exe.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aegis-Auditor-Windows-x64
+          path: |
+            dist/AegisAuditor.exe
+            dist/AegisAuditor-Setup.exe
+            dist/*.sha256
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x64
+          - runner: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencias de construcción
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+      - name: Generar iconos
+        run: python scripts/generate_app_icons.py
+      - name: Construir aplicación
+        run: pyinstaller --clean --noconfirm AegisAuditor.spec
+      - name: Firma ad-hoc
+        run: codesign --force --deep --sign - dist/AegisAuditor.app
+      - name: Crear DMG
+        shell: bash
+        run: |
+          mkdir -p dmg-root
+          cp -R dist/AegisAuditor.app dmg-root/
+          hdiutil create -volname "Aegis Auditor" -srcfolder dmg-root -ov -format UDZO "dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg"
+          shasum -a 256 "dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg" > "dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aegis-Auditor-macOS-${{ matrix.arch }}
+          path: |
+            dist/AegisAuditor.app
+            dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg
+            dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg.sha256
+          if-no-files-found: error
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x64
+            deb_arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            deb_arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Librerías de escritorio
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk libx11-6 libxext6 libxrender1 libxft2 libfontconfig1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencias de construcción
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+      - name: Generar iconos
+        run: python scripts/generate_app_icons.py
+      - name: Construir binario
+        run: pyinstaller --clean --noconfirm AegisAuditor.spec
+      - name: Empaquetar TAR.GZ
+        shell: bash
+        run: |
+          chmod +x dist/AegisAuditor
+          mkdir -p package
+          cp dist/AegisAuditor package/
+          cp docs/REQUISITOS_APLICACION.md package/REQUISITOS.md
+          tar -C package -czf "dist/AegisAuditor-Linux-${{ matrix.arch }}.tar.gz" .
+      - name: Construir DEB
+        shell: bash
+        run: |
+          root="debroot"
+          mkdir -p "$root/DEBIAN" "$root/usr/local/bin" "$root/usr/share/applications" "$root/usr/share/icons/hicolor/256x256/apps"
+          cp dist/AegisAuditor "$root/usr/local/bin/AegisAuditor"
+          chmod 755 "$root/usr/local/bin/AegisAuditor"
+          cp assets/aegis-auditor.png "$root/usr/share/icons/hicolor/256x256/apps/aegis-auditor.png"
+          cat > "$root/usr/share/applications/aegis-auditor.desktop" <<EOF
+[Desktop Entry]
+Name=Aegis Auditor
+Comment=Security Remediation Studio
+Exec=/usr/local/bin/AegisAuditor
+Icon=aegis-auditor
+Terminal=false
+Type=Application
+Categories=Development;Security;
+EOF
+          cat > "$root/DEBIAN/control" <<EOF
+Package: aegis-auditor
+Version: 1.0.0
+Section: devel
+Priority: optional
+Architecture: ${{ matrix.deb_arch }}
+Maintainer: Aegis Auditor Project
+Depends: libc6, libx11-6, libxext6, libxrender1, libxft2, libfontconfig1
+Description: Aegis Auditor - Security Remediation Studio
+ Auditor correctivo multitecnologia basado en Pilar 1 y Pilar 2.
+EOF
+          dpkg-deb --build "$root" "dist/AegisAuditor-Linux-${{ matrix.arch }}.deb"
+      - name: Checksums
+        shell: bash
+        run: |
+          sha256sum "dist/AegisAuditor" > "dist/AegisAuditor-Linux-${{ matrix.arch }}.sha256"
+          sha256sum "dist/AegisAuditor-Linux-${{ matrix.arch }}.tar.gz" >> "dist/AegisAuditor-Linux-${{ matrix.arch }}.sha256"
+          sha256sum "dist/AegisAuditor-Linux-${{ matrix.arch }}.deb" >> "dist/AegisAuditor-Linux-${{ matrix.arch }}.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aegis-Auditor-Linux-${{ matrix.arch }}
+          path: |
+            dist/AegisAuditor
+            dist/AegisAuditor-Linux-${{ matrix.arch }}.tar.gz
+            dist/AegisAuditor-Linux-${{ matrix.arch }}.deb
+            dist/AegisAuditor-Linux-${{ matrix.arch }}.sha256
+          if-no-files-found: error
