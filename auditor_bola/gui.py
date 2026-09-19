@@ -518,7 +518,8 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
     def _build_dashboard_tab(self):
         outer = ttk.Frame(self.tab_dashboard, padding=18)
         outer.pack(fill="both", expand=True)
-        outer.columnconfigure((0, 1, 2, 3), weight=1)
+        for column in range(4):
+            outer.columnconfigure(column, weight=1)
         outer.rowconfigure(2, weight=1)
 
         ttk.Label(
