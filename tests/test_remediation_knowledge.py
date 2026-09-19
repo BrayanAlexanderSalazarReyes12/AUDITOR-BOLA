@@ -44,6 +44,7 @@ def _knowledge():
             "No aparecen regresiones en casos previamente seguros.",
         ],
         lenguajes_observados=[".py"],
+        tipo_control="bola",
         verificada=True,
         casos_exitosos=1,
     )
@@ -160,3 +161,42 @@ def test_otro_control_no_recibe_medicina_incorrecta(tmp_path):
     )
 
     assert candidatos == []
+
+
+
+def test_medicina_se_recupera_por_familia_aunque_cambie_el_id(tmp_path):
+    root = tmp_path / "conocimiento"
+    base = _knowledge()
+    base.control_id = "P1-BOLA-001"
+    guardar_conocimiento(base, root=root)
+
+    candidatos = buscar_conocimiento(
+        control_id="P1-BOLA-017",
+        descripcion="Acceso indebido a otro objeto",
+        tipo_control="bola",
+        source_text="Object getById(Long id) { ... }",
+        extension=".java",
+        root=root,
+    )
+
+    assert candidatos
+    assert "familia" in " ".join(candidatos[0].razones).lower()
+
+
+def test_medicina_se_recupera_por_tipo_si_el_perfil_usa_otro_id(tmp_path):
+    root = tmp_path / "conocimiento"
+    guardar_conocimiento(_knowledge(), root=root)
+
+    candidatos = buscar_conocimiento(
+        control_id="ACCESS-OBJECT-42",
+        descripcion="Objeto ajeno accesible",
+        tipo_control="bola",
+        source_text="def update(resource_id): ...",
+        extension=".py",
+        root=root,
+    )
+
+    assert candidatos
+    assert "tipo de control" in " ".join(
+        candidatos[0].razones
+    ).lower()
