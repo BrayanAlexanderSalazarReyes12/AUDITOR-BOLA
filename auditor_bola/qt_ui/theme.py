@@ -41,6 +41,10 @@ QFrame#Sidebar {
     background: #071925;
     border-right: 1px solid #14384F;
 }
+QFrame#NavigationBox {
+    background: transparent;
+    border: none;
+}
 QWidget#BrandBox, QFrame#BrandBox {
     background: transparent;
     border: none;
