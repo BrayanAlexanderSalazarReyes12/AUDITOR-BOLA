@@ -20,10 +20,124 @@ import requests
 from .config import ConfigObjetivo, Correccion
 
 
-DEFAULT_MODEL = os.getenv("AUDITOR_AI_MODEL", "gpt-6-astra")
-DEFAULT_BASE_URL = os.getenv(
-    "AUDITOR_AI_BASE_URL", "https://api.openai.com/v1"
-).rstrip("/")
+DEFAULT_PROVIDER_ID = "llmlab"
+DEFAULT_MODEL_ID = "lab-coder"
+DEFAULT_MAX_OUTPUT_TOKENS = 4096
+
+
+@dataclass
+class AIProviderConfig:
+    provider_id: str
+    provider_name: str
+    model_id: str
+    model_name: str
+    base_url: str
+    api_key: str
+    config_path: str
+
+    def public_dict(self) -> dict:
+        """Metadatos seguros; nunca incluye la API key."""
+        return {
+            "provider_id": self.provider_id,
+            "provider_name": self.provider_name,
+            "model_id": self.model_id,
+            "model_name": self.model_name,
+            "base_url": self.base_url,
+            "config_path": self.config_path,
+        }
+
+
+def _opencode_config_path() -> Path:
+    override = os.getenv("OPENCODE_CONFIG")
+    if override:
+        return Path(override).expanduser().resolve()
+    return (Path.home() / ".config" / "opencode" / "opencode.json").resolve()
+
+
+_ENV_REF = re.compile(r"^\{env:([A-Za-z_][A-Za-z0-9_]*)\}$")
+
+
+def _resolver_api_key(valor: str | None) -> str:
+    if not valor:
+        raise RuntimeError(
+            "El proveedor llmlab no tiene apiKey en la configuración de OpenCode."
+        )
+
+    match = _ENV_REF.match(valor.strip())
+    if match:
+        variable = match.group(1)
+        key = os.getenv(variable)
+        if not key:
+            raise RuntimeError(
+                f"OpenCode usa la variable {variable}, pero no está definida "
+                "en esta sesión."
+            )
+        return key
+
+    return valor.strip()
+
+
+def cargar_configuracion_opencode(
+    *,
+    provider_id: str = DEFAULT_PROVIDER_ID,
+) -> AIProviderConfig:
+    """Carga llmlab/lab-coder desde ~/.config/opencode/opencode.json."""
+    path = _opencode_config_path()
+    if not path.exists():
+        raise RuntimeError(
+            "No se encontró la configuración de OpenCode en "
+            f"{path}. Configura OpenCode antes de usar el Asistente IA."
+        )
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"No fue posible leer la configuración de OpenCode: {path}"
+        ) from exc
+
+    providers = data.get("provider") or {}
+    provider = providers.get(provider_id)
+    if not isinstance(provider, dict):
+        raise RuntimeError(
+            f"No existe el proveedor '{provider_id}' en {path}."
+        )
+
+    options = provider.get("options") or {}
+    base_url = str(options.get("baseURL") or "").strip().rstrip("/")
+    if not base_url:
+        raise RuntimeError(
+            f"El proveedor '{provider_id}' no declara options.baseURL."
+        )
+
+    api_key = _resolver_api_key(options.get("apiKey"))
+
+    configured_model = str(
+        os.getenv("AUDITOR_AI_MODEL")
+        or data.get("model")
+        or f"{provider_id}/{DEFAULT_MODEL_ID}"
+    ).strip()
+
+    if "/" in configured_model:
+        selected_provider, model_id = configured_model.split("/", 1)
+        if selected_provider != provider_id:
+            model_id = DEFAULT_MODEL_ID
+    else:
+        model_id = configured_model
+
+    models = provider.get("models") or {}
+    model_data = models.get(model_id) or {}
+    model_name = str(model_data.get("name") or model_id)
+
+    return AIProviderConfig(
+        provider_id=provider_id,
+        provider_name=str(provider.get("name") or provider_id),
+        model_id=model_id,
+        model_name=model_name,
+        base_url=base_url,
+        api_key=api_key,
+        config_path=str(path),
+    )
 
 
 @dataclass
@@ -205,19 +319,57 @@ def _json_schema() -> dict:
     }
 
 
-def _extraer_output_text(response_json: dict) -> str:
-    textos: list[str] = []
-    for item in response_json.get("output", []):
-        if item.get("type") != "message":
-            continue
-        for content in item.get("content", []):
-            if content.get("type") == "output_text" and content.get("text"):
-                textos.append(content["text"])
-    if not textos and response_json.get("output_text"):
-        textos.append(str(response_json["output_text"]))
-    if not textos:
-        raise RuntimeError("La respuesta de IA no contiene output_text.")
-    return "".join(textos)
+def _extraer_contenido_chat(response_json: dict) -> str:
+    choices = response_json.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError(
+            "El Laboratorio UTB no devolvió choices en chat/completions."
+        )
+
+    message = choices[0].get("message") or {}
+    content = message.get("content")
+
+    if isinstance(content, str) and content.strip():
+        return content.strip()
+
+    if isinstance(content, list):
+        textos: list[str] = []
+        for part in content:
+            if isinstance(part, dict):
+                text = part.get("text") or part.get("content")
+                if text:
+                    textos.append(str(text))
+        if textos:
+            return "".join(textos).strip()
+
+    raise RuntimeError(
+        "La respuesta de Gemma no contiene texto utilizable."
+    )
+
+
+def _extraer_json(texto: str) -> dict:
+    limpio = texto.strip()
+
+    if limpio.startswith("```"):
+        limpio = re.sub(r"^```(?:json)?\s*", "", limpio, flags=re.I)
+        limpio = re.sub(r"\s*```$", "", limpio)
+
+    try:
+        return json.loads(limpio)
+    except json.JSONDecodeError:
+        pass
+
+    inicio = limpio.find("{")
+    fin = limpio.rfind("}")
+    if inicio >= 0 and fin > inicio:
+        try:
+            return json.loads(limpio[inicio : fin + 1])
+        except json.JSONDecodeError:
+            pass
+
+    raise RuntimeError(
+        "Gemma no devolvió un JSON válido con las tres recetas."
+    )
 
 
 def _validar_propuestas(data: dict) -> list[AIRecipeProposal]:
@@ -275,20 +427,12 @@ def generar_tres_recetas(
     detalle: str,
     source_relative: str,
     source_text: str,
-    api_key: str | None = None,
-    model: str | None = None,
-    base_url: str | None = None,
-    timeout: int = 90,
-) -> tuple[list[AIRecipeProposal], dict]:
-    """Solicita tres recetas estructuradas al proveedor de IA."""
-    key = api_key or os.getenv("OPENAI_API_KEY")
-    if not key:
-        raise RuntimeError(
-            "Falta OPENAI_API_KEY. Defínela en el entorno antes de usar IA."
-        )
+    provider: AIProviderConfig | None = None,
+    timeout: int = 120,
+) -> tuple[list[AIRecipeProposal], dict, AIProviderConfig]:
+    """Solicita tres recetas a llmlab/lab-coder vía chat/completions."""
+    provider = provider or cargar_configuracion_opencode()
 
-    modelo = model or DEFAULT_MODEL
-    endpoint = (base_url or DEFAULT_BASE_URL).rstrip("/") + "/responses"
     contexto = _construir_contexto(
         cfg,
         control_id=control_id,
@@ -298,44 +442,87 @@ def generar_tres_recetas(
         source_text=source_text,
     )
 
-    instructions = (
-        "Actúas como asistente de remediación de código para un auditor "
-        "de seguridad defensivo. Debes generar exactamente 3 recetas "
-        "diferentes para el mismo hallazgo: MINIMA (cambio mínimo), "
-        "ESTRUCTURAL (mejora de diseño) y ALTERNATIVA (otro enfoque válido). "
-        "No inventes otros archivos: todas las propuestas deben modificar "
-        "únicamente el archivo seleccionado. El campo buscar debe copiar "
-        "texto real del código recibido cuando uses replace_exact. "
-        "Para regex_replace, buscar debe ser una expresión regular acotada. "
-        "No incluyas secretos, claves ni credenciales. La IA solo propone; "
-        "un humano seleccionará una opción y un motor determinista la "
-        "previsualizará, respaldará, aplicará y verificará."
+    system_prompt = (
+        "Eres un asistente defensivo de remediación de código para un "
+        "auditor de seguridad. Debes proponer exactamente tres recetas "
+        "diferentes para el mismo hallazgo: "
+        "MINIMA (cambio pequeño y localizado), "
+        "ESTRUCTURAL (mejora de diseño o centralización) y "
+        "ALTERNATIVA (otro enfoque válido). "
+        "Todas deben modificar únicamente el archivo seleccionado. "
+        "No inventes archivos. No incluyas secretos ni credenciales. "
+        "Cuando uses replace_exact, el campo buscar debe ser texto literal "
+        "que aparezca en el código recibido. Cuando uses regex_replace, "
+        "buscar debe ser una expresión regular acotada. "
+        "La IA solo propone; un humano seleccionará una opción y un motor "
+        "determinista hará preview, backup, aplicación y verificación. "
+        "Responde únicamente con JSON válido, sin Markdown."
     )
 
+    formato = {
+        "propuestas": [
+            {
+                "id": "IA-1",
+                "titulo": "texto",
+                "enfoque": "MINIMA",
+                "explicacion": "texto",
+                "riesgo": "BAJO",
+                "estrategia": "replace_exact",
+                "buscar": "texto exacto o regex",
+                "reemplazar": "texto de reemplazo",
+                "requiere_reinicio": True,
+                "consideraciones": "texto",
+            },
+            {
+                "id": "IA-2",
+                "titulo": "texto",
+                "enfoque": "ESTRUCTURAL",
+                "explicacion": "texto",
+                "riesgo": "MEDIO",
+                "estrategia": "replace_exact",
+                "buscar": "texto exacto o regex",
+                "reemplazar": "texto de reemplazo",
+                "requiere_reinicio": True,
+                "consideraciones": "texto",
+            },
+            {
+                "id": "IA-3",
+                "titulo": "texto",
+                "enfoque": "ALTERNATIVA",
+                "explicacion": "texto",
+                "riesgo": "MEDIO",
+                "estrategia": "regex_replace",
+                "buscar": "texto exacto o regex",
+                "reemplazar": "texto de reemplazo",
+                "requiere_reinicio": True,
+                "consideraciones": "texto",
+            },
+        ]
+    }
+
+    user_prompt = (
+        "Analiza el siguiente hallazgo y genera exactamente tres recetas.\n\n"
+        "FORMATO JSON OBLIGATORIO:\n"
+        + json.dumps(formato, ensure_ascii=False, indent=2)
+        + "\n\nCONTEXTO:\n"
+        + json.dumps(contexto, ensure_ascii=False, indent=2)
+    )
+
+    endpoint = provider.base_url.rstrip("/") + "/chat/completions"
     payload = {
-        "model": modelo,
-        "instructions": instructions,
-        "input": (
-            "Genera las tres propuestas de remediación en JSON estructurado "
-            "para este contexto:\n" + json.dumps(
-                contexto, ensure_ascii=False, indent=2
-            )
-        ),
-        "text": {
-            "format": {
-                "type": "json_schema",
-                "name": "auditor_recipe_proposals",
-                "strict": True,
-                "schema": _json_schema(),
-            }
-        },
-        "store": False,
+        "model": provider.model_id,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.2,
+        "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
     }
 
     resp = requests.post(
         endpoint,
         headers={
-            "Authorization": f"Bearer {key}",
+            "Authorization": f"Bearer {provider.api_key}",
             "Content-Type": "application/json",
         },
         json=payload,
@@ -344,20 +531,15 @@ def generar_tres_recetas(
     if resp.status_code >= 400:
         detalle_error = resp.text[:1200]
         raise RuntimeError(
-            f"Proveedor IA respondió HTTP {resp.status_code}: {detalle_error}"
+            "Laboratorio UTB respondió HTTP "
+            f"{resp.status_code}: {detalle_error}"
         )
 
     response_json = resp.json()
-    text = _extraer_output_text(response_json)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            "La respuesta estructurada de IA no pudo convertirse a JSON."
-        ) from exc
-
+    texto = _extraer_contenido_chat(response_json)
+    data = _extraer_json(texto)
     propuestas = _validar_propuestas(data)
-    return propuestas, contexto
+    return propuestas, contexto, provider
 
 
 def propuesta_a_correccion(
@@ -412,7 +594,7 @@ def guardar_sesion_ia(
     *,
     contexto: dict,
     propuestas: list[AIRecipeProposal],
-    model: str,
+    provider: AIProviderConfig,
 ) -> Path:
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     root = Path(evidence_base) / "ia" / ts
@@ -425,7 +607,7 @@ def guardar_sesion_ia(
     (root / "propuestas.json").write_text(
         json.dumps(
             {
-                "modelo": model,
+                "proveedor": provider.public_dict(),
                 "propuestas": [p.as_dict() for p in propuestas],
             },
             ensure_ascii=False,
