@@ -39,7 +39,12 @@ def diagnosticar(
             value = max(5, min(95, value))
         else:
             value = force
-        progress_callback(value, message)
+        detail = (
+            f"{message} · Control {completed}/{total}"
+            if force is None
+            else message
+        )
+        progress_callback(value, detail)
 
     def advance(message: str) -> None:
         nonlocal completed
