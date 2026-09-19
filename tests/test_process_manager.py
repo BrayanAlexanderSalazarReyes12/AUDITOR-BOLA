@@ -39,7 +39,7 @@ def test_windows_envuelve_archivo_cmd_con_cmd_exe(tmp_path):
             return r"C:\Windows\System32\cmd.exe"
         return None
 
-    with patch("auditor_bola.process_manager.os.name", "nt"), patch(
+    with patch("auditor_bola.process_manager._is_windows", return_value=True), patch(
         "auditor_bola.process_manager.shutil.which",
         side_effect=fake_which,
     ):
@@ -66,7 +66,7 @@ def test_windows_resuelve_launcher_local_gradlew_bat(tmp_path):
     launcher.write_text("@echo off\n", encoding="utf-8")
     manager = _manager(tmp_path, ["gradlew", "bootRun"])
 
-    with patch("auditor_bola.process_manager.os.name", "nt"), patch(
+    with patch("auditor_bola.process_manager._is_windows", return_value=True), patch(
         "auditor_bola.process_manager.shutil.which",
         return_value=None,
     ):
@@ -155,7 +155,7 @@ def test_selecciona_comando_especifico_para_windows(tmp_path):
     )
     manager = LocalTargetProcess(tmp_path, runtime)
 
-    with patch("auditor_bola.process_manager.os.name", "nt"):
+    with patch("auditor_bola.process_manager._is_windows", return_value=True):
         assert manager._command_for("inicio") == ["npm", "start"]
 
 
@@ -169,7 +169,7 @@ def test_selecciona_comando_especifico_para_macos(tmp_path):
     )
     manager = LocalTargetProcess(tmp_path, runtime)
 
-    with patch("auditor_bola.process_manager.os.name", "posix"), patch(
+    with patch("auditor_bola.process_manager._is_windows", return_value=False), patch(
         "auditor_bola.process_manager.sys.platform",
         "darwin",
     ):
@@ -264,7 +264,7 @@ def test_windows_cmd_no_preescapa_comillas_de_ruta(tmp_path):
             return r"C:\Program Files\nodejs\npm.CMD"
         return None
 
-    with patch("auditor_bola.process_manager.os.name", "nt"), patch(
+    with patch("auditor_bola.process_manager._is_windows", return_value=True), patch(
         "auditor_bola.process_manager.shutil.which",
         side_effect=fake_which,
     ):
@@ -308,7 +308,7 @@ def test_windows_detiene_arbol_completo_con_taskkill(tmp_path):
 
     completed = type("Completed", (), {"returncode": 0})()
 
-    with patch("auditor_bola.process_manager.os.name", "nt"), patch(
+    with patch("auditor_bola.process_manager._is_windows", return_value=True), patch(
         "auditor_bola.process_manager.subprocess.run",
         return_value=completed,
     ) as run:
@@ -332,7 +332,7 @@ def test_posix_detiene_grupo_de_procesos(tmp_path):
 
     manager.process = FakeProcess()
 
-    with patch("auditor_bola.process_manager.os.name", "posix"), patch(
+    with patch("auditor_bola.process_manager._is_windows", return_value=False), patch(
         "auditor_bola.process_manager.os.getpgid",
         return_value=9876,
     ), patch(
