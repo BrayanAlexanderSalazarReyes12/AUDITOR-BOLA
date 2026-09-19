@@ -46,11 +46,11 @@ class AIRecipeProposal:
 _SECRET_PATTERNS = [
     re.compile(
         r'(?i)(password|passwd|pwd|secret|token|api[_-]?key)'
-        r'(\\s*[:=]\\s*)(["\\\']?)([^\\n"\\\']+)(["\\\']?)'
+        r'(\s*[:=]\s*)(["\']?)([^\n"\']+)(["\']?)'
     ),
     re.compile(
-        r'(?i)(Authorization\\s*[:=]\\s*["\\\']?Bearer\\s+)'
-        r'([^\\s"\\\']+)'
+        r'(?i)(Authorization\s*[:=]\s*["\']?Bearer\s+)'
+        r'([^\s"\']+)'
     ),
     re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b"),
     re.compile(
