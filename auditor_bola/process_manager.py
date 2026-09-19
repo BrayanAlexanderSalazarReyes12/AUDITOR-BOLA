@@ -18,7 +18,7 @@ from .config import RuntimeConfig
 
 def _is_windows() -> bool:
     """Aísla la detección de Windows para permitir pruebas portables."""
-    return _is_windows()
+    return os.name == "nt"
 
 
 class LocalTargetProcess:
