@@ -107,3 +107,49 @@ def test_perfil_generado_es_json_persistible(tmp_path):
     assert data["version_objetivo"] == "2.0.0"
     assert data["base_url"] == "http://127.0.0.1:4567"
     assert data["metadata_detectada"]["perfil_generado_automaticamente"] is True
+
+
+def test_detecta_laravel_y_ruta_php(tmp_path):
+    (tmp_path / "composer.json").write_text(
+        json.dumps({"require": {"laravel/framework": "^11.0"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "artisan").write_text("", encoding="utf-8")
+    routes = tmp_path / "routes"
+    routes.mkdir()
+    (routes / "web.php").write_text(
+        "Route::get('/orders/{id}', controller);\n",
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+
+    assert "php" in detection.languages
+    assert "laravel" in detection.frameworks
+    assert detection.runtime["comando_inicio"][:3] == ["php", "artisan", "serve"]
+    assert any(route.path == "/orders/{id}" for route in detection.routes)
+
+
+def test_detecta_rust_y_runtime_cargo(tmp_path):
+    (tmp_path / "Cargo.toml").write_text(
+        "[package]\nname='demo'\n[dependencies]\naxum='0.7'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.rs").write_text("fn main() {}\n", encoding="utf-8")
+
+    detection = detect_project(tmp_path)
+
+    assert "rust" in detection.languages
+    assert "axum" in detection.frameworks
+    assert detection.runtime["comando_inicio"] == ["cargo", "run"]
+
+
+def test_stack_desconocido_no_se_rechaza_y_usa_external(tmp_path):
+    (tmp_path / "main.custom").write_text("demo", encoding="utf-8")
+
+    detection = detect_project(tmp_path)
+    profile = build_profile_draft(detection)
+
+    assert profile["runtime"]["modo"] == "external"
+    assert profile["sistema"]
