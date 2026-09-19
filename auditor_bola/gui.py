@@ -885,12 +885,11 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
                 self.proceso = LocalTargetProcess(
                     self.target_root, self.cfg.runtime
                 )
-            if self._target_reachable():
-                raise RuntimeError(
-                    f"Ya existe una instancia activa en {self.cfg.base_url} "
-                    "fuera del control de esta GUI. Detén esa instancia antes "
-                    "de pulsar Iniciar objetivo."
-                )
+            # No bloquear el arranque únicamente porque base_url ya
+            # responda. Puede tratarse de otro servicio usando el mismo puerto.
+            # El gestor de procesos intentará iniciar el objetivo y, si existe
+            # una colisión real (por ejemplo EADDRINUSE), mostrará la salida
+            # concreta del runtime en lugar de asumir que es esta aplicación.
             self.proceso.start()
             self._wait_target_ready()
             return True
