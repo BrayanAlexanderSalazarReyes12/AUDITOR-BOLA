@@ -1525,9 +1525,7 @@ class ModernAuditorGUI(AuditorGUI):
         rows = []
 
         if self.resultado:
-            rows = filas_gui(
-                self.resultado
-            )
+            rows = filas_gui(self.resultado)
             p1 = sum(
                 1
                 for row in rows
@@ -1543,16 +1541,14 @@ class ModernAuditorGUI(AuditorGUI):
 
         self.home_page.project_card.set(
             project,
-            str(
-                self.target_root
-                or "Código objetivo"
-            ),
+            "Código objetivo",
         )
         self.home_page.profile_card.set(
             profile,
-            str(
-                self.config_path
-                or "Configuración"
+            (
+                self.config_path.name
+                if self.config_path
+                else "Configuración"
             ),
         )
         self.home_page.process_card.set(
@@ -1577,41 +1573,34 @@ class ModernAuditorGUI(AuditorGUI):
         )
 
         project_lines = [
-            f"Nombre: {profile}",
-            f"Ruta: {self.target_root or '-'}",
+            f"Nombre      {profile}",
+            f"Ruta        {self.target_root or '-'}",
             (
-                "Base URL: "
+                "Base URL    "
                 f"{self.cfg.base_url if self.cfg else '-'}"
             ),
             (
-                "Runtime: "
+                "Runtime     "
                 f"{self.cfg.runtime.modo if self.cfg else '-'}"
             ),
-            f"Pilar 1: {p1} hallazgo(s)",
-            f"Pilar 2: {p2} hallazgo(s)",
+            f"Pilar 1     {p1} hallazgo(s)",
+            f"Pilar 2     {p2} hallazgo(s)",
         ]
         self.home_page.project_info.configure(
             text="\n".join(project_lines)
         )
 
-        step = 0
-        if self.target_root:
-            step = 1
-        if self.cfg:
-            step = 2
-        if self.resultado:
-            step = 3
-        if (
-            self.evidence_base.exists()
-            and any(
-                self.evidence_base.iterdir()
-            )
-        ):
-            step = 4
-
         corrected = False
+        has_evidence = False
         if self.evidence_base.exists():
-            for session in self.evidence_base.iterdir():
+            try:
+                sessions = list(self.evidence_base.iterdir())
+            except OSError:
+                sessions = []
+
+            has_evidence = bool(sessions)
+
+            for session in sessions:
                 manifest = session / "manifest.json"
                 if not manifest.exists():
                     continue
@@ -1630,11 +1619,155 @@ class ModernAuditorGUI(AuditorGUI):
                 except Exception:
                     pass
 
+        step = 0
+        if self.target_root:
+            step = 1
+        if self.cfg:
+            step = 2
+        if self.resultado:
+            step = 3
+        if has_evidence:
+            step = 4
         if corrected:
             step = 5
 
-        self.home_page.progress_steps.set_step(
-            step
+        self.home_page.progress_steps.set_step(step)
+        self.home_page.task_progress.set(
+            min(1.0, step / 5.0)
+        )
+        self.home_page.current_task_progress.set(
+            min(1.0, step / 5.0)
+        )
+
+        # Estado de cada fase del ciclo.
+        self.home_page.set_stage(
+            "project",
+            "done" if self.target_root else "active",
+            (
+                str(self.target_root)
+                if self.target_root
+                else "Selecciona o importa una aplicación."
+            ),
+        )
+        self.home_page.set_stage(
+            "profile",
+            (
+                "done"
+                if self.cfg
+                else (
+                    "active"
+                    if self.target_root
+                    else "pending"
+                )
+            ),
+            (
+                str(self.config_path)
+                if self.config_path
+                else "Aegis generará config/*.json."
+            ),
+        )
+        self.home_page.set_stage(
+            "audit",
+            (
+                "done"
+                if self.resultado
+                else (
+                    "active"
+                    if self.cfg
+                    else "pending"
+                )
+            ),
+            (
+                f"{len(rows)} control(es) evaluados · P1 {p1} / P2 {p2}"
+                if self.resultado
+                else "Esperando diagnóstico P1 + P2."
+            ),
+        )
+        self.home_page.set_stage(
+            "remediation",
+            (
+                "done"
+                if corrected
+                else (
+                    "active"
+                    if self.resultado and (p1 + p2) > 0
+                    else "pending"
+                )
+            ),
+            (
+                "Existe evidencia CORREGIDO."
+                if corrected
+                else (
+                    f"{p1 + p2} hallazgo(s) disponible(s) para corregir."
+                    if self.resultado and (p1 + p2) > 0
+                    else "Esperando un hallazgo verificable."
+                )
+            ),
+        )
+
+        if not self.target_root:
+            task_title = "Selecciona una aplicación"
+            task_detail = (
+                "Usa Nuevo proyecto o Cargar / Importar "
+                "para iniciar el flujo."
+            )
+        elif not self.cfg:
+            task_title = "Generar perfil de configuración"
+            task_detail = (
+                "Aegis puede detectar stack, runtime, "
+                "endpoints y puntos de entrada."
+            )
+        elif not self.resultado:
+            task_title = "Diagnosticar Pilar 1 + Pilar 2"
+            task_detail = (
+                "El perfil está listo. Ejecuta la auditoría "
+                "para establecer la línea base."
+            )
+        elif (p1 + p2) > 0 and not corrected:
+            task_title = "Corregir y verificar hallazgos"
+            task_detail = (
+                f"Hay {p1 + p2} hallazgo(s): "
+                f"P1 {p1} · P2 {p2}."
+            )
+        else:
+            task_title = "Validación y evidencia"
+            task_detail = (
+                "El ciclo está listo para consolidar "
+                "evidencia y conocimiento reusable."
+            )
+
+        self.home_page.current_task_label.configure(
+            text=task_title
+        )
+        self.home_page.current_task_detail.configure(
+            text=task_detail
+        )
+
+        # Vista previa real del perfil cargado.
+        preview = {"perfil": "sin cargar"}
+        if self.config_path and self.config_path.exists():
+            try:
+                preview = json.loads(
+                    self.config_path.read_text(
+                        encoding="utf-8"
+                    )
+                )
+            except Exception:
+                preview = {
+                    "sistema": profile,
+                    "base_url": (
+                        self.cfg.base_url
+                        if self.cfg
+                        else ""
+                    ),
+                }
+
+        self.home_page.set_profile_preview(
+            json.dumps(
+                preview,
+                ensure_ascii=False,
+                indent=2,
+            )
         )
 
         if hasattr(self, "audit_page"):
