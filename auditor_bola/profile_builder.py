@@ -323,122 +323,603 @@ def _detect_source_roots(root: Path) -> list[str]:
     return roots or ["."]
 
 
+def _normalize_route_path(value: str) -> str:
+    route = str(value or "").strip()
+    if not route:
+        return "/"
+    route = route.replace("\\/", "/")
+    route = re.sub(r"https?://[^/]+", "", route)
+    route = route.split("?", 1)[0]
+    route = re.sub(r"/{2,}", "/", route)
+    if not route.startswith("/"):
+        route = "/" + route
+    if len(route) > 1 and route.endswith("/"):
+        route = route[:-1]
+    return route or "/"
+
+
+def _join_route_paths(prefix: str, route: str) -> str:
+    left = _normalize_route_path(prefix)
+    right = _normalize_route_path(route)
+    if left == "/":
+        return right
+    if right == "/":
+        return left
+    return _normalize_route_path(
+        left.rstrip("/") + "/" + right.lstrip("/")
+    )
+
+
+def _literal_methods(text: str) -> list[str]:
+    methods = re.findall(
+        r"\b(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\b",
+        text or "",
+        re.I,
+    )
+    return [method.upper() for method in methods]
+
+
 def _extract_routes(root: Path) -> list[DetectedRoute]:
+    """Inventaría rutas declaradas estáticamente en todo el proyecto.
+
+    No impone un máximo de archivos ni de endpoints. Deduplica por método,
+    ruta y archivo y conserva el framework/origen que permitió detectarlos.
+    """
+
     found: dict[tuple[str, str, str], DetectedRoute] = {}
 
-    patterns = [
-        (
-            "flask",
-            re.compile(
-                r"@(?:app|bp|\w+)\.(get|post|put|patch|delete)\(\s*['\"]([^'\"]+)['\"]",
-                re.I,
-            ),
-            lambda m: (m.group(1).upper(), m.group(2)),
-        ),
-        (
-            "flask",
-            re.compile(
-                r"@(?:app|bp|\w+)\.route\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*methods\s*=\s*\[([^\]]+)\])?",
-                re.I,
-            ),
-            lambda m: (
-                (re.search(r"['\"]([A-Z]+)['\"]", m.group(2) or "") or [None, "GET"])[1],
-                m.group(1),
-            ),
-        ),
-        (
-            "express",
-            re.compile(
-                r"(?:app|router)\.(get|post|put|patch|delete)\(\s*['\"]([^'\"]+)['\"]",
-                re.I,
-            ),
-            lambda m: (m.group(1).upper(), m.group(2)),
-        ),
-        (
-            "servlet",
-            re.compile(r"@WebServlet\(\s*['\"]([^'\"]+)['\"]"),
-            lambda m: ("ANY", m.group(1)),
-        ),
-        (
-            "spring",
-            re.compile(
-                r"@(Get|Post|Put|Patch|Delete)Mapping\(\s*(?:value\s*=\s*)?['\"]([^'\"]+)['\"]",
-                re.I,
-            ),
-            lambda m: (m.group(1).upper(), m.group(2)),
-        ),
-        (
-            "django",
-            re.compile(r"path\(\s*['\"]([^'\"]+)['\"]"),
-            lambda m: ("ANY", "/" + m.group(1).lstrip("/")),
-        ),
-        (
-            "laravel",
-            re.compile(
-                r"Route::(get|post|put|patch|delete)\(\s*['\"]([^'\"]+)['\"]",
-                re.I,
-            ),
-            lambda m: (m.group(1).upper(), m.group(2)),
-        ),
-        (
-            "aspnet-core",
-            re.compile(
-                r"\[Http(Get|Post|Put|Patch|Delete)(?:\(\s*['\"]([^'\"]*)['\"]\s*\))?\]",
-                re.I,
-            ),
-            lambda m: (m.group(1).upper(), m.group(2) or "/"),
-        ),
-        (
-            "nestjs",
-            re.compile(
-                r"@(Get|Post|Put|Patch|Delete)\(\s*['\"]([^'\"]*)['\"]\s*\)",
-                re.I,
-            ),
-            lambda m: (m.group(1).upper(), m.group(2) or "/"),
-        ),
-        (
-            "go-router",
-            re.compile(
-                r"\.(GET|POST|PUT|PATCH|DELETE)\(\s*['\"]([^'\"]+)['\"]",
-            ),
-            lambda m: (m.group(1).upper(), m.group(2)),
-        ),
-        (
-            "rails",
-            re.compile(
-                r"^\s*(get|post|put|patch|delete)\s+['\"]([^'\"]+)['\"]",
-                re.I | re.M,
-            ),
-            lambda m: (m.group(1).upper(), m.group(2)),
-        ),
-    ]
+    def add(
+        method: str,
+        route: str,
+        source: str,
+        framework: str,
+    ) -> None:
+        method = (method or "ANY").upper().strip()
+        route = _normalize_route_path(route)
+        if not route:
+            return
+        key = (method, route, source)
+        found[key] = DetectedRoute(
+            method=method,
+            path=route,
+            source=source,
+            framework=framework,
+        )
 
-    for path, relative in _iter_source_files(root):
-        text = _read_text(path)
+    for path, relative in _iter_source_files(
+        root,
+        max_files=None,
+    ):
+        text = _read_text(path, limit=2_000_000)
         if not text:
             continue
+
         source = relative.as_posix()
-        for framework, pattern, mapper in patterns:
-            for match in pattern.finditer(text):
-                try:
-                    method, route = mapper(match)
-                except Exception:
-                    continue
-                route = str(route).strip()
-                if not route.startswith("/"):
-                    route = "/" + route
-                key = (method.upper(), route, source)
-                found[key] = DetectedRoute(
-                    method=method.upper(),
-                    path=route,
-                    source=source,
-                    framework=framework,
+        suffix = path.suffix.lower()
+        name = path.name.lower()
+
+        # Flask / FastAPI / Starlette.
+        for match in re.finditer(
+            r"@(?:app|router|bp|blueprint|\w+)"
+            r"\.(get|post|put|patch|delete|options|head)"
+            r"\(\s*['\"]([^'\"]+)['\"]",
+            text,
+            re.I,
+        ):
+            add(
+                match.group(1),
+                match.group(2),
+                source,
+                "python-router",
+            )
+
+        for match in re.finditer(
+            r"@(?:app|router|bp|blueprint|\w+)\.route"
+            r"\(\s*['\"]([^'\"]+)['\"]([^)]*)\)",
+            text,
+            re.I | re.S,
+        ):
+            methods = _literal_methods(match.group(2)) or ["GET"]
+            for method in methods:
+                add(
+                    method,
+                    match.group(1),
+                    source,
+                    "python-route",
                 )
+
+        # Express / Fastify / generic JS routers.
+        for match in re.finditer(
+            r"\b(?:app|router|server|fastify|\w+)"
+            r"\.(get|post|put|patch|delete|options|head|all)"
+            r"\(\s*['\"]([^'\"]+)['\"]",
+            text,
+            re.I,
+        ):
+            method = match.group(1).upper()
+            add(
+                "ANY" if method == "ALL" else method,
+                match.group(2),
+                source,
+                "javascript-router",
+            )
+
+        # Fastify object form.
+        for match in re.finditer(
+            r"\.route\s*\(\s*\{(.{0,1600}?)\}\s*\)",
+            text,
+            re.I | re.S,
+        ):
+            block = match.group(1)
+            url_match = re.search(
+                r"\b(?:url|path)\s*:\s*['\"]([^'\"]+)['\"]",
+                block,
+                re.I,
+            )
+            method_match = re.search(
+                r"\bmethod\s*:\s*['\"]([^'\"]+)['\"]",
+                block,
+                re.I,
+            )
+            if url_match:
+                methods = (
+                    _literal_methods(method_match.group(1))
+                    if method_match
+                    else ["ANY"]
+                )
+                for method in methods or ["ANY"]:
+                    add(
+                        method,
+                        url_match.group(1),
+                        source,
+                        "fastify",
+                    )
+
+        # NestJS: combina prefijo Controller + decoradores de método.
+        controller_match = re.search(
+            r"@Controller\(\s*['\"]([^'\"]*)['\"]\s*\)",
+            text,
+            re.I,
+        )
+        nest_prefix = (
+            controller_match.group(1)
+            if controller_match
+            else ""
+        )
+        for match in re.finditer(
+            r"@(Get|Post|Put|Patch|Delete|Options|Head)"
+            r"\(\s*(?:['\"]([^'\"]*)['\"])?\s*\)",
+            text,
+            re.I,
+        ):
+            add(
+                match.group(1),
+                _join_route_paths(
+                    nest_prefix,
+                    match.group(2) or "/",
+                ),
+                source,
+                "nestjs",
+            )
+
+        # Spring MVC/WebFlux.
+        spring_prefix = ""
+        class_pos = re.search(
+            r"\b(?:class|interface)\s+\w+",
+            text,
+        )
+        if class_pos:
+            before_class = text[:class_pos.start()]
+            mappings = list(
+                re.finditer(
+                    r"@RequestMapping\(\s*"
+                    r"(?:value\s*=\s*|path\s*=\s*)?"
+                    r"['\"]([^'\"]+)['\"]",
+                    before_class,
+                    re.I,
+                )
+            )
+            if mappings:
+                spring_prefix = mappings[-1].group(1)
+
+        for match in re.finditer(
+            r"@(Get|Post|Put|Patch|Delete)Mapping"
+            r"\(\s*(?:value\s*=\s*|path\s*=\s*)?"
+            r"['\"]([^'\"]*)['\"]",
+            text,
+            re.I,
+        ):
+            add(
+                match.group(1),
+                _join_route_paths(
+                    spring_prefix,
+                    match.group(2) or "/",
+                ),
+                source,
+                "spring",
+            )
+
+        for match in re.finditer(
+            r"@RequestMapping\((.{0,1200}?)\)",
+            text,
+            re.I | re.S,
+        ):
+            block = match.group(1)
+            route_match = re.search(
+                r"(?:value|path)\s*=\s*['\"]([^'\"]+)['\"]",
+                block,
+                re.I,
+            )
+            if not route_match:
+                continue
+            methods = re.findall(
+                r"RequestMethod\.(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)",
+                block,
+                re.I,
+            ) or ["ANY"]
+            for method in methods:
+                add(
+                    method,
+                    _join_route_paths(
+                        spring_prefix,
+                        route_match.group(1),
+                    ),
+                    source,
+                    "spring-request-mapping",
+                )
+
+        # Servlet annotations.
+        for match in re.finditer(
+            r"@WebServlet\s*\((.{0,1200}?)\)",
+            text,
+            re.I | re.S,
+        ):
+            block = match.group(1)
+            urls = re.findall(
+                r"['\"](/[^'\"]+)['\"]",
+                block,
+            )
+            for route in urls:
+                add("ANY", route, source, "servlet")
+
+        # JAX-RS.
+        class_path_match = re.search(
+            r"@Path\(\s*['\"]([^'\"]+)['\"]\s*\)"
+            r".{0,1000}?\bclass\b",
+            text,
+            re.I | re.S,
+        )
+        jax_prefix = (
+            class_path_match.group(1)
+            if class_path_match
+            else ""
+        )
+        for match in re.finditer(
+            r"@(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\b"
+            r"(.{0,500}?)(?=@(?:GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\b|\bpublic\b|\bprivate\b|\bprotected\b|$)",
+            text,
+            re.I | re.S,
+        ):
+            path_match = re.search(
+                r"@Path\(\s*['\"]([^'\"]+)['\"]\s*\)",
+                match.group(2),
+                re.I,
+            )
+            add(
+                match.group(1),
+                _join_route_paths(
+                    jax_prefix,
+                    path_match.group(1)
+                    if path_match
+                    else "/",
+                ),
+                source,
+                "jax-rs",
+            )
+
+        # web.xml.
+        if name == "web.xml" or suffix == ".xml":
+            for match in re.finditer(
+                r"<servlet-mapping\b[^>]*>.*?"
+                r"<url-pattern>\s*([^<]+)\s*</url-pattern>.*?"
+                r"</servlet-mapping>",
+                text,
+                re.I | re.S,
+            ):
+                add(
+                    "ANY",
+                    match.group(1),
+                    source,
+                    "web.xml",
+                )
+
+        # Django.
+        if name == "urls.py" or suffix == ".py":
+            for match in re.finditer(
+                r"\b(?:path|re_path)\(\s*[rRuUfF]*['\"]([^'\"]+)['\"]",
+                text,
+            ):
+                add(
+                    "ANY",
+                    "/" + match.group(1).lstrip("^/"),
+                    source,
+                    "django",
+                )
+
+        # Laravel / Symfony.
+        for match in re.finditer(
+            r"Route::(get|post|put|patch|delete|options|any)"
+            r"\(\s*['\"]([^'\"]+)['\"]",
+            text,
+            re.I,
+        ):
+            method = match.group(1).upper()
+            add(
+                "ANY" if method == "ANY" else method,
+                match.group(2),
+                source,
+                "laravel",
+            )
+
+        for match in re.finditer(
+            r"Route::match\(\s*\[([^\]]+)\]\s*,\s*"
+            r"['\"]([^'\"]+)['\"]",
+            text,
+            re.I | re.S,
+        ):
+            for method in _literal_methods(match.group(1)) or ["ANY"]:
+                add(
+                    method,
+                    match.group(2),
+                    source,
+                    "laravel",
+                )
+
+        for match in re.finditer(
+            r"(?:#\[Route|@Route)\(\s*['\"]([^'\"]+)['\"]"
+            r"([^)]*)\)",
+            text,
+            re.I | re.S,
+        ):
+            methods = _literal_methods(match.group(2)) or ["ANY"]
+            for method in methods:
+                add(
+                    method,
+                    match.group(1),
+                    source,
+                    "symfony",
+                )
+
+        # ASP.NET attributes and Minimal APIs.
+        asp_route = re.search(
+            r"\[Route\(\s*['\"]([^'\"]+)['\"]\s*\)\]",
+            text,
+            re.I,
+        )
+        asp_prefix = asp_route.group(1) if asp_route else ""
+        controller_name = re.search(
+            r"\bclass\s+(\w+)Controller\b",
+            text,
+        )
+        if controller_name:
+            asp_prefix = re.sub(
+                r"\[controller\]",
+                controller_name.group(1),
+                asp_prefix,
+                flags=re.I,
+            )
+
+        for match in re.finditer(
+            r"\[Http(Get|Post|Put|Patch|Delete|Options|Head)"
+            r"(?:\(\s*['\"]([^'\"]*)['\"]\s*\))?\]",
+            text,
+            re.I,
+        ):
+            add(
+                match.group(1),
+                _join_route_paths(
+                    asp_prefix,
+                    match.group(2) or "/",
+                ),
+                source,
+                "aspnet-core",
+            )
+
+        for match in re.finditer(
+            r"\bapp\.Map(Get|Post|Put|Patch|Delete|Methods)"
+            r"\(\s*['\"]([^'\"]+)['\"]",
+            text,
+            re.I,
+        ):
+            add(
+                match.group(1)
+                if match.group(1).lower() != "methods"
+                else "ANY",
+                match.group(2),
+                source,
+                "aspnet-minimal",
+            )
+
+        # Go routers and net/http.
+        for match in re.finditer(
+            r"\.(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|Any)"
+            r"\(\s*['\"]([^'\"]+)['\"]",
+            text,
+        ):
+            method = match.group(1).upper()
+            add(
+                "ANY" if method == "ANY" else method,
+                match.group(2),
+                source,
+                "go-router",
+            )
+
+        for match in re.finditer(
+            r"\b(?:http\.)?HandleFunc\(\s*['\"]([^'\"]+)['\"]",
+            text,
+        ):
+            add(
+                "ANY",
+                match.group(1),
+                source,
+                "go-net-http",
+            )
+
+        # Rails / Sinatra / Phoenix.
+        for match in re.finditer(
+            r"^\s*(get|post|put|patch|delete|options)\s+"
+            r"['\"]([^'\"]+)['\"]",
+            text,
+            re.I | re.M,
+        ):
+            add(
+                match.group(1),
+                match.group(2),
+                source,
+                "ruby-or-phoenix",
+            )
+
+        for match in re.finditer(
+            r"^\s*resources\s+:(\w+)",
+            text,
+            re.M,
+        ):
+            resource = "/" + match.group(1)
+            add("GET", resource, source, "rails-resources")
+            add("POST", resource, source, "rails-resources")
+            add("GET", resource + "/:id", source, "rails-resources")
+            add("PUT", resource + "/:id", source, "rails-resources")
+            add("PATCH", resource + "/:id", source, "rails-resources")
+            add("DELETE", resource + "/:id", source, "rails-resources")
+
+        # Rust.
+        for match in re.finditer(
+            r"#\[(get|post|put|patch|delete|head|options)"
+            r"\(\s*['\"]([^'\"]+)['\"]",
+            text,
+            re.I,
+        ):
+            add(
+                match.group(1),
+                match.group(2),
+                source,
+                "rust-route",
+            )
+
+        for match in re.finditer(
+            r"\.route\(\s*['\"]([^'\"]+)['\"]\s*,\s*"
+            r"(.{0,800}?)\)",
+            text,
+            re.I | re.S,
+        ):
+            methods = re.findall(
+                r"\b(get|post|put|patch|delete|head|options)\s*\(",
+                match.group(2),
+                re.I,
+            ) or ["ANY"]
+            for method in methods:
+                add(
+                    method,
+                    match.group(1),
+                    source,
+                    "axum",
+                )
+
+        # Play Framework route files.
+        if name == "routes" or name.endswith(".routes"):
+            for match in re.finditer(
+                r"^\s*(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\s+"
+                r"(/\S+)",
+                text,
+                re.M,
+            ):
+                add(
+                    match.group(1),
+                    match.group(2),
+                    source,
+                    "play",
+                )
+
+        # OpenAPI/Swagger JSON.
+        if suffix == ".json" and (
+            "openapi" in name
+            or "swagger" in name
+        ):
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                payload = {}
+            paths = payload.get("paths") if isinstance(payload, dict) else {}
+            if isinstance(paths, dict):
+                for route, operations in paths.items():
+                    if not isinstance(operations, dict):
+                        add("ANY", route, source, "openapi")
+                        continue
+                    for method in operations:
+                        if method.upper() in {
+                            "GET", "POST", "PUT", "PATCH",
+                            "DELETE", "OPTIONS", "HEAD",
+                        }:
+                            add(
+                                method,
+                                route,
+                                source,
+                                "openapi",
+                            )
+
+        # Next.js API file-system routes.
+        relative_posix = relative.as_posix()
+        next_match = re.search(
+            r"(?:^|/)pages/api/(.+)\.(?:js|jsx|ts|tsx)$",
+            relative_posix,
+            re.I,
+        )
+        if next_match:
+            route = "/api/" + next_match.group(1)
+            route = re.sub(
+                r"/index$",
+                "",
+                route,
+                flags=re.I,
+            )
+            route = re.sub(
+                r"\[([^\]]+)\]",
+                r":\1",
+                route,
+            )
+            methods = _literal_methods(text) or ["ANY"]
+            for method in methods:
+                add(method, route, source, "nextjs-pages")
+
+        app_api_match = re.search(
+            r"(?:^|/)app/api/(.+)/route\.(?:js|ts)$",
+            relative_posix,
+            re.I,
+        )
+        if app_api_match:
+            route = "/api/" + app_api_match.group(1)
+            route = re.sub(
+                r"\[([^\]]+)\]",
+                r":\1",
+                route,
+            )
+            exported = re.findall(
+                r"\b(?:export\s+)?(?:async\s+)?function\s+"
+                r"(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\b",
+                text,
+                re.I,
+            ) or ["ANY"]
+            for method in exported:
+                add(method, route, source, "nextjs-app")
 
     return sorted(
         found.values(),
-        key=lambda item: (item.path, item.method, item.source),
-    )[:300]
+        key=lambda item: (
+            item.path,
+            item.method,
+            item.source,
+        ),
+    )
 
 
 def _runtime_from_descriptor(descriptor: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -979,6 +1460,9 @@ def build_profile_draft(
         ),
         "runtime": detection.runtime,
         "endpoints": [],
+        "endpoints_detectados": [
+            route.as_dict() for route in detection.routes
+        ],
         "chequeos_agente": [],
         "chequeos_acceso": [],
         "chequeos_pilar2": [],
@@ -992,6 +1476,7 @@ def build_profile_draft(
             "endpoints_candidatos": [
                 route.as_dict() for route in detection.routes
             ],
+            "total_endpoints_detectados": len(detection.routes),
             "cuentas_candidatas": list(detection.account_sources),
             "archivos_cuentas_escaneados": True,
             "perfil_generado_automaticamente": True,
