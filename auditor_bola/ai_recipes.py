@@ -208,6 +208,24 @@ def redactar_secretos(texto: str) -> str:
     return "".join(_redactar_linea_sensible(linea) for linea in lineas)
 
 
+def _redactar_estructura(valor):
+    if isinstance(valor, dict):
+        resultado = {}
+        for clave, contenido in valor.items():
+            if _SENSITIVE_NAME.search(str(clave)):
+                resultado[clave] = "<REDACTED>"
+            else:
+                resultado[clave] = _redactar_estructura(contenido)
+        return resultado
+    if isinstance(valor, list):
+        return [_redactar_estructura(item) for item in valor]
+    if isinstance(valor, tuple):
+        return [_redactar_estructura(item) for item in valor]
+    if isinstance(valor, str):
+        return redactar_secretos(valor)
+    return valor
+
+
 def _pistas_utiles(*textos: str) -> list[str]:
     palabras: list[str] = []
     for texto in textos:
@@ -411,9 +429,11 @@ def _construir_contexto(
         "control_id": control_id,
         "descripcion_hallazgo": descripcion,
         "detalle_observado": detalle,
-        "hallazgo_objetivo": metadata_hallazgo or {},
-        "matriz_de_pruebas_del_mismo_control": matriz_pruebas or [],
-        "intento_anterior_fallido": intento_anterior,
+        "hallazgo_objetivo": _redactar_estructura(metadata_hallazgo or {}),
+        "matriz_de_pruebas_del_mismo_control": _redactar_estructura(
+            matriz_pruebas or []
+        ),
+        "intento_anterior_fallido": _redactar_estructura(intento_anterior),
         "archivo_seleccionado": source_relative,
         "codigo_relevante_redactado": recortado,
         "criterio_de_exito": (
