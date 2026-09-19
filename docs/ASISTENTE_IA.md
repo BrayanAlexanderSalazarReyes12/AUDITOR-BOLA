@@ -120,7 +120,7 @@ selección automática.
    - **código resultante completo**;
    - diff antes/después con scroll horizontal y vertical.
 10. Cambiar de pestaña selecciona esa receta también en la ventana principal.
-11. Desde la ventana independiente puede pulsar **Aplicar receta seleccionada** o **Guardar receta en perfil + biblioteca + biblioteca**.
+11. Desde la ventana independiente puede pulsar **Aplicar receta seleccionada** o **Guardar receta en perfil + biblioteca**.
 12. Si cierra la ventana, puede volver a abrirla con **Ver propuestas en ventana**.
 13. El auditor ejecutará su ciclo normal de respaldo, corrección, verificación y rollback.
 
