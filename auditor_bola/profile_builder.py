@@ -356,6 +356,45 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
             re.compile(r"path\(\s*['\"]([^'\"]+)['\"]"),
             lambda m: ("ANY", "/" + m.group(1).lstrip("/")),
         ),
+        (
+            "laravel",
+            re.compile(
+                r"Route::(get|post|put|patch|delete)\(\s*['\"]([^'\"]+)['\"]",
+                re.I,
+            ),
+            lambda m: (m.group(1).upper(), m.group(2)),
+        ),
+        (
+            "aspnet-core",
+            re.compile(
+                r"\[Http(Get|Post|Put|Patch|Delete)(?:\(\s*['\"]([^'\"]*)['\"]\s*\))?\]",
+                re.I,
+            ),
+            lambda m: (m.group(1).upper(), m.group(2) or "/"),
+        ),
+        (
+            "nestjs",
+            re.compile(
+                r"@(Get|Post|Put|Patch|Delete)\(\s*['\"]([^'\"]*)['\"]\s*\)",
+                re.I,
+            ),
+            lambda m: (m.group(1).upper(), m.group(2) or "/"),
+        ),
+        (
+            "go-router",
+            re.compile(
+                r"\.(GET|POST|PUT|PATCH|DELETE)\(\s*['\"]([^'\"]+)['\"]",
+            ),
+            lambda m: (m.group(1).upper(), m.group(2)),
+        ),
+        (
+            "rails",
+            re.compile(
+                r"^\s*(get|post|put|patch|delete)\s+['\"]([^'\"]+)['\"]",
+                re.I | re.M,
+            ),
+            lambda m: (m.group(1).upper(), m.group(2)),
+        ),
     ]
 
     for path, relative in _iter_source_files(root):
