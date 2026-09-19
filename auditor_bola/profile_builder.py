@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import re
 import unicodedata
@@ -17,6 +18,7 @@ TEXT_EXTENSIONS = {
     ".c", ".cc", ".cpp", ".h", ".hpp",
     ".jsp", ".html", ".htm", ".xml", ".json", ".yaml", ".yml",
     ".toml", ".properties", ".gradle", ".sh", ".ps1", ".bat", ".cmd",
+    ".sql", ".env", ".ini", ".conf", ".cfg", ".txt", ".csv",
 }
 
 IGNORE_DIRS = {
@@ -53,6 +55,8 @@ class ProjectDetection:
     routes: list[DetectedRoute] = field(default_factory=list)
     runtime: dict[str, Any] = field(default_factory=dict)
     package_descriptor: dict[str, Any] | None = None
+    accounts: list[dict[str, Any]] = field(default_factory=list)
+    account_sources: list[dict[str, Any]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
@@ -66,6 +70,8 @@ class ProjectDetection:
             "routes": [route.as_dict() for route in self.routes],
             "runtime": self.runtime,
             "package_descriptor": self.package_descriptor,
+            "accounts": list(self.accounts),
+            "account_sources": list(self.account_sources),
             "notes": list(self.notes),
         }
 
@@ -79,10 +85,13 @@ def _read_text(path: Path, limit: int = 500_000) -> str:
         return ""
 
 
-def _iter_source_files(root: Path, max_files: int = 4000):
+def _iter_source_files(
+    root: Path,
+    max_files: int | None = 4000,
+):
     count = 0
     for path in root.rglob("*"):
-        if count >= max_files:
+        if max_files is not None and count >= max_files:
             break
         try:
             relative = path.relative_to(root)
@@ -92,7 +101,14 @@ def _iter_source_files(root: Path, max_files: int = 4000):
             continue
         if not path.is_file():
             continue
-        if path.suffix.lower() not in TEXT_EXTENSIONS:
+        suffix = path.suffix.lower()
+        name = path.name.lower()
+        special_text_name = (
+            name == ".env"
+            or name.startswith(".env.")
+            or name in {"passwd", "users", "accounts", "usuarios", "seed", "seeds"}
+        )
+        if suffix not in TEXT_EXTENSIONS and not special_text_name:
             continue
         count += 1
         yield path, relative
@@ -595,6 +611,283 @@ def _detect_runtime(
     return base, "http://127.0.0.1:8000"
 
 
+_USERNAME_KEYS = {
+    "username", "user", "usuario", "login", "email", "correo",
+    "nombre_usuario", "user_name",
+}
+_PASSWORD_KEYS = {
+    "password", "pass", "passwd", "clave", "contrasena",
+    "contraseña", "pwd",
+}
+_ROLE_KEYS = {
+    "role", "rol", "perfil", "authority", "authorities",
+    "tipo_usuario", "user_role",
+}
+_PRIVILEGED_ROLES = {
+    "admin", "administrator", "administrador", "root",
+    "superadmin", "super_admin", "manager", "gerente",
+}
+
+
+def _clean_literal(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip().strip("'").strip('"')
+    if not text:
+        return None
+    lower = text.lower()
+    if (
+        lower in {"none", "null", "undefined", "username", "password"}
+        or "$" "{" in text
+        or "{{" in text
+        or "process.env" in lower
+        or "os.getenv" in lower
+    ):
+        return None
+    return text
+
+
+def _account_from_mapping(
+    item: dict[str, Any],
+    *,
+    source: str,
+    confidence: str,
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    lowered = {str(key).lower(): value for key, value in item.items()}
+
+    username = next(
+        (
+            _clean_literal(lowered[key])
+            for key in _USERNAME_KEYS
+            if key in lowered and _clean_literal(lowered[key])
+        ),
+        None,
+    )
+    if not username:
+        return None
+
+    password = next(
+        (
+            _clean_literal(lowered[key])
+            for key in _PASSWORD_KEYS
+            if key in lowered and _clean_literal(lowered[key])
+        ),
+        None,
+    )
+    role = next(
+        (
+            _clean_literal(lowered[key])
+            for key in _ROLE_KEYS
+            if key in lowered and _clean_literal(lowered[key])
+        ),
+        None,
+    ) or "USER"
+
+    account = {
+        "username": username,
+        "password": password,
+        "role": role,
+        "auth_type": "basic" if password else "none",
+        "token": None,
+        "headers": {},
+    }
+    evidence = {
+        "username": username,
+        "role": role,
+        "archivo": source,
+        "confianza": confidence,
+        "password_literal": bool(password),
+    }
+    return account, evidence
+
+
+def _walk_json_accounts(
+    value: Any,
+    *,
+    source: str,
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    found: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    if isinstance(value, dict):
+        candidate = _account_from_mapping(
+            value,
+            source=source,
+            confidence="alta",
+        )
+        if candidate:
+            found.append(candidate)
+        for nested in value.values():
+            found.extend(_walk_json_accounts(nested, source=source))
+    elif isinstance(value, list):
+        for nested in value:
+            found.extend(_walk_json_accounts(nested, source=source))
+    return found
+
+
+def _split_sql_values(text: str) -> list[str]:
+    return [
+        part.strip().strip("'").strip('"')
+        for part in re.split(
+            r",(?=(?:[^']*'[^']*')*[^']*$)",
+            text,
+        )
+    ]
+
+
+def _extract_accounts_from_text(
+    text: str,
+    *,
+    source: str,
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    found: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+    insert_pattern = re.compile(
+        r"INSERT\s+INTO\s+[\w.\"\-]+\s*"
+        r"\(([^)]+)\)\s*VALUES\s*\(([^;]+?)\)",
+        re.I | re.S,
+    )
+    for match in insert_pattern.finditer(text):
+        columns = [
+            column.strip().strip('"').lower()
+            for column in match.group(1).split(",")
+        ]
+        values = _split_sql_values(match.group(2))
+        if len(columns) != len(values):
+            continue
+        candidate = _account_from_mapping(
+            dict(zip(columns, values)),
+            source=source,
+            confidence="alta",
+        )
+        if candidate:
+            found.append(candidate)
+
+    username_pattern = re.compile(
+        r"(?i)\b("
+        + "|".join(re.escape(key) for key in sorted(_USERNAME_KEYS))
+        + r")\b\s*[=:]\s*['\"]([^'\"\r\n]{1,160})['\"]"
+    )
+    password_pattern = re.compile(
+        r"(?i)\b("
+        + "|".join(re.escape(key) for key in sorted(_PASSWORD_KEYS))
+        + r")\b\s*[=:]\s*['\"]([^'\"\r\n]{1,220})['\"]"
+    )
+    role_pattern = re.compile(
+        r"(?i)\b("
+        + "|".join(re.escape(key) for key in sorted(_ROLE_KEYS))
+        + r")\b\s*[=:]\s*['\"]([^'\"\r\n]{1,120})['\"]"
+    )
+
+    for user_match in username_pattern.finditer(text):
+        start = max(0, user_match.start() - 500)
+        end = min(len(text), user_match.end() + 900)
+        window = text[start:end]
+        pass_match = password_pattern.search(window)
+        role_match = role_pattern.search(window)
+        candidate = _account_from_mapping(
+            {
+                "username": user_match.group(2),
+                "password": pass_match.group(2) if pass_match else None,
+                "role": role_match.group(2) if role_match else "USER",
+            },
+            source=source,
+            confidence="alta" if pass_match else "media",
+        )
+        if candidate:
+            found.append(candidate)
+
+    spring_pattern = re.compile(
+        r"withUser\(\s*['\"]([^'\"]+)['\"]\s*\)"
+        r".{0,500}?password\(\s*['\"]([^'\"]+)['\"]\s*\)"
+        r".{0,500}?(?:roles?|authorities)\(\s*['\"]([^'\"]+)['\"]",
+        re.I | re.S,
+    )
+    for match in spring_pattern.finditer(text):
+        candidate = _account_from_mapping(
+            {
+                "username": match.group(1),
+                "password": match.group(2),
+                "role": match.group(3),
+            },
+            source=source,
+            confidence="alta",
+        )
+        if candidate:
+            found.append(candidate)
+
+    return found
+
+
+def _extract_accounts(
+    root: Path,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    accounts: dict[str, dict[str, Any]] = {}
+    sources: dict[str, dict[str, Any]] = {}
+
+    for path, relative in _iter_source_files(root, max_files=None):
+        text = _read_text(path, limit=1_500_000)
+        if not text:
+            continue
+
+        candidates: list[
+            tuple[dict[str, Any], dict[str, Any]]
+        ] = []
+
+        if path.suffix.lower() == ".json":
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                payload = None
+            if payload is not None:
+                candidates.extend(
+                    _walk_json_accounts(
+                        payload,
+                        source=relative.as_posix(),
+                    )
+                )
+
+        if path.suffix.lower() == ".csv":
+            try:
+                rows = list(csv.DictReader(text.splitlines()))
+            except Exception:
+                rows = []
+            for row in rows:
+                candidate = _account_from_mapping(
+                    row,
+                    source=relative.as_posix(),
+                    confidence="alta",
+                )
+                if candidate:
+                    candidates.append(candidate)
+
+        candidates.extend(
+            _extract_accounts_from_text(
+                text,
+                source=relative.as_posix(),
+            )
+        )
+
+        for account, evidence in candidates:
+            username = account["username"]
+            current = accounts.get(username)
+            if current is None or (
+                not current.get("password")
+                and account.get("password")
+            ):
+                accounts[username] = account
+                sources[username] = evidence
+
+    ordered = sorted(
+        accounts.values(),
+        key=lambda item: item["username"].lower(),
+    )
+    evidence = [
+        sources[item["username"]]
+        for item in ordered
+        if item["username"] in sources
+    ]
+    return ordered, evidence
+
+
 def detect_project(root: str | Path) -> ProjectDetection:
     root_path = Path(root).expanduser().resolve()
     if not root_path.exists() or not root_path.is_dir():
@@ -617,6 +910,7 @@ def detect_project(root: str | Path) -> ProjectDetection:
         sorted(set(frameworks)),
         descriptor,
     )
+    accounts, account_sources = _extract_accounts(root_path)
 
     detection = ProjectDetection(
         root=root_path,
@@ -632,8 +926,13 @@ def detect_project(root: str | Path) -> ProjectDetection:
         routes=_extract_routes(root_path),
         runtime=runtime,
         package_descriptor=descriptor,
+        accounts=accounts,
+        account_sources=account_sources,
     )
     detection.notes.append(f"Base URL sugerida: {base_url}")
+    detection.notes.append(
+        f"Cuentas candidatas detectadas: {len(accounts)}"
+    )
     return detection
 
 
@@ -669,8 +968,15 @@ def build_profile_draft(
         "sistema": _slug(name),
         "version_objetivo": version or "1.0.0",
         "base_url": (base_url or suggested_url).rstrip("/"),
-        "cuentas": [],
-        "roles_privilegiados": [],
+        "cuentas": list(detection.accounts),
+        "roles_privilegiados": sorted(
+            {
+                str(account.get("role") or "")
+                for account in detection.accounts
+                if str(account.get("role") or "").lower()
+                in _PRIVILEGED_ROLES
+            }
+        ),
         "runtime": detection.runtime,
         "endpoints": [],
         "chequeos_agente": [],
@@ -686,6 +992,8 @@ def build_profile_draft(
             "endpoints_candidatos": [
                 route.as_dict() for route in detection.routes
             ],
+            "cuentas_candidatas": list(detection.account_sources),
+            "archivos_cuentas_escaneados": True,
             "perfil_generado_automaticamente": True,
         },
     }
