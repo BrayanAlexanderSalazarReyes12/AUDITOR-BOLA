@@ -983,48 +983,48 @@ class ModernAuditorGUI(AuditorGUI):
     def _build_status(self):
         self.status_bar = ctk.CTkFrame(
             self.content,
-            height=42,
+            height=34,
             fg_color="#071724",
-            corner_radius=10,
+            corner_radius=8,
             border_width=1,
             border_color=COLORS["border_soft"],
         )
-        self.status_bar.pack(fill="x", pady=(8, 0))
+        self.status_bar.pack(fill="x", pady=(7, 0))
         self.status_bar.pack_propagate(False)
-        self.status_bar.grid_columnconfigure(0, weight=1)
+        self.status_bar.grid_columnconfigure(1, weight=1)
 
         self.lbl_summary = ctk.CTkLabel(
             self.status_bar,
-            text="Sin diagnóstico.",
+            text="AEGIS AUDITOR  |  Auditoría Correctiva de Seguridad",
             text_color=COLORS["muted"],
-            font=(FONT_FAMILY, 9),
+            font=(FONT_FAMILY, 8, "bold"),
             anchor="w",
         )
         self.lbl_summary.grid(
             row=0,
             column=0,
-            sticky="ew",
-            padx=12,
+            sticky="w",
+            padx=(12, 8),
         )
 
         self.lbl_status = ctk.CTkLabel(
             self.status_bar,
-            text="Listo.",
-            text_color=COLORS["text"],
-            font=(FONT_FAMILY, 9, "bold"),
-            anchor="e",
+            text="Analiza. Corrige. Aprende. Protege.",
+            text_color=COLORS["muted_2"],
+            font=(FONT_FAMILY, 8),
+            anchor="center",
         )
         self.lbl_status.grid(
             row=0,
             column=1,
-            sticky="e",
+            sticky="ew",
             padx=8,
         )
 
         self.progress = ctk.CTkProgressBar(
             self.status_bar,
-            width=160,
-            height=7,
+            width=120,
+            height=6,
             mode="indeterminate",
             fg_color="#183246",
             progress_color=COLORS["accent"],
@@ -1033,10 +1033,23 @@ class ModernAuditorGUI(AuditorGUI):
             row=0,
             column=2,
             sticky="e",
-            padx=(4, 12),
+            padx=(8, 5),
         )
         self.progress.stop()
         self.progress.set(0)
+
+        self.footer_ai = ctk.CTkLabel(
+            self.status_bar,
+            text="● IA",
+            text_color=COLORS["success"],
+            font=(FONT_FAMILY, 8, "bold"),
+        )
+        self.footer_ai.grid(
+            row=0,
+            column=3,
+            sticky="e",
+            padx=(6, 12),
+        )
 
     def _route(self, name: str):
         aliases = {
