@@ -65,6 +65,7 @@ class AuditorController(QObject):
     state_changed = Signal()
     results_changed = Signal(list)
     busy_changed = Signal(bool, str)
+    task_progress = Signal(int, str)
     log_message = Signal(str)
     error_message = Signal(str, str)
     info_message = Signal(str, str)
@@ -415,7 +416,13 @@ class AuditorController(QObject):
             return
 
         def work():
-            return diagnosticar(self.cfg, self.target_root)
+            return diagnosticar(
+                self.cfg,
+                self.target_root,
+                progress_callback=lambda value, message: (
+                    self.task_progress.emit(value, message)
+                ),
+            )
 
         def success(result):
             self.resultado = result
