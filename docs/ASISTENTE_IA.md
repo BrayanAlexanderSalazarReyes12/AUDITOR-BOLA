@@ -124,6 +124,46 @@ selección automática.
 12. Si cierra la ventana, puede volver a abrirla con **Ver propuestas en ventana**.
 13. El auditor ejecutará su ciclo normal de respaldo, corrección, verificación y rollback.
 
+## Cuando una receta no corrige el hallazgo
+
+El auditor verifica la fila exacta que originó la corrección. La identidad de
+la prueba incluye, cuando están disponibles:
+
+```text
+control_id + cuenta + método + ruta + tipo_control
+```
+
+Esto evita tratar como una sola prueba todas las filas que comparten
+`P1-BOLA`.
+
+Además de comprobar la fila objetivo, el auditor vigila regresiones. Una fila
+que antes estaba en `SIN_HALLAZGO` no puede convertirse en
+`HALLAZGO` o `ERROR` por efecto de la receta.
+
+Si la receta no funciona:
+
+```text
+aplicar
+  ↓
+verificar fila exacta
+  ↓
+NO_CORREGIDO
+  ↓
+rollback
+  ↓
+¿Generar 3 nuevas recetas con el fallo?
+  ↓
+Gemma recibe el intento anterior + resultado de verificación
+```
+
+La segunda ronda incluye la matriz de pruebas del mismo control para que Gemma
+conozca qué combinaciones ya eran seguras y cuál debe corregir. También recibe
+el diff de la receta fallida y se le indica que no repita la misma solución ni
+una variante superficial.
+
+El feedback enviado a Gemma pasa por la misma redacción de secretos utilizada
+para el código fuente.
+
 ## Biblioteca de recetas reutilizables
 
 La receta que el usuario selecciona puede reutilizarse fuera del sistema en
