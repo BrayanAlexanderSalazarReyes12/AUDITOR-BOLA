@@ -41,11 +41,11 @@ def calculate_dialog_size(
     margin: int = 24,
 ) -> tuple[int, int, int, int]:
     """Calcula tamaño lógico sin salir del área útil de la pantalla."""
-    usable_width = max(640, available_width - (margin * 2))
-    usable_height = max(460, available_height - (margin * 2))
+    usable_width = max(1, available_width - (margin * 2))
+    usable_height = max(1, available_height - (margin * 2))
 
-    width = min(preferred_width, usable_width)
-    height = min(preferred_height, usable_height)
+    width = max(1, min(preferred_width, usable_width))
+    height = max(1, min(preferred_height, usable_height))
 
     min_width = min(minimum_width, width)
     min_height = min(minimum_height, height)
@@ -396,12 +396,13 @@ class LoadCenterDialog(AegisDialog):
         scroll.setWidget(holder)
         root.addWidget(scroll, 1)
 
-        footer_frame = QFrame()
-        footer_frame.setObjectName("DialogFooter")
-        footer_frame.setSizePolicy(
+        self.footer_frame = QFrame()
+        self.footer_frame.setObjectName("DialogFooter")
+        self.footer_frame.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
+        footer_frame = self.footer_frame
         footer = QHBoxLayout(footer_frame)
         footer.setContentsMargins(12, 7, 12, 7)
 
@@ -521,9 +522,14 @@ class AutoProfileDialog(AegisDialog):
         step_layout.addWidget(self.stepper)
         root.addWidget(step_card)
 
-        content = QSplitter(Qt.Orientation.Horizontal)
-        content.setObjectName("DialogContentSplitter")
-        content.setChildrenCollapsible(False)
+        self.content_splitter = QSplitter(
+            Qt.Orientation.Horizontal
+        )
+        self.content_splitter.setObjectName(
+            "DialogContentSplitter"
+        )
+        self.content_splitter.setChildrenCollapsible(False)
+        content = self.content_splitter
 
         left = Card()
         left.setObjectName("DialogContentCard")
@@ -590,12 +596,13 @@ class AutoProfileDialog(AegisDialog):
         content.setSizes([420, 640])
         root.addWidget(content, 1)
 
-        footer_frame = QFrame()
-        footer_frame.setObjectName("DialogFooter")
-        footer_frame.setSizePolicy(
+        self.footer_frame = QFrame()
+        self.footer_frame.setObjectName("DialogFooter")
+        self.footer_frame.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
+        footer_frame = self.footer_frame
         footer = QHBoxLayout(footer_frame)
         footer.setContentsMargins(12, 7, 12, 7)
         footer.setSpacing(8)
