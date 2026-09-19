@@ -631,10 +631,10 @@ class AIAssistantMixin:
 
         screen_w = window.winfo_screenwidth()
         screen_h = window.winfo_screenheight()
-        width = min(1500, max(900, screen_w - 100))
-        height = min(900, max(650, screen_h - 140))
+        width = max(720, min(1500, screen_w - 80))
+        height = max(560, min(900, screen_h - 120))
         window.geometry(f"{width}x{height}")
-        window.minsize(820, 600)
+        window.minsize(min(820, width), min(600, height))
         window.protocol("WM_DELETE_WINDOW", self._close_ai_proposals_window)
 
         outer = ttk.Frame(window, padding=10)
@@ -723,12 +723,15 @@ class AIAssistantMixin:
                 text="Seleccionar esta receta",
                 command=lambda i=index: self._select_ai_proposal_index(i),
             ).pack(side="left", padx=(0, 6))
+            code_result = (
+                data["preview"].get("codigo_despues")
+                if data["preview"] is not None
+                else proposal.reemplazar
+            )
             ttk.Button(
                 actions,
-                text="Copiar código propuesto",
-                command=lambda p=proposal: self._copy_to_clipboard(
-                    p.reemplazar
-                ),
+                text="Copiar código resultante",
+                command=lambda text=code_result: self._copy_to_clipboard(text),
             ).pack(side="left", padx=(0, 6))
 
             panes = tk.PanedWindow(
@@ -775,7 +778,7 @@ class AIAssistantMixin:
             code_text.grid(row=0, column=0, sticky="nsew")
             code_y.grid(row=0, column=1, sticky="ns")
             code_x.grid(row=1, column=0, sticky="ew")
-            code_text.insert("1.0", proposal.reemplazar)
+            code_text.insert("1.0", code_result)
             code_text.configure(state="disabled")
 
             diff_text = tk.Text(
