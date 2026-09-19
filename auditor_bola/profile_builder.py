@@ -60,6 +60,7 @@ class DetectedRoute:
             "ruta": self.path,
             "archivo": self.source,
             "framework": self.framework,
+            "tipo_fuente": _source_kind(self.source),
         }
 
 
@@ -487,11 +488,70 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
             framework=framework,
         )
 
+    def scan_json_endpoint_refs(
+        value: Any,
+        *,
+        source: str,
+    ) -> None:
+        if isinstance(value, dict):
+            method_value = value.get("method") or value.get("metodo")
+            url_value = (
+                value.get("url")
+                or value.get("endpoint")
+                or value.get("route")
+                or value.get("ruta")
+            )
+
+            if isinstance(url_value, dict):
+                raw = url_value.get("raw")
+                path_parts = url_value.get("path")
+                if raw:
+                    url_value = raw
+                elif isinstance(path_parts, list):
+                    url_value = "/" + "/".join(
+                        str(part).strip("/")
+                        for part in path_parts
+                    )
+
+            if (
+                isinstance(method_value, str)
+                and isinstance(url_value, str)
+                and method_value.upper()
+                in {
+                    "GET", "POST", "PUT", "PATCH",
+                    "DELETE", "OPTIONS", "HEAD",
+                }
+                and (
+                    url_value.startswith("/")
+                    or url_value.startswith("http://")
+                    or url_value.startswith("https://")
+                )
+            ):
+                add(
+                    method_value,
+                    url_value,
+                    source,
+                    "json-endpoint-reference",
+                )
+
+            for nested in value.values():
+                scan_json_endpoint_refs(
+                    nested,
+                    source=source,
+                )
+
+        elif isinstance(value, list):
+            for nested in value:
+                scan_json_endpoint_refs(
+                    nested,
+                    source=source,
+                )
+
     for path, relative in _iter_source_files(
         root,
         max_files=None,
     ):
-        text = _read_text(path, limit=2_000_000)
+        text = _read_text(path, limit=MAX_TEXT_SCAN_BYTES)
         if not text:
             continue
 
@@ -958,32 +1018,92 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
                     "play",
                 )
 
-        # OpenAPI/Swagger JSON.
-        if suffix == ".json" and (
-            "openapi" in name
-            or "swagger" in name
-        ):
+        # OpenAPI/Swagger, Postman, Insomnia y JSON de configuración.
+        if suffix == ".json":
             try:
                 payload = json.loads(text)
             except json.JSONDecodeError:
                 payload = {}
-            paths = payload.get("paths") if isinstance(payload, dict) else {}
-            if isinstance(paths, dict):
-                for route, operations in paths.items():
-                    if not isinstance(operations, dict):
-                        add("ANY", route, source, "openapi")
-                        continue
-                    for method in operations:
-                        if method.upper() in {
-                            "GET", "POST", "PUT", "PATCH",
-                            "DELETE", "OPTIONS", "HEAD",
-                        }:
-                            add(
-                                method,
-                                route,
-                                source,
-                                "openapi",
-                            )
+
+            if isinstance(payload, dict):
+                paths = payload.get("paths")
+                if isinstance(paths, dict):
+                    for route, operations in paths.items():
+                        if not isinstance(operations, dict):
+                            add("ANY", route, source, "openapi")
+                            continue
+                        for method in operations:
+                            if method.upper() in {
+                                "GET", "POST", "PUT", "PATCH",
+                                "DELETE", "OPTIONS", "HEAD",
+                            }:
+                                add(
+                                    method,
+                                    route,
+                                    source,
+                                    "openapi",
+                                )
+
+                scan_json_endpoint_refs(
+                    payload,
+                    source=source,
+                )
+
+        # Documentación, manuales y archivos REST:
+        # GET /api/users
+        # POST https://host/api/login
+        # curl -X PATCH https://host/api/profile
+        for match in re.finditer(
+            r"(?im)(?:^|[|>\s])"
+            r"(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)"
+            r"\s*(?:\||:|-)?\s*"
+            r"(https?://[^\s|<>()]+|/[A-Za-z0-9_~!        # Referencias de cliente: ayudan a descubrir rutas usadas por
+        # JSP/HTML/JS cuando la declaración del servidor no es visible.
+'()*+,;=:@%{}./?\-]+)",
+            text,
+        ):
+            add(
+                match.group(1),
+                match.group(2),
+                source,
+                "documentation-reference",
+            )
+
+        for match in re.finditer(
+            r"(?is)\bcurl\b(.{0,1000}?)(https?://[^\s'\"<>]+)",
+            text,
+        ):
+            options = match.group(1)
+            method_match = re.search(
+                r"(?:-X|--request)\s+"
+                r"(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)",
+                options,
+                re.I,
+            )
+            add(
+                method_match.group(1) if method_match else "GET",
+                match.group(2),
+                source,
+                "documentation-curl",
+            )
+
+        for match in re.finditer(
+            r"(?im)^\s*(?:[-*+]\s*)?"
+            r"(?:api[_\s-]?endpoint|endpoint(?:_url)?|"
+            r"service[_\s-]?url|api[_\s-]?url|route|ruta)"
+            r"\s*[:=]\s*['\"]?"
+            r"(https?://[^\s'\"|]+|/[A-Za-z0-9_~!        # Referencias de cliente: ayudan a descubrir rutas usadas por
+        # JSP/HTML/JS cuando la declaración del servidor no es visible.
+'()*+,;=:@%{}./?\-]+)",
+            text,
+            re.I,
+        ):
+            add(
+                "ANY",
+                match.group(1),
+                source,
+                "configuration-reference",
+            )
 
         # Referencias de cliente: ayudan a descubrir rutas usadas por
         # JSP/HTML/JS cuando la declaración del servidor no es visible.
@@ -1050,8 +1170,9 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
 
         # OpenAPI/Swagger YAML inventories.
         if suffix in {".yaml", ".yml"} and (
-            "openapi" in name
-            or "swagger" in name
+            "openapi:" in text.lower()
+            or "swagger:" in text.lower()
+            or re.search(r"(?m)^\s*paths\s*:\s*$", text)
         ):
             current_openapi_path: str | None = None
             in_paths = False
@@ -1162,6 +1283,7 @@ def _build_endpoint_inventory(
                 "framework": route.framework,
                 "archivos": [],
                 "frameworks": [],
+                "tipos_fuente": [],
             },
         )
         if route.source and route.source not in item["archivos"]:
@@ -1171,6 +1293,10 @@ def _build_endpoint_inventory(
             and route.framework not in item["frameworks"]
         ):
             item["frameworks"].append(route.framework)
+
+        source_kind = _source_kind(route.source)
+        if source_kind not in item["tipos_fuente"]:
+            item["tipos_fuente"].append(source_kind)
 
     return sorted(
         grouped.values(),
@@ -1722,7 +1848,7 @@ def _extract_accounts(
     sources: dict[str, dict[str, Any]] = {}
 
     for path, relative in _iter_source_files(root, max_files=None):
-        text = _read_text(path, limit=1_500_000)
+        text = _read_text(path, limit=MAX_TEXT_SCAN_BYTES)
         if not text:
             continue
 
