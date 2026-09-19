@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -28,8 +29,44 @@ from .theme import COLORS
 from .widgets import Card, PrimaryButton, SectionHeader, Stepper, brand_icon
 
 
-class LoadCard(QPushButton):
+class AegisDialog(QDialog):
+    """Diálogo base con lienzo Aegis y titlebar oscuro en Windows."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("AegisDialog")
+        self.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if os.name != "nt":
+            return
+        try:
+            import ctypes
+
+            hwnd = int(self.winId())
+            value = ctypes.c_int(1)
+            dwm = ctypes.windll.dwmapi
+            for attribute in (20, 19):
+                result = dwm.DwmSetWindowAttribute(
+                    hwnd,
+                    attribute,
+                    ctypes.byref(value),
+                    ctypes.sizeof(value),
+                )
+                if result == 0:
+                    break
+        except Exception:
+            pass
+
+
+class LoadCard(QFrame):
     """Tarjeta clicable del Centro de Carga."""
+
+    clicked = Signal()
 
     def __init__(
         self,
@@ -40,22 +77,61 @@ class LoadCard(QPushButton):
     ):
         super().__init__(parent)
         self.setObjectName("LoadCard")
+        self.setAttribute(
+            Qt.WidgetAttribute.WA_Hover,
+            True,
+        )
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(102)
+        self.setMinimumHeight(96)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        self.setText(
-            f"{icon_text}   {title}\n"
-            f"      {description}"
-        )
         self.setToolTip(description)
 
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(12)
+
+        icon = QLabel(icon_text)
+        icon.setObjectName("LoadCardIcon")
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setFixedSize(38, 38)
+        layout.addWidget(icon)
+
+        text = QVBoxLayout()
+        text.setContentsMargins(0, 0, 0, 0)
+        text.setSpacing(3)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("LoadCardTitle")
+        title_label.setWordWrap(False)
+        text.addWidget(title_label)
+
+        description_label = QLabel(description)
+        description_label.setObjectName("LoadCardDescription")
+        description_label.setWordWrap(True)
+        text.addWidget(description_label)
+
+        layout.addLayout(text, 1)
+
+        arrow = QLabel("›")
+        arrow.setObjectName("LoadCardArrow")
+        arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        arrow.setFixedWidth(20)
+        layout.addWidget(arrow)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 
-class LoadCenterDialog(QDialog):
+
+class LoadCenterDialog(AegisDialog):
     request_new_project = Signal()
     request_profile = Signal()
     request_source = Signal()
@@ -118,8 +194,6 @@ class LoadCenterDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setObjectName("AegisDialog")
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("Aegis Auditor — Cargar / Importar")
         self.setWindowIcon(brand_icon())
         self.resize(980, 650)
@@ -218,8 +292,7 @@ class LoadCenterDialog(QDialog):
             )
             signal = signal_map[key]
             card.clicked.connect(
-                lambda _checked=False, s=signal:
-                self._emit_and_close(s)
+                lambda s=signal: self._emit_and_close(s)
             )
             grid.addWidget(
                 card,
@@ -254,13 +327,11 @@ class LoadCenterDialog(QDialog):
         signal.emit()
 
 
-class AutoProfileDialog(QDialog):
+class AutoProfileDialog(AegisDialog):
     profile_ready = Signal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setObjectName("AegisDialog")
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("Aegis Auditor — Nuevo proyecto")
         self.setWindowIcon(brand_icon())
         self.resize(1120, 740)
