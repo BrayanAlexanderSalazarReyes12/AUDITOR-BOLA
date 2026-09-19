@@ -358,7 +358,10 @@ class Sidebar(QFrame):
 
             self.brand_name.show()
             self.brand_tagline.setText(
-                "<b>P1 + P2</b><br>MULTIPLATAFORMA"
+                "<span style='color:#39C7FF;font-weight:700'>"
+                "P1 + P2</span><br>"
+                "<span style='color:#86A6BA'>"
+                "MULTIPLATAFORMA</span>"
             )
             self.brand_tagline.setTextFormat(
                 Qt.TextFormat.RichText
