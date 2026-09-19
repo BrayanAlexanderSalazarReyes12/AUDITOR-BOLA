@@ -12,7 +12,9 @@ from typing import Any
 
 TEXT_EXTENSIONS = {
     ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
-    ".java", ".kt", ".kts", ".php", ".cs", ".go", ".rb",
+    ".java", ".kt", ".kts", ".php", ".cs", ".go", ".rb", ".rs",
+    ".scala", ".swift", ".dart", ".ex", ".exs", ".vue", ".svelte",
+    ".c", ".cc", ".cpp", ".h", ".hpp",
     ".jsp", ".html", ".htm", ".xml", ".json", ".yaml", ".yml",
     ".toml", ".properties", ".gradle", ".sh", ".ps1", ".bat", ".cmd",
 }
@@ -116,8 +118,10 @@ def _detect_stack(root: Path) -> tuple[list[str], list[str], list[str]]:
         "package.json", "requirements.txt", "pyproject.toml", "Pipfile",
         "pom.xml", "build.gradle", "build.gradle.kts", "composer.json",
         "Gemfile", "go.mod", "Cargo.toml", "Dockerfile",
-        "docker-compose.yml", "docker-compose.yaml", "compose.yml",
-        "compose.yaml",
+        "pubspec.yaml", "Package.swift", "mix.exs", "build.sbt",
+        "CMakeLists.txt", "Makefile", "yarn.lock", "pnpm-lock.yaml",
+        "package-lock.json", "docker-compose.yml", "docker-compose.yaml",
+        "compose.yml", "compose.yaml",
     }
 
     for name in manifest_names:
@@ -190,14 +194,114 @@ def _detect_stack(root: Path) -> tuple[list[str], list[str], list[str]]:
 
     if (root / "go.mod").exists():
         languages.add("go")
+        text = _read_text(root / "go.mod").lower()
+        for token, label in (
+            ("github.com/gin-gonic/gin", "gin"),
+            ("github.com/gofiber/fiber", "fiber"),
+            ("github.com/labstack/echo", "echo"),
+        ):
+            if token in text:
+                frameworks.add(label)
+
+    if (root / "Gemfile").exists():
+        languages.add("ruby")
+        text = _read_text(root / "Gemfile").lower()
+        if "rails" in text:
+            frameworks.add("rails")
+        if "sinatra" in text:
+            frameworks.add("sinatra")
+
+    if (root / "Cargo.toml").exists():
+        languages.add("rust")
+        text = _read_text(root / "Cargo.toml").lower()
+        for token, label in (
+            ("actix-web", "actix-web"),
+            ("axum", "axum"),
+            ("rocket", "rocket"),
+        ):
+            if token in text:
+                frameworks.add(label)
+
+    if (root / "pubspec.yaml").exists():
+        languages.add("dart")
+        text = _read_text(root / "pubspec.yaml").lower()
+        if "flutter:" in text:
+            frameworks.add("flutter")
+
+    if (root / "Package.swift").exists():
+        languages.add("swift")
+        frameworks.add("swift-package")
+
+    if (root / "mix.exs").exists():
+        languages.add("elixir")
+        text = _read_text(root / "mix.exs").lower()
+        if "phoenix" in text:
+            frameworks.add("phoenix")
+
+    if (root / "build.sbt").exists():
+        languages.add("scala")
+        text = _read_text(root / "build.sbt").lower()
+        if "play" in text:
+            frameworks.add("play")
+
+    if (root / "composer.json").exists():
+        text = _read_text(root / "composer.json").lower()
+        if "symfony/" in text:
+            frameworks.add("symfony")
+
+    if (root / "wp-config-sample.php").exists() or (root / "wp-includes").exists():
+        languages.add("php")
+        frameworks.add("wordpress")
+
+    for csproj in list(root.glob("*.csproj")) + list(root.rglob("*.csproj"))[:20]:
+        text = _read_text(csproj).lower()
+        if "microsoft.net.sdk.web" in text:
+            frameworks.add("aspnet-core")
+            break
+
+    # Inferencia por extensiones como fallback para proyectos sin manifiesto.
+    extension_languages = {
+        ".java": "java",
+        ".kt": "kotlin",
+        ".kts": "kotlin",
+        ".py": "python",
+        ".js": "javascript",
+        ".mjs": "javascript",
+        ".cjs": "javascript",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".php": "php",
+        ".cs": "csharp",
+        ".go": "go",
+        ".rb": "ruby",
+        ".rs": "rust",
+        ".scala": "scala",
+        ".swift": "swift",
+        ".dart": "dart",
+        ".ex": "elixir",
+        ".exs": "elixir",
+        ".c": "c",
+        ".cc": "cpp",
+        ".cpp": "cpp",
+    }
+    extension_counts: dict[str, int] = {}
+    for path, _relative in _iter_source_files(root, max_files=800):
+        language = extension_languages.get(path.suffix.lower())
+        if language:
+            extension_counts[language] = extension_counts.get(language, 0) + 1
+    for language, count in extension_counts.items():
+        if count >= 1:
+            languages.add(language)
 
     return sorted(languages), sorted(frameworks), sorted(manifests)
 
 
 def _detect_source_roots(root: Path) -> list[str]:
     candidates = [
-        "src", "app", "server", "backend", "api", "vulndesk",
-        "src/main/java", "src/main/webapp", "routes", "controllers",
+        "src", "app", "server", "backend", "api", "lib", "cmd",
+        "internal", "pkg", "web", "public", "vulndesk",
+        "src/main/java", "src/main/kotlin", "src/main/webapp",
+        "routes", "controllers",
     ]
     roots = [candidate for candidate in candidates if (root / candidate).exists()]
     return roots or ["."]
@@ -353,9 +457,29 @@ def _detect_runtime(
         return base, "http://127.0.0.1/moodle"
 
     if "javascript" in languages or "typescript" in languages:
-        base["comando_inicio"] = ["npm", "start"]
+        package_manager = "npm"
+        if (root / "pnpm-lock.yaml").exists():
+            package_manager = "pnpm"
+        elif (root / "yarn.lock").exists():
+            package_manager = "yarn"
+
+        start_command = [package_manager, "start"]
+        try:
+            package_data = json.loads(_read_text(root / "package.json"))
+        except (json.JSONDecodeError, TypeError):
+            package_data = {}
+        scripts = package_data.get("scripts") or {}
+        if "start" not in scripts and "dev" in scripts:
+            start_command = [package_manager, "run", "dev"]
+
+        base["comando_inicio"] = start_command
         base["preparar_automaticamente"] = True
-        base["comandos_preparacion"] = [["npm", "install", "--no-audit", "--no-fund"]]
+        if package_manager == "npm":
+            base["comandos_preparacion"] = [
+                ["npm", "install", "--no-audit", "--no-fund"]
+            ]
+        else:
+            base["comandos_preparacion"] = [[package_manager, "install"]]
         return base, "http://127.0.0.1:3000"
 
     if "python" in languages:
@@ -385,10 +509,49 @@ def _detect_runtime(
             base["modo"] = "external"
         return base, "http://127.0.0.1:8080"
 
-    if "dotnet" in frameworks:
+    if "dotnet" in frameworks or "csharp" in languages:
         base["comando_inicio"] = ["dotnet", "run"]
+        base["preparar_automaticamente"] = True
+        base["comandos_preparacion"] = [["dotnet", "restore"]]
         return base, "http://127.0.0.1:5000"
 
+    if "php" in languages:
+        if "laravel" in frameworks and (root / "artisan").exists():
+            base["comando_inicio"] = [
+                "php", "artisan", "serve",
+                "--host=127.0.0.1", "--port=8000",
+            ]
+            if (root / "composer.json").exists():
+                base["preparar_automaticamente"] = True
+                base["comandos_preparacion"] = [["composer", "install"]]
+            return base, "http://127.0.0.1:8000"
+        # Moodle, WordPress, Symfony y PHP servidos por Apache/Nginx suelen
+        # depender del entorno; evitar inventar un launcher.
+        base["modo"] = "external"
+        return base, "http://127.0.0.1:8000"
+
+    if "ruby" in languages:
+        if "rails" in frameworks:
+            base["comando_inicio"] = ["bundle", "exec", "rails", "server"]
+            base["preparar_automaticamente"] = True
+            base["comandos_preparacion"] = [["bundle", "install"]]
+            return base, "http://127.0.0.1:3000"
+        base["modo"] = "external"
+        return base, "http://127.0.0.1:4567"
+
+    if "go" in languages:
+        base["comando_inicio"] = ["go", "run", "."]
+        return base, "http://127.0.0.1:8080"
+
+    if "rust" in languages:
+        base["comando_inicio"] = ["cargo", "run"]
+        base["preparar_automaticamente"] = True
+        base["comandos_preparacion"] = [["cargo", "build"]]
+        return base, "http://127.0.0.1:8000"
+
+    # Para stacks donde el launcher web no puede inferirse de forma fiable
+    # (Flutter, Swift, Elixir, Scala, C/C++ u otros), conservar el proyecto y
+    # generar el perfil, pero requerir confirmación humana del runtime.
     base["modo"] = "external"
     return base, "http://127.0.0.1:8000"
 
