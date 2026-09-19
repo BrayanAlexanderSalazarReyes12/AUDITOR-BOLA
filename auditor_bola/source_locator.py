@@ -39,23 +39,23 @@ _GENERIC_ROUTE_TOKENS = {
 _METHOD_MARKERS = {
     "GET": (
         "@get", "getmapping", "doget(", "router.get", ".get(",
-        "requestmethod.get", "methods=["get"", "methods=['get'",
+        "requestmethod.get", 'methods=["get"', "methods=['get'",
     ),
     "POST": (
         "@post", "postmapping", "dopost(", "router.post", ".post(",
-        "requestmethod.post", "methods=["post"", "methods=['post'",
+        "requestmethod.post", 'methods=["post"', "methods=['post'",
     ),
     "PUT": (
         "@put", "putmapping", "doput(", "router.put", ".put(",
-        "requestmethod.put", "methods=["put"", "methods=['put'",
+        "requestmethod.put", 'methods=["put"', "methods=['put'",
     ),
     "PATCH": (
         "@patch", "patchmapping", "dopatch(", "router.patch", ".patch(",
-        "requestmethod.patch", "methods=["patch"", "methods=['patch'",
+        "requestmethod.patch", 'methods=["patch"', "methods=['patch'",
     ),
     "DELETE": (
         "@delete", "deletemapping", "dodelete(", "router.delete", ".delete(",
-        "requestmethod.delete", "methods=["delete"", "methods=['delete'",
+        "requestmethod.delete", 'methods=["delete"', "methods=['delete'",
     ),
 }
 
