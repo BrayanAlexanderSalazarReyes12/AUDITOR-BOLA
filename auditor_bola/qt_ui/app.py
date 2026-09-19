@@ -417,7 +417,13 @@ class Topbar(QFrame):
     new_requested = None
     load_requested = None
 
-    def __init__(self, new_project, load_center, parent=None):
+    def __init__(
+        self,
+        new_project,
+        load_center,
+        close_app,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setObjectName("Topbar")
         self.setMinimumHeight(70)
@@ -485,6 +491,12 @@ class Topbar(QFrame):
         self.load_btn.clicked.connect(load_center)
         layout.addWidget(self.load_btn)
 
+        self.exit_btn = QPushButton("✕ Salir")
+        self.exit_btn.setObjectName("ExitButton")
+        self.exit_btn.setToolTip("Cerrar Aegis Auditor")
+        self.exit_btn.clicked.connect(close_app)
+        layout.addWidget(self.exit_btn)
+
     def set_compact(self, compact: bool) -> None:
         self.quote.setVisible(not compact)
         if compact:
@@ -492,11 +504,15 @@ class Topbar(QFrame):
             self.new_btn.setText("＋")
             self.new_btn.setMaximumWidth(42)
             self.load_btn.setText("Cargar")
+            self.exit_btn.setText("✕")
+            self.exit_btn.setMaximumWidth(42)
         else:
             self.account_box.setMaximumWidth(16777215)
             self.new_btn.setText("＋ Nuevo")
             self.new_btn.setMaximumWidth(16777215)
             self.load_btn.setText("Cargar ▾")
+            self.exit_btn.setText("✕ Salir")
+            self.exit_btn.setMaximumWidth(16777215)
 
     def refresh(self, controller: AuditorController) -> None:
         self.project.setText(
@@ -582,6 +598,7 @@ class AegisMainWindow(QMainWindow):
         self.topbar = Topbar(
             self.open_new_project,
             self.open_load_center,
+            self.close,
         )
         content_l.addWidget(self.topbar)
         self._startup(52, "Construyendo navegación y paneles…")
