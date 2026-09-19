@@ -57,39 +57,49 @@ from .widgets import Card, NavButton, PrimaryButton, brand_icon
 
 
 class Sidebar(QFrame):
+    """Navegación lateral con branding aislado del menú.
+
+    El branding y la navegación viven en contenedores distintos para impedir
+    solapamientos cuando Windows aplica escalado HiDPI.
+    """
+
+    EXPANDED_WIDTH = 300
+    COMPACT_WIDTH = 76
+    BRAND_MIN_HEIGHT = 252
+
     def __init__(self, navigate, new_project, load_center, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
-        self.setFixedWidth(296)
+        self.setFixedWidth(self.EXPANDED_WIDTH)
         self._compact = False
         self.buttons: dict[str, NavButton] = {}
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 12)
-        layout.setSpacing(8)
+        self.root_layout = QVBoxLayout(self)
+        self.root_layout.setContentsMargins(14, 14, 14, 12)
+        self.root_layout.setSpacing(8)
 
-        # --------------------------------------------------------------
-        # Identidad de marca
-        #
-        # No usamos aquí el PNG horizontal completo porque ese recurso
-        # ya contiene texto dentro de la propia imagen. Combinarlo con
-        # etiquetas del sidebar provocaba solapamientos en determinados
-        # factores de escala de Windows. El escudo y cada bloque textual
-        # se renderizan por separado para que Qt pueda distribuirlos.
-        # --------------------------------------------------------------
+        self._build_brand()
+        self._build_navigation(
+            navigate,
+            new_project,
+            load_center,
+        )
+        self._build_footer()
+
+        self.set_active("home")
+
+    def _build_brand(self) -> None:
         self.brand_box = QFrame()
         self.brand_box.setObjectName("BrandBox")
+        self.brand_box.setMinimumHeight(self.BRAND_MIN_HEIGHT)
         self.brand_box.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
 
         self.brand_layout = QVBoxLayout(self.brand_box)
-        self.brand_layout.setContentsMargins(10, 12, 10, 12)
-        self.brand_layout.setSpacing(6)
-        self.brand_layout.setAlignment(
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
-        )
+        self.brand_layout.setContentsMargins(10, 10, 10, 10)
+        self.brand_layout.setSpacing(5)
 
         self.brand_logo = QLabel()
         self.brand_logo.setObjectName("BrandLogo")
@@ -112,6 +122,7 @@ class Sidebar(QFrame):
         self.brand_name.setObjectName("BrandName")
         self.brand_name.setTextFormat(Qt.TextFormat.RichText)
         self.brand_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.brand_name.setMinimumHeight(28)
         self.brand_layout.addWidget(self.brand_name)
 
         self.brand_tagline = QLabel(
@@ -119,6 +130,7 @@ class Sidebar(QFrame):
         )
         self.brand_tagline.setObjectName("BrandTagline")
         self.brand_tagline.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.brand_tagline.setMinimumHeight(16)
         self.brand_layout.addWidget(self.brand_tagline)
 
         self.pillars = QLabel(
@@ -128,8 +140,10 @@ class Sidebar(QFrame):
             "Arquitectura y Configuración"
         )
         self.pillars.setObjectName("BrandPillars")
+        self.pillars.setTextFormat(Qt.TextFormat.RichText)
         self.pillars.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.pillars.setWordWrap(True)
+        self.pillars.setMinimumHeight(40)
         self.brand_layout.addWidget(self.pillars)
 
         self.brand_divider = QFrame()
@@ -137,36 +151,83 @@ class Sidebar(QFrame):
         self.brand_divider.setFixedHeight(1)
         self.brand_layout.addWidget(self.brand_divider)
 
-        layout.addWidget(
-            self.brand_box,
-            0,
-            Qt.AlignmentFlag.AlignTop,
-        )
-        layout.addSpacing(10)
+        self.root_layout.addWidget(self.brand_box, 0)
 
-        self._sync_brand_box_height()
+    def _build_navigation(
+        self,
+        navigate,
+        new_project,
+        load_center,
+    ) -> None:
+        self.nav_box = QFrame()
+        self.nav_box.setObjectName("NavigationBox")
+        self.nav_box.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+
+        self.nav_layout = QVBoxLayout(self.nav_box)
+        self.nav_layout.setContentsMargins(0, 2, 0, 2)
+        self.nav_layout.setSpacing(3)
 
         nav_items = [
             ("home", "⌂", "Inicio", lambda: navigate("home")),
             ("new", "＋", "Nuevo proyecto", new_project),
             ("load", "▣", "Cargar / Importar", load_center),
-            ("project", "⚙", "Auto-configuración", lambda: navigate("project")),
-            ("audit", "◈", "Auditoría P1 + P2", lambda: navigate("audit")),
-            ("ai", "✦", "Correcciones con IA", lambda: navigate("ai")),
-            ("knowledge", "▤", "Recetas y conocimiento", lambda: navigate("knowledge")),
-            ("evidence", "▧", "Evidencias", lambda: navigate("evidence")),
-            ("reports", "▦", "Reportes", lambda: navigate("reports")),
-            ("settings", "⚙", "Configuración", lambda: navigate("settings")),
+            (
+                "project",
+                "⚙",
+                "Auto-configuración",
+                lambda: navigate("project"),
+            ),
+            (
+                "audit",
+                "◈",
+                "Auditoría P1 + P2",
+                lambda: navigate("audit"),
+            ),
+            (
+                "ai",
+                "✦",
+                "Correcciones con IA",
+                lambda: navigate("ai"),
+            ),
+            (
+                "knowledge",
+                "▤",
+                "Recetas y conocimiento",
+                lambda: navigate("knowledge"),
+            ),
+            (
+                "evidence",
+                "▧",
+                "Evidencias",
+                lambda: navigate("evidence"),
+            ),
+            (
+                "reports",
+                "▦",
+                "Reportes",
+                lambda: navigate("reports"),
+            ),
+            (
+                "settings",
+                "⚙",
+                "Configuración",
+                lambda: navigate("settings"),
+            ),
         ]
 
         for key, icon, label, callback in nav_items:
             button = NavButton(icon, label)
             button.clicked.connect(callback)
-            layout.addWidget(button)
+            self.nav_layout.addWidget(button)
             self.buttons[key] = button
 
-        layout.addStretch(1)
+        self.nav_layout.addStretch(1)
+        self.root_layout.addWidget(self.nav_box, 1)
 
+    def _build_footer(self) -> None:
         self.footer = QFrame()
         self.footer.setObjectName("SubtlePanel")
         footer_layout = QVBoxLayout(self.footer)
@@ -185,8 +246,7 @@ class Sidebar(QFrame):
         version.setObjectName("KpiSub")
         footer_layout.addWidget(version)
 
-        layout.addWidget(self.footer)
-        self.set_active("home")
+        self.root_layout.addWidget(self.footer, 0)
 
     def set_active(self, key: str) -> None:
         for name, button in self.buttons.items():
@@ -195,22 +255,19 @@ class Sidebar(QFrame):
     def set_ai(self, enabled: bool, model: str) -> None:
         if enabled:
             self.ai_status.setText(f"● IA conectada · {model}")
-            self.ai_status.setStyleSheet(f"color:{COLORS['success']};")
+            self.ai_status.setStyleSheet(
+                f"color:{COLORS['success']};"
+            )
         else:
             self.ai_status.setText("○ IA no configurada")
-            self.ai_status.setStyleSheet(f"color:{COLORS['muted']};")
-
-    def _sync_brand_box_height(self) -> None:
-        """Ajusta la altura del branding al contenido real y al DPI."""
-        self.brand_box.ensurePolished()
-        self.brand_box.adjustSize()
-        hint = self.brand_box.sizeHint().height()
-        self.brand_box.setFixedHeight(max(hint, 210))
+            self.ai_status.setStyleSheet(
+                f"color:{COLORS['muted']};"
+            )
 
     def _apply_full_brand_logo(self) -> None:
-        pixmap = brand_icon().pixmap(96, 96)
+        pixmap = brand_icon().pixmap(92, 92)
         self.brand_logo.setPixmap(pixmap)
-        self.brand_logo.setFixedSize(96, 96)
+        self.brand_logo.setFixedSize(92, 92)
 
     def _apply_compact_brand_logo(self) -> None:
         pixmap = brand_icon().pixmap(40, 40)
@@ -222,35 +279,43 @@ class Sidebar(QFrame):
             return
 
         self._compact = compact
-        self.setFixedWidth(76 if compact else 296)
+        self.setFixedWidth(
+            self.COMPACT_WIDTH
+            if compact
+            else self.EXPANDED_WIDTH
+        )
 
         if compact:
+            self.brand_box.setMinimumHeight(60)
+            self.brand_box.setMaximumHeight(60)
             self.brand_layout.setContentsMargins(0, 8, 0, 8)
             self.brand_layout.setSpacing(0)
             self._apply_compact_brand_logo()
 
-            self.brand_name.setVisible(False)
-            self.brand_tagline.setVisible(False)
-            self.pillars.setVisible(False)
-            self.brand_divider.setVisible(False)
-
-            self.brand_box.setFixedHeight(60)
+            self.brand_name.hide()
+            self.brand_tagline.hide()
+            self.pillars.hide()
+            self.brand_divider.hide()
+            self.footer.hide()
         else:
-            self.brand_layout.setContentsMargins(10, 12, 10, 12)
-            self.brand_layout.setSpacing(6)
+            self.brand_box.setMaximumHeight(16777215)
+            self.brand_box.setMinimumHeight(self.BRAND_MIN_HEIGHT)
+            self.brand_layout.setContentsMargins(10, 10, 10, 10)
+            self.brand_layout.setSpacing(5)
             self._apply_full_brand_logo()
 
-            self.brand_name.setVisible(True)
-            self.brand_tagline.setVisible(True)
-            self.pillars.setVisible(True)
-            self.brand_divider.setVisible(True)
-
-            self._sync_brand_box_height()
-
-        self.footer.setVisible(not compact)
+            self.brand_name.show()
+            self.brand_tagline.show()
+            self.pillars.show()
+            self.brand_divider.show()
+            self.footer.show()
 
         for button in self.buttons.values():
             button.set_compact(compact)
+
+        self.brand_box.updateGeometry()
+        self.nav_box.updateGeometry()
+        self.updateGeometry()
 
 
 class Topbar(QFrame):
@@ -920,8 +985,17 @@ class AegisMainWindow(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         width = event.size().width()
-        sidebar_compact = width < 1040
-        page_compact = width < 1220
+        height = event.size().height()
+
+        sidebar_compact = (
+            width < 1040
+            or height < 720
+        )
+        page_compact = (
+            width < 1220
+            or height < 700
+        )
+
         self.sidebar.set_compact(sidebar_compact)
         self.topbar.set_compact(page_compact)
         self.home.set_compact(page_compact)
