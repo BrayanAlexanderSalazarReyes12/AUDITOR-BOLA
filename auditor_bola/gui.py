@@ -843,6 +843,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self.lbl_target.configure(text=str(self.target_root))
         self._log(f"Código objetivo: {self.target_root}")
         self._refresh_state()
+        self._ai_sync_selected_control()
 
     def _choose_evidence_base(self):
         path = filedialog.askdirectory(
