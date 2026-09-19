@@ -41,6 +41,14 @@
       "propietario_esperado": "usuario1",
       "codigos_permitidos": [
         200
+      ],
+      "archivos_fuente": [
+        "src/controllers/RecursoController.java"
+      ],
+      "pistas_codigo": [
+        "recurso",
+        "autorizar",
+        "propietario"
       ]
     }
   ],
@@ -58,6 +66,14 @@
         200,
         201,
         204
+      ],
+      "archivos_fuente": [
+        "src/controllers/AdminController.java"
+      ],
+      "pistas_codigo": [
+        "admin",
+        "accion",
+        "role"
       ]
     }
   ],
@@ -71,7 +87,14 @@
       "cuenta": "usuario1",
       "headers": {
         "Origin": "https://origen-no-autorizado.example"
-      }
+      },
+      "archivos_fuente": [
+        "src/config/Seguridad.java"
+      ],
+      "pistas_codigo": [
+        "cors",
+        "origin"
+      ]
     },
     {
       "id_control": "P2-SOURCE-001",

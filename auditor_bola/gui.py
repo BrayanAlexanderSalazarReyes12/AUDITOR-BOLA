@@ -69,6 +69,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self.proceso: LocalTargetProcess | None = None
         self.busy = False
         self.evidence_paths: list[Path] = []
+        self.result_rows: dict[str, dict] = {}
 
         self.auto_manage_var = tk.BooleanVar(value=False)
 
@@ -594,6 +595,12 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
             return None
         return self.table.item(selected[0], "values")
 
+    def _selected_row_data(self) -> dict | None:
+        selected = self.table.selection()
+        if not selected:
+            return None
+        return self.result_rows.get(selected[0])
+
     def _selected_control(self) -> str | None:
         values = self._selected_values()
         return values[1] if values else None
@@ -836,6 +843,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self.lbl_target.configure(text=str(self.target_root))
         self._log(f"Código objetivo: {self.target_root}")
         self._refresh_state()
+        self._ai_sync_selected_control()
 
     def _choose_evidence_base(self):
         path = filedialog.askdirectory(
@@ -927,6 +935,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self.resultado = result
         for item in self.table.get_children():
             self.table.delete(item)
+        self.result_rows = {}
 
         for row in filas_gui(result):
             corregible = bool(
@@ -939,7 +948,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
             else:
                 tag = "ok"
 
-            self.table.insert(
+            iid = self.table.insert(
                 "",
                 "end",
                 values=(
@@ -953,6 +962,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
                 ),
                 tags=(tag,),
             )
+            self.result_rows[iid] = row
 
         r = result["resumen"]
         total = (

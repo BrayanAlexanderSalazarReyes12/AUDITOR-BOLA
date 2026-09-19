@@ -126,6 +126,52 @@ El motor cruza todas las cuentas contra el recurso y compara acceso esperado vs.
 
 Cuando existe un agente que ejecuta herramientas, `chequeos_agente` compara lo que la identidad ve por API directa con lo que obtiene por medio del agente.
 
+## 4.1 Asociación automática con archivos fuente
+
+El Asistente IA puede localizar automáticamente el archivo relacionado con un
+hallazgo. La resolución es independiente del lenguaje y usa dos niveles:
+
+1. **Metadatos explícitos del perfil** mediante `archivos_fuente` y
+   `pistas_codigo`.
+2. **Búsqueda heurística** cuando esos metadatos no existen, usando el método
+   HTTP, la ruta, la descripción del control, el nombre/ruta de los archivos y
+   patrones comunes de frameworks.
+
+Ejemplo para un endpoint:
+
+```json
+{
+  "id_control": "P1-BOLA-001",
+  "descripcion": "Un usuario no puede modificar reservas ajenas",
+  "metodo": "PATCH",
+  "ruta": "/reservas/{id}",
+  "id_prueba": "10",
+  "propietario_esperado": "usuario1",
+  "archivos_fuente": [
+    "src/main/java/com/app/ReservaController.java"
+  ],
+  "pistas_codigo": [
+    "reserva",
+    "autorizar",
+    "propietario"
+  ]
+}
+```
+
+Los campos son opcionales. Si `archivos_fuente` no está presente, el auditor
+explora archivos de código y configuración comunes, incluyendo Java, Kotlin,
+Python, JavaScript/TypeScript, PHP, C#, Go, Ruby, JSP, XML, YAML y properties.
+
+Cuando una misma ID de control se utiliza para GET, PATCH u otros métodos, la
+GUI conserva internamente el método y la ruta de la fila seleccionada para
+resolver el archivo correcto. Por eso un hallazgo `PATCH /reservas/{id}`
+puede apuntar a un archivo diferente del hallazgo
+`GET /reservas/{id}`, aunque ambos compartan `P1-BOLA`.
+
+La selección automática no elimina el botón **Elegir archivo**: ese botón
+permite anular manualmente la sugerencia cuando una aplicación tiene una
+estructura poco convencional.
+
 ## 5. Pilar 2
 
 Controles incluidos actualmente:

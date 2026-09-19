@@ -52,6 +52,9 @@ def filas_gui(resultado: dict) -> list[dict]:
                 "cuenta": item["cuenta"],
                 "estado": estado,
                 "detalle": f"HTTP {item['http_status']} · esperado={item['acceso_esperado']} real={item['acceso_real']}",
+                "tipo_control": "bola",
+                "metodo": item["metodo"],
+                "ruta": item["endpoint"],
             }
         )
 
@@ -64,6 +67,9 @@ def filas_gui(resultado: dict) -> list[dict]:
                 "cuenta": item["cuenta"],
                 "estado": "HALLAZGO" if item["vulnerable"] else "SIN_HALLAZGO",
                 "detalle": f"HTTP {item['http_status']} · esperado={item['acceso_esperado']} real={item['acceso_real']}",
+                "tipo_control": "acceso",
+                "metodo": item["metodo"],
+                "ruta": item["endpoint"],
             }
         )
 
@@ -77,6 +83,9 @@ def filas_gui(resultado: dict) -> list[dict]:
                 "cuenta": item["cuenta"],
                 "estado": "HALLAZGO" if r["vulnerable"] else "SIN_HALLAZGO",
                 "detalle": f"API={r['cantidad_api_directa']} agente={r['cantidad_agente']} exceso={r['exceso']}",
+                "tipo_control": "alcance_agente",
+                "metodo": None,
+                "ruta": None,
             }
         )
 
@@ -89,6 +98,9 @@ def filas_gui(resultado: dict) -> list[dict]:
                 "cuenta": "-",
                 "estado": item["estado"],
                 "detalle": item["detalle"],
+                "tipo_control": item["tipo"],
+                "metodo": None,
+                "ruta": None,
             }
         )
 

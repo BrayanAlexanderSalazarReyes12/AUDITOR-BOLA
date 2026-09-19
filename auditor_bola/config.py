@@ -34,6 +34,8 @@ class Endpoint:
     codigos_permitidos: tuple[int, ...] = (200, 201, 204)
     id_control: str | None = None
     descripcion: str | None = None
+    archivos_fuente: list[str] = field(default_factory=list)
+    pistas_codigo: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -52,6 +54,8 @@ class ChequeoAgente:
     id_field: str = "id"
     agent_items_json_path: str | None = None
     id_control: str = "P1-SCOPE"
+    archivos_fuente: list[str] = field(default_factory=list)
+    pistas_codigo: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -64,6 +68,8 @@ class ChequeoAcceso:
     acceso_esperado: bool
     cuerpo: dict | None = None
     codigos_permitidos: tuple[int, ...] = (200, 201, 204)
+    archivos_fuente: list[str] = field(default_factory=list)
+    pistas_codigo: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -83,6 +89,8 @@ class ChequeoPilar2:
     archivo: str | None = None
     patron_inseguro: str | None = None
     patron_seguro: str | None = None
+    archivos_fuente: list[str] = field(default_factory=list)
+    pistas_codigo: list[str] = field(default_factory=list)
 
 
 @dataclass
