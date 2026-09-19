@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#F4F7FB"/>
+  <rect x="0" y="0" width="1600" height="92" fill="#0B1F33"/>
+  <text x="70" y="58" font-family="Segoe UI,Arial" font-size="36" font-weight="700" fill="#FFFFFF">Figura 5 · Evidencia reproducible por sesión</text>
+  
+  <g font-family="Segoe UI,Arial">
+    <rect x="150" y="180" width="1300" height="540" rx="28" fill="#FFFFFF" stroke="#D8E1EB" stroke-width="3"/>
+    <text x="220" y="240" font-size="30" font-weight="700" fill="#0B1F33">evidencias/&lt;sesion&gt;/</text>
+
+    <rect x="230" y="290" width="300" height="160" rx="20" fill="#EAF1FD" stroke="#2D6CDF" stroke-width="3"/>
+    <text x="380" y="345" text-anchor="middle" font-size="27" font-weight="700" fill="#2D6CDF">Baseline</text>
+    <text x="380" y="395" text-anchor="middle" font-size="21" fill="#24364B">resultados.json</text>
+
+    <rect x="650" y="290" width="300" height="160" rx="20" fill="#E6F7F4" stroke="#24B6A6" stroke-width="3"/>
+    <text x="800" y="345" text-anchor="middle" font-size="27" font-weight="700" fill="#147D73">Cambios</text>
+    <text x="800" y="395" text-anchor="middle" font-size="21" fill="#24364B">correccion.json · diff</text>
+
+    <rect x="1070" y="290" width="300" height="160" rx="20" fill="#EAF1FD" stroke="#2D6CDF" stroke-width="3"/>
+    <text x="1220" y="345" text-anchor="middle" font-size="27" font-weight="700" fill="#2D6CDF">Verification</text>
+    <text x="1220" y="395" text-anchor="middle" font-size="21" fill="#24364B">resultados.json</text>
+
+    <rect x="440" y="520" width="300" height="120" rx="20" fill="#F5F7FA" stroke="#8AA0B5" stroke-width="3"/>
+    <text x="590" y="570" text-anchor="middle" font-size="26" font-weight="700" fill="#0B1F33">manifest.json</text>
+    <text x="590" y="605" text-anchor="middle" font-size="20" fill="#6B7C8F">trazabilidad del ciclo</text>
+
+    <rect x="860" y="520" width="300" height="120" rx="20" fill="#F5F7FA" stroke="#8AA0B5" stroke-width="3"/>
+    <text x="1010" y="570" text-anchor="middle" font-size="26" font-weight="700" fill="#0B1F33">Medicina</text>
+    <text x="1010" y="605" text-anchor="middle" font-size="20" fill="#6B7C8F">conocimiento_aprendido.json</text>
+
+    <path d="M530 370 L650 370" stroke="#8AA0B5" stroke-width="6"/>
+    <path d="M950 370 L1070 370" stroke="#8AA0B5" stroke-width="6"/>
+    <path d="M800 450 L590 520" stroke="#8AA0B5" stroke-width="5"/>
+    <path d="M800 450 L1010 520" stroke="#8AA0B5" stroke-width="5"/>
+  </g>
+
+  <text x="70" y="858" font-family="Segoe UI,Arial" font-size="19" fill="#6B7C8F">Aegis Auditor · Security Remediation Studio</text>
+</svg>
