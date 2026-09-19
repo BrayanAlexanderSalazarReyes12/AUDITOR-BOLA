@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
@@ -27,7 +27,20 @@ def add_shadow(widget: QWidget, blur: int = 24, y: int = 6) -> None:
 
 
 def brand_icon() -> QIcon:
+    """Icono compacto para ventana, taskbar y estados pequeños."""
     return QIcon(str(resource_path("assets", "aegis-shield.svg")))
+
+
+def brand_logo_pixmap(width: int = 210) -> QPixmap:
+    """Logo completo oficial para superficies de branding amplias."""
+    source = resource_path("assets", "aegis-auditor-logo.png")
+    pixmap = QPixmap(str(source))
+    if pixmap.isNull():
+        return QPixmap()
+    return pixmap.scaledToWidth(
+        width,
+        Qt.TransformationMode.SmoothTransformation,
+    )
 
 
 class Card(QFrame):
