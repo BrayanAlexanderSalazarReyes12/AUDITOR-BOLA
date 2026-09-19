@@ -64,14 +64,17 @@ class Sidebar(QFrame):
     """
 
     EXPANDED_WIDTH = 300
+    CONDENSED_WIDTH = 236
     COMPACT_WIDTH = 76
     BRAND_MIN_HEIGHT = 252
+    BRAND_CONDENSED_HEIGHT = 158
 
     def __init__(self, navigate, new_project, load_center, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
         self.setFixedWidth(self.EXPANDED_WIDTH)
         self._compact = False
+        self._condensed = False
         self.buttons: dict[str, NavButton] = {}
 
         self.root_layout = QVBoxLayout(self)
@@ -264,28 +267,36 @@ class Sidebar(QFrame):
                 f"color:{COLORS['muted']};"
             )
 
-    def _apply_full_brand_logo(self) -> None:
-        pixmap = brand_icon().pixmap(92, 92)
+    def _apply_full_brand_logo(self, size: int = 92) -> None:
+        pixmap = brand_icon().pixmap(size, size)
         self.brand_logo.setPixmap(pixmap)
-        self.brand_logo.setFixedSize(92, 92)
+        self.brand_logo.setFixedSize(size, size)
 
     def _apply_compact_brand_logo(self) -> None:
         pixmap = brand_icon().pixmap(40, 40)
         self.brand_logo.setPixmap(pixmap)
         self.brand_logo.setFixedSize(44, 44)
 
-    def set_compact(self, compact: bool) -> None:
-        if compact == self._compact:
+    def set_layout_mode(
+        self,
+        *,
+        compact: bool,
+        condensed: bool = False,
+    ) -> None:
+        """Aplica una densidad visual sin mezclar branding y navegación."""
+        condensed = bool(condensed and not compact)
+
+        if (
+            compact == self._compact
+            and condensed == self._condensed
+        ):
             return
 
         self._compact = compact
-        self.setFixedWidth(
-            self.COMPACT_WIDTH
-            if compact
-            else self.EXPANDED_WIDTH
-        )
+        self._condensed = condensed
 
         if compact:
+            self.setFixedWidth(self.COMPACT_WIDTH)
             self.brand_box.setMinimumHeight(60)
             self.brand_box.setMaximumHeight(60)
             self.brand_layout.setContentsMargins(0, 8, 0, 8)
@@ -297,14 +308,42 @@ class Sidebar(QFrame):
             self.pillars.hide()
             self.brand_divider.hide()
             self.footer.hide()
-        else:
-            self.brand_box.setMaximumHeight(16777215)
-            self.brand_box.setMinimumHeight(self.BRAND_MIN_HEIGHT)
-            self.brand_layout.setContentsMargins(10, 10, 10, 10)
-            self.brand_layout.setSpacing(5)
-            self._apply_full_brand_logo()
+
+        elif condensed:
+            self.setFixedWidth(self.CONDENSED_WIDTH)
+            self.brand_box.setMinimumHeight(
+                self.BRAND_CONDENSED_HEIGHT
+            )
+            self.brand_box.setMaximumHeight(
+                self.BRAND_CONDENSED_HEIGHT
+            )
+            self.brand_layout.setContentsMargins(8, 8, 8, 8)
+            self.brand_layout.setSpacing(3)
+            self._apply_full_brand_logo(68)
 
             self.brand_name.show()
+            self.brand_tagline.setText(
+                "PILAR 1 + PILAR 2 · MULTIPLATAFORMA"
+            )
+            self.brand_tagline.show()
+            self.pillars.hide()
+            self.brand_divider.show()
+            self.footer.hide()
+
+        else:
+            self.setFixedWidth(self.EXPANDED_WIDTH)
+            self.brand_box.setMaximumHeight(16777215)
+            self.brand_box.setMinimumHeight(
+                self.BRAND_MIN_HEIGHT
+            )
+            self.brand_layout.setContentsMargins(10, 10, 10, 10)
+            self.brand_layout.setSpacing(5)
+            self._apply_full_brand_logo(92)
+
+            self.brand_name.show()
+            self.brand_tagline.setText(
+                "AUDITORÍA · CORRECCIÓN · APRENDIZAJE"
+            )
             self.brand_tagline.show()
             self.pillars.show()
             self.brand_divider.show()
@@ -316,6 +355,13 @@ class Sidebar(QFrame):
         self.brand_box.updateGeometry()
         self.nav_box.updateGeometry()
         self.updateGeometry()
+
+    def set_compact(self, compact: bool) -> None:
+        """Compatibilidad con pruebas y llamadas anteriores."""
+        self.set_layout_mode(
+            compact=compact,
+            condensed=False,
+        )
 
 
 class Topbar(QFrame):
@@ -984,20 +1030,43 @@ class AegisMainWindow(QMainWindow):
     # ------------------------------------------------------------------
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        width = event.size().width()
-        height = event.size().height()
+
+        logical_width = event.size().width()
+        logical_height = event.size().height()
+
+        # Qt trabaja con píxeles lógicos. Con escalado de Windows al
+        # 150–175 %, una pantalla físicamente amplia puede parecer estrecha
+        # y activar por error el modo de iconos. Para la decisión de layout
+        # usamos también el tamaño físico efectivo.
+        dpr = max(1.0, float(self.devicePixelRatioF()))
+        physical_width = logical_width * dpr
+        physical_height = logical_height * dpr
 
         sidebar_compact = (
-            width < 1040
-            or height < 720
+            physical_width < 1050
+            or physical_height < 620
         )
-        page_compact = (
-            width < 1220
-            or height < 700
+        sidebar_condensed = (
+            not sidebar_compact
+            and (
+                logical_height < 760
+                or dpr > 1.25
+            )
         )
 
-        self.sidebar.set_compact(sidebar_compact)
-        self.topbar.set_compact(page_compact)
+        page_compact = (
+            physical_width < 1380
+            or physical_height < 720
+        )
+        topbar_compact = (
+            physical_width < 1280
+        )
+
+        self.sidebar.set_layout_mode(
+            compact=sidebar_compact,
+            condensed=sidebar_condensed,
+        )
+        self.topbar.set_compact(topbar_compact)
         self.home.set_compact(page_compact)
 
     def showEvent(self, event):
