@@ -46,6 +46,10 @@ Registro
 
 El menú superior separa **Archivo**, **Proyecto**, **Auditoría**, **Conocimiento** y **Ayuda**. Una barra de progreso indica las operaciones en curso y el dashboard muestra proyecto, perfil, proceso y número de hallazgos.
 
+## Interfaz moderna
+
+Aegis Auditor abre por defecto su nueva interfaz **CustomTkinter**, con dashboard, barra lateral, Centro de Carga, wizard de auto-configuración, vistas separadas de Pilar 1/Pilar 2, remediación IA, conocimiento, evidencias y reportes. La interfaz anterior puede abrirse temporalmente con `AEGIS_LEGACY_UI=1`.
+
 ## Aplicaciones de escritorio
 
 Aegis Auditor se compila de forma nativa para los principales sistemas operativos:
