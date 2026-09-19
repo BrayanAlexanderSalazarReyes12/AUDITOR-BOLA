@@ -60,12 +60,30 @@ class LoadCenter(ctk.CTkToplevel):
             anchor="w",
         ).grid(row=1, column=0, columnspan=2, sticky="ew", padx=24, pady=(0, 16))
 
+        self.cards = ctk.CTkScrollableFrame(
+            self,
+            fg_color="transparent",
+            scrollbar_button_color="#12384F",
+            scrollbar_button_hover_color="#1A526F",
+        )
+        self.cards.grid(
+            row=2,
+            column=0,
+            columnspan=2,
+            sticky="nsew",
+            padx=16,
+            pady=(0, 4),
+        )
+        self.grid_rowconfigure(2, weight=1)
+        self.cards.grid_columnconfigure(0, weight=1)
+        self.cards.grid_columnconfigure(1, weight=1)
+
         for index, (key, icon, title, desc) in enumerate(self.ITEMS):
-            row = 2 + index // 2
+            row = index // 2
             col = index % 2
 
             card = ctk.CTkFrame(
-                self,
+                self.cards,
                 fg_color=COLORS["surface"],
                 corner_radius=12,
                 border_width=1,
@@ -75,7 +93,7 @@ class LoadCenter(ctk.CTkToplevel):
                 row=row,
                 column=col,
                 sticky="nsew",
-                padx=(24 if col == 0 else 8, 8 if col == 0 else 24),
+                padx=6,
                 pady=7,
             )
             card.grid_columnconfigure(1, weight=1)
@@ -106,7 +124,7 @@ class LoadCenter(ctk.CTkToplevel):
                 font=(FONT_FAMILY, 9),
                 anchor="w",
                 justify="left",
-                wraplength=260,
+                wraplength=250,
             ).grid(row=1, column=1, sticky="ew", pady=(0, 12))
 
             ctk.CTkButton(
@@ -125,7 +143,7 @@ class LoadCenter(ctk.CTkToplevel):
             width=100,
             fg_color=COLORS["surface_3"],
             hover_color="#16405E",
-        ).grid(row=7, column=1, sticky="e", padx=24, pady=(12, 20))
+        ).grid(row=3, column=1, sticky="e", padx=24, pady=(8, 16))
 
     def _wrap(self, callback):
         def invoke():
