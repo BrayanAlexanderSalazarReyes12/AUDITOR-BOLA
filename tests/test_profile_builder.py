@@ -372,3 +372,148 @@ def test_openapi_yaml_se_incorpora_al_json(tmp_path):
 
     assert ("GET", "/api/orders") in routes
     assert ("POST", "/api/orders") in routes
+
+
+def test_readme_md_aporta_cuentas_y_endpoints(tmp_path):
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# Manual de pruebas\n\n"
+        "Usuario: qa.admin\n"
+        "Contraseña: qa-secret\n"
+        "Rol: ADMIN\n\n"
+        "GET /api/usuarios\n"
+        "POST https://localhost:8080/api/login\n"
+        "curl -X PATCH https://localhost:8080/api/profile\n",
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+    profile = build_profile_draft(detection)
+
+    by_user = {
+        item["username"]: item
+        for item in profile["cuentas"]
+    }
+    assert by_user["qa.admin"]["password"] == "qa-secret"
+    assert by_user["qa.admin"]["role"] == "ADMIN"
+
+    routes = {
+        (item["metodo"], item["ruta"])
+        for item in profile["endpoints_detectados"]
+    }
+    assert ("GET", "/api/usuarios") in routes
+    assert ("POST", "/api/login") in routes
+    assert ("PATCH", "/api/profile") in routes
+
+    account_evidence = next(
+        item
+        for item in profile["metadata_detectada"]["cuentas_candidatas"]
+        if item["username"] == "qa.admin"
+    )
+    assert account_evidence["tipo_fuente"] == "documentacion"
+
+    endpoint = next(
+        item
+        for item in profile["endpoints_detectados"]
+        if item["ruta"] == "/api/usuarios"
+    )
+    assert "documentacion" in endpoint["tipos_fuente"]
+
+
+def test_tabla_markdown_de_usuarios_se_detecta(tmp_path):
+    manual = tmp_path / "docs" / "usuarios.md"
+    manual.parent.mkdir()
+    manual.write_text(
+        "| Usuario | Contraseña | Rol |\n"
+        "| --- | --- | --- |\n"
+        "| ana.vargas | clave-ana | analista |\n"
+        "| bruno.mejia | clave-bruno | coordinador |\n",
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+    users = {
+        item["username"]: item
+        for item in detection.accounts
+    }
+
+    assert users["ana.vargas"]["password"] == "clave-ana"
+    assert users["ana.vargas"]["role"] == "analista"
+    assert users["bruno.mejia"]["role"] == "coordinador"
+
+
+def test_archivo_textual_desconocido_tambien_se_escanea(tmp_path):
+    notes = tmp_path / "deployment.runtimeinfo"
+    notes.write_text(
+        "usuario: deploy.user\n"
+        "password: deploy-pass\n"
+        "role: OPERADOR\n"
+        "endpoint=/internal/sync\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    assert any(
+        item["username"] == "deploy.user"
+        for item in profile["cuentas"]
+    )
+    assert any(
+        item["ruta"] == "/internal/sync"
+        for item in profile["endpoints_detectados"]
+    )
+
+
+def test_postman_json_generico_aporta_endpoints(tmp_path):
+    collection = tmp_path / "testing-collection.json"
+    collection.write_text(
+        json.dumps({
+            "info": {"name": "Demo"},
+            "item": [
+                {
+                    "name": "Detalle",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "http://localhost:8080/api/items/42"
+                        },
+                    },
+                },
+                {
+                    "name": "Listado",
+                    "request": {
+                        "method": "GET",
+                        "url": "/api/items",
+                    },
+                },
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    routes = {
+        (item["metodo"], item["ruta"])
+        for item in profile["endpoints_detectados"]
+    }
+
+    assert ("DELETE", "/api/items/42") in routes
+    assert ("GET", "/api/items") in routes
+
+
+def test_archivo_binario_desconocido_no_se_interpreta_como_texto(tmp_path):
+    binary = tmp_path / "blob.custom"
+    binary.write_bytes(
+        b"GET /api/falso\x00usuario: hacker\x00password: no"
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    assert not any(
+        item["ruta"] == "/api/falso"
+        for item in profile["endpoints_detectados"]
+    )
+    assert not any(
+        item["username"] == "hacker"
+        for item in profile["cuentas"]
+    )
