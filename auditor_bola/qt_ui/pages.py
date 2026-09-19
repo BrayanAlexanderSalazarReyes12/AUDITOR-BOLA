@@ -59,15 +59,15 @@ class HomePage(QWidget):
 
         self.grid = QGridLayout(self)
         self.grid.setContentsMargins(0, 0, 0, 0)
-        self.grid.setHorizontalSpacing(10)
-        self.grid.setVerticalSpacing(10)
+        self.grid.setHorizontalSpacing(9)
+        self.grid.setVerticalSpacing(8)
         self.grid.setColumnStretch(0, 7)
         self.grid.setColumnStretch(1, 3)
         self.grid.setRowStretch(2, 1)
 
         self.step_card = Card()
         step_layout = QVBoxLayout(self.step_card)
-        step_layout.setContentsMargins(14, 12, 14, 12)
+        step_layout.setContentsMargins(12, 8, 12, 8)
         self.stepper = Stepper(
             [
                 ("Seleccionar", "Proyecto"),
@@ -82,8 +82,8 @@ class HomePage(QWidget):
 
         self.operation = Card()
         op = QVBoxLayout(self.operation)
-        op.setContentsMargins(16, 14, 16, 14)
-        op.setSpacing(8)
+        op.setContentsMargins(14, 10, 14, 10)
+        op.setSpacing(5)
         op.addWidget(
             SectionHeader(
                 "Ejecución y diagnóstico",
@@ -136,11 +136,15 @@ class HomePage(QWidget):
         actions.addWidget(self.audit_btn)
         op.addLayout(actions)
 
+        self.operation.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         self.grid.addWidget(self.operation, 1, 0)
 
         self.console_card = Card()
         console_layout = QVBoxLayout(self.console_card)
-        console_layout.setContentsMargins(14, 12, 14, 12)
+        console_layout.setContentsMargins(12, 9, 12, 10)
         console_layout.addWidget(
             SectionHeader(
                 "Consola en tiempo real",
@@ -149,14 +153,15 @@ class HomePage(QWidget):
         )
         self.console = QPlainTextEdit()
         self.console.setReadOnly(True)
-        self.console.setMinimumHeight(150)
+        self.console.setMinimumHeight(104)
+        self.console.setMaximumHeight(150)
         console_layout.addWidget(self.console, 1)
         self.grid.addWidget(self.console_card, 2, 0)
 
         self.metrics = QWidget()
         metrics_layout = QHBoxLayout(self.metrics)
         metrics_layout.setContentsMargins(0, 0, 0, 0)
-        metrics_layout.setSpacing(8)
+        metrics_layout.setSpacing(7)
 
         self.project_metric = MetricCard(
             "Proyecto",
@@ -185,16 +190,17 @@ class HomePage(QWidget):
             self.findings_metric,
         ):
             metrics_layout.addWidget(card, 1)
+        self.metrics.setMaximumHeight(78)
         self.grid.addWidget(self.metrics, 3, 0)
 
         self.right_rail = QWidget()
         rail = QVBoxLayout(self.right_rail)
         rail.setContentsMargins(0, 0, 0, 0)
-        rail.setSpacing(10)
+        rail.setSpacing(8)
 
         info_card = Card()
         info_layout = QVBoxLayout(info_card)
-        info_layout.setContentsMargins(14, 12, 14, 12)
+        info_layout.setContentsMargins(13, 10, 13, 10)
         info_layout.addWidget(
             SectionHeader(
                 "Información del proyecto",
@@ -212,7 +218,7 @@ class HomePage(QWidget):
 
         task_card = Card()
         task_layout = QVBoxLayout(task_card)
-        task_layout.setContentsMargins(14, 12, 14, 12)
+        task_layout.setContentsMargins(13, 10, 13, 10)
         task_layout.addWidget(
             SectionHeader(
                 "Tarea actual",
@@ -236,7 +242,7 @@ class HomePage(QWidget):
 
         profile_card = Card()
         profile_layout = QVBoxLayout(profile_card)
-        profile_layout.setContentsMargins(14, 12, 14, 12)
+        profile_layout.setContentsMargins(13, 10, 13, 10)
         profile_layout.addWidget(
             SectionHeader(
                 "Vista previa del perfil",
