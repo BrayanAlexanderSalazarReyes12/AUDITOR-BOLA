@@ -49,10 +49,23 @@ QLabel#BrandLogo {
     background: transparent;
     border: none;
 }
+QLabel#BrandName {
+    background: transparent;
+    border: none;
+    font-size: 21px;
+    font-weight: 800;
+}
+QLabel#BrandTagline {
+    background: transparent;
+    border: none;
+    color: #86A6BA;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
 QLabel#BrandPillars {
-    color: #8FA9BC;
-    font-size: 10px;
-    line-height: 1.35;
+    color: #93AFC1;
+    font-size: 9px;
     background: transparent;
     border: none;
 }
