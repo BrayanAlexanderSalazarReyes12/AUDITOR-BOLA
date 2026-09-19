@@ -235,7 +235,7 @@ class ProfileWizard(tk.Toplevel):
         self.tab_accounts.rowconfigure(0, weight=1)
         self.tab_accounts.columnconfigure(0, weight=1)
 
-        columns = ("username", "role", "auth")
+        columns = ("username", "role", "auth", "privileged")
         self.accounts = ttk.Treeview(
             self.tab_accounts,
             columns=columns,
@@ -244,9 +244,11 @@ class ProfileWizard(tk.Toplevel):
         self.accounts.heading("username", text="Usuario")
         self.accounts.heading("role", text="Rol")
         self.accounts.heading("auth", text="Autenticación")
-        self.accounts.column("username", width=220)
-        self.accounts.column("role", width=180)
-        self.accounts.column("auth", width=160)
+        self.accounts.heading("privileged", text="Privilegiado")
+        self.accounts.column("username", width=210)
+        self.accounts.column("role", width=170)
+        self.accounts.column("auth", width=150)
+        self.accounts.column("privileged", width=100, anchor="center")
         self.accounts.grid(row=0, column=0, sticky="nsew")
 
         scroll = ttk.Scrollbar(
@@ -296,15 +298,29 @@ class ProfileWizard(tk.Toplevel):
         self.routes.configure(yscrollcommand=sy.set)
         sy.grid(row=0, column=1, sticky="ns")
 
+        route_actions = ttk.Frame(self.tab_routes)
+        route_actions.grid(
+            row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0)
+        )
+        ttk.Button(
+            route_actions,
+            text="Crear prueba BOLA desde seleccionado",
+            command=self._add_bola_check,
+        ).pack(side="left")
+        ttk.Button(
+            route_actions,
+            text="Crear prueba RBAC desde seleccionado",
+            command=self._add_rbac_check,
+        ).pack(side="left", padx=(8, 0))
+
         ttk.Label(
             self.tab_routes,
             text=(
-                "Estos son candidatos detectados estáticamente. No se crean "
-                "pruebas BOLA/RBAC sin confirmar propietario, cuenta y acceso "
-                "esperado."
+                "Los endpoints se detectan estáticamente, pero Aegis sólo "
+                "crea pruebas cuando confirmas los datos de seguridad."
             ),
             style="Aegis.Muted.TLabel",
-        ).grid(row=1, column=0, sticky="w", pady=(10, 0))
+        ).grid(row=2, column=0, sticky="w", pady=(8, 0))
 
     def _build_json(self):
         self.tab_json.rowconfigure(0, weight=1)
@@ -427,6 +443,7 @@ class ProfileWizard(tk.Toplevel):
         password = tk.StringVar()
         role = tk.StringVar(value="USER")
         auth = tk.StringVar(value="none")
+        privileged = tk.BooleanVar(value=False)
 
         fields = (
             ("Usuario", username, False),
@@ -453,6 +470,12 @@ class ProfileWizard(tk.Toplevel):
             state="readonly",
         ).grid(row=3, column=1, sticky="ew", padx=(0, 14), pady=8)
 
+        ttk.Checkbutton(
+            dialog,
+            text="Rol privilegiado",
+            variable=privileged,
+        ).grid(row=4, column=1, sticky="w", padx=(0, 14), pady=6)
+
         def save():
             user = username.get().strip()
             user_role = role.get().strip()
@@ -465,7 +488,15 @@ class ProfileWizard(tk.Toplevel):
                 return
             iid = str(len(self.accounts.get_children()))
             self.accounts.insert(
-                "", "end", iid=iid, values=(user, user_role, auth.get())
+                "",
+                "end",
+                iid=iid,
+                values=(
+                    user,
+                    user_role,
+                    auth.get(),
+                    "Sí" if privileged.get() else "No",
+                ),
             )
             if self.profile is None:
                 self.profile = {}
@@ -478,6 +509,10 @@ class ProfileWizard(tk.Toplevel):
                     "headers": {},
                 }
             )
+            if privileged.get():
+                roles = self.profile.setdefault("roles_privilegiados", [])
+                if user_role not in roles:
+                    roles.append(user_role)
             dialog.destroy()
             self._refresh_profile_preview()
 
@@ -486,7 +521,7 @@ class ProfileWizard(tk.Toplevel):
             text="Agregar",
             command=save,
             style="Aegis.Primary.TButton",
-        ).grid(row=4, column=1, sticky="e", padx=14, pady=14)
+        ).grid(row=5, column=1, sticky="e", padx=14, pady=14)
 
     def _remove_account(self):
         selected = self.accounts.selection()
@@ -504,6 +539,138 @@ class ProfileWizard(tk.Toplevel):
                 if 0 <= index < len(accounts):
                     accounts.pop(index)
         self._refresh_profile_preview()
+
+    def _selected_route(self) -> tuple[str, str, str] | None:
+        selected = self.routes.selection()
+        if not selected:
+            messagebox.showinfo(
+                "Selecciona un endpoint",
+                "Selecciona primero una ruta detectada.",
+                parent=self,
+            )
+            return None
+        values = self.routes.item(selected[0], "values")
+        if len(values) < 3:
+            return None
+        return str(values[0]), str(values[1]), str(values[2])
+
+    def _add_bola_check(self):
+        route = self._selected_route()
+        if route is None:
+            return
+        method, path, source = route
+
+        object_id = simpledialog.askstring(
+            "Prueba BOLA",
+            "ID de objeto que se utilizará como caso de prueba:",
+            parent=self,
+        )
+        if object_id is None or not object_id.strip():
+            return
+
+        owner = simpledialog.askstring(
+            "Prueba BOLA",
+            "Usuario propietario esperado de ese objeto:",
+            parent=self,
+        )
+        if owner is None or not owner.strip():
+            return
+
+        profile = self.profile or {}
+        endpoints = profile.setdefault("endpoints", [])
+        control_id = f"P1-BOLA-AUTO-{len(endpoints) + 1:03d}"
+        endpoints.append(
+            {
+                "id_control": control_id,
+                "descripcion": (
+                    "Validar autorización a nivel de objeto en "
+                    f"{method} {path}"
+                ),
+                "metodo": method if method != "ANY" else "GET",
+                "ruta": path,
+                "id_prueba": object_id.strip(),
+                "propietario_esperado": owner.strip(),
+                "codigos_permitidos": [200, 201, 204],
+                "archivos_fuente": [source],
+                "pistas_codigo": [
+                    "authorization",
+                    "owner",
+                    "id",
+                ],
+            }
+        )
+        self.profile = profile
+        self._refresh_profile_preview()
+        messagebox.showinfo(
+            "Prueba agregada",
+            f"Se agregó {control_id} al perfil.",
+            parent=self,
+        )
+
+    def _add_rbac_check(self):
+        route = self._selected_route()
+        if route is None:
+            return
+        method, path, source = route
+
+        accounts = (self.profile or {}).get("cuentas") or []
+        if not accounts:
+            messagebox.showwarning(
+                "Faltan cuentas",
+                "Agrega al menos una cuenta antes de crear una prueba RBAC.",
+                parent=self,
+            )
+            self.notebook.select(self.tab_accounts)
+            return
+
+        usernames = [str(item.get("username")) for item in accounts]
+        username = simpledialog.askstring(
+            "Prueba RBAC",
+            "Cuenta que ejecutará la prueba:\n\n"
+            + ", ".join(usernames),
+            parent=self,
+        )
+        if username is None or username.strip() not in usernames:
+            return
+
+        expected = messagebox.askyesno(
+            "Prueba RBAC",
+            (
+                f"¿La cuenta '{username.strip()}' DEBE tener acceso a "
+                f"{method} {path}?\n\n"
+                "Sí = acceso esperado\nNo = acceso debe ser denegado"
+            ),
+            parent=self,
+        )
+
+        profile = self.profile or {}
+        checks = profile.setdefault("chequeos_acceso", [])
+        control_id = f"P1-RBAC-AUTO-{len(checks) + 1:03d}"
+        checks.append(
+            {
+                "id_control": control_id,
+                "nombre": f"Control de acceso {method} {path}",
+                "cuenta": username.strip(),
+                "metodo": method if method != "ANY" else "GET",
+                "ruta": path,
+                "cuerpo": None,
+                "acceso_esperado": expected,
+                "codigos_permitidos": [200, 201, 204],
+                "archivos_fuente": [source],
+                "pistas_codigo": [
+                    "role",
+                    "authorization",
+                    "access",
+                ],
+            }
+        )
+        self.profile = profile
+        self._refresh_profile_preview()
+        messagebox.showinfo(
+            "Prueba agregada",
+            f"Se agregó {control_id} al perfil.",
+            parent=self,
+        )
 
     def _compose_profile(self) -> dict:
         if self.detection is None:
