@@ -677,7 +677,24 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
 
         requieren = self._controls_require_restart(controls)
 
-        # Si ningún control exige reinicio, se respeta la preferencia normal.
+        # Nunca verificar una corrección de código contra una instancia que
+        # responde en base_url pero no pertenece al proceso administrado por
+        # esta GUI. Eso puede hacer que la verificación golpee código viejo y
+        # marque falsamente todas las recetas como NO_CORREGIDO.
+        if (
+            (self.proceso is None or not self.proceso.is_running())
+            and self._target_reachable()
+        ):
+            raise RuntimeError(
+                f"Hay una instancia activa en {self.cfg.base_url} que no fue "
+                "iniciada por el auditor o quedó huérfana de un arranque "
+                "anterior. Detén esa instancia y vuelve a ejecutar la "
+                "corrección; el Auditor debe controlar el proceso que verifica."
+            )
+
+        # Si ningún control exige reinicio explícito, un proceso administrado
+        # sí se reinicia de todos modos para asegurar que la verificación lea
+        # el código recién modificado.
         if not requieren:
             if self.proceso and self.proceso.is_running():
                 def restart_existing():
@@ -692,17 +709,6 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
                 + ", ".join(requieren)
                 + " requieren reiniciar la aplicación, pero el perfil no "
                   "declara runtime.comando_inicio."
-            )
-
-        # Si la URL responde pero la GUI no es dueña del proceso, probablemente
-        # la aplicación fue iniciada desde otra consola. No podemos reiniciarla
-        # de forma segura, así que detenemos el ciclo antes de modificar código.
-        if (self.proceso is None or not self.proceso.is_running()) and self._target_reachable():
-            raise RuntimeError(
-                f"Hay una instancia activa en {self.cfg.base_url} que no fue "
-                "iniciada por el auditor. Detén esa instancia externa y vuelve "
-                "a ejecutar la corrección; la GUI iniciará y reiniciará la "
-                "copia local seleccionada automáticamente."
             )
 
         if self.proceso is None:
