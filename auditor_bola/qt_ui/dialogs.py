@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -28,6 +29,8 @@ from .widgets import Card, PrimaryButton, SectionHeader, Stepper, brand_icon
 
 
 class LoadCard(QPushButton):
+    """Tarjeta clicable del Centro de Carga."""
+
     def __init__(
         self,
         icon_text: str,
@@ -36,30 +39,20 @@ class LoadCard(QPushButton):
         parent=None,
     ):
         super().__init__(parent)
+        self.setObjectName("LoadCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(92)
-        self.setStyleSheet(
-            """
-            QPushButton {
-                background:#0E293D;
-                border:1px solid #1A5274;
-                border-radius:12px;
-                text-align:left;
-                padding:12px 14px;
-                color:#F4F8FB;
-                font-size:11px;
-                font-weight:700;
-            }
-            QPushButton:hover {
-                background:#12354E;
-                border-color:#38C8FF;
-            }
-            """
+        self.setMinimumHeight(102)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
         )
         self.setText(
             f"{icon_text}   {title}\n"
             f"      {description}"
         )
+        self.setToolTip(description)
+
+
 
 
 class LoadCenterDialog(QDialog):
@@ -125,33 +118,84 @@ class LoadCenterDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("AegisDialog")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("Aegis Auditor — Cargar / Importar")
         self.setWindowIcon(brand_icon())
-        self.resize(920, 640)
-        self.setMinimumSize(760, 540)
+        self.resize(980, 650)
+        self.setMinimumSize(820, 560)
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(22, 20, 22, 20)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.dialog_root = QWidget()
+        self.dialog_root.setObjectName("DialogRoot")
+        self.dialog_root.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
+        outer.addWidget(self.dialog_root)
+
+        root = QVBoxLayout(self.dialog_root)
+        root.setContentsMargins(22, 20, 22, 18)
         root.setSpacing(14)
 
+        hero = Card(elevated=True)
+        hero.setObjectName("DialogHero")
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(18, 14, 18, 14)
+        hero_layout.setSpacing(14)
+
+        logo = QLabel()
+        logo.setObjectName("DialogBrandIcon")
+        logo.setPixmap(brand_icon().pixmap(48, 48))
+        logo.setFixedSize(52, 52)
+        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero_layout.addWidget(logo)
+
+        titles = QVBoxLayout()
+        titles.setSpacing(2)
+
         title = QLabel("Centro de carga")
-        title.setObjectName("PageTitle")
-        root.addWidget(title)
+        title.setObjectName("DialogTitle")
+        titles.addWidget(title)
 
         subtitle = QLabel(
-            "Incorpora de forma controlada todos los puntos de entrada "
-            "que Aegis necesita para analizar, ejecutar y corregir."
+            "Incorpora los puntos de entrada que Aegis necesita para "
+            "analizar, ejecutar, corregir y conservar evidencia."
         )
-        subtitle.setObjectName("Subheading")
+        subtitle.setObjectName("DialogSubtitle")
         subtitle.setWordWrap(True)
-        root.addWidget(subtitle)
+        titles.addWidget(subtitle)
+
+        hero_layout.addLayout(titles, 1)
+
+        status = QLabel("8 fuentes compatibles")
+        status.setObjectName("DialogPill")
+        status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        status.setMinimumWidth(132)
+        hero_layout.addWidget(status)
+
+        root.addWidget(hero)
 
         scroll = QScrollArea()
+        scroll.setObjectName("DialogScroll")
         scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
         holder = QWidget()
+        holder.setObjectName("DialogCanvas")
+        holder.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
         grid = QGridLayout(holder)
-        grid.setContentsMargins(0, 4, 0, 4)
-        grid.setSpacing(10)
+        grid.setContentsMargins(2, 2, 2, 2)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(12)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
 
         signal_map = {
             "new": self.request_new_project,
@@ -164,21 +208,46 @@ class LoadCenterDialog(QDialog):
             "ai": self.request_ai,
         }
 
-        for index, (icon, title_text, description, key) in enumerate(self.ITEMS):
-            card = LoadCard(icon, title_text, description)
+        for index, (icon, title_text, description, key) in enumerate(
+            self.ITEMS
+        ):
+            card = LoadCard(
+                icon,
+                title_text,
+                description,
+            )
             signal = signal_map[key]
-            card.clicked.connect(lambda _checked=False, s=signal: self._emit_and_close(s))
-            grid.addWidget(card, index // 2, index % 2)
+            card.clicked.connect(
+                lambda _checked=False, s=signal:
+                self._emit_and_close(s)
+            )
+            grid.addWidget(
+                card,
+                index // 2,
+                index % 2,
+            )
 
         scroll.setWidget(holder)
         root.addWidget(scroll, 1)
 
-        footer = QHBoxLayout()
-        footer.addStretch(1)
+        footer_frame = QFrame()
+        footer_frame.setObjectName("DialogFooter")
+        footer = QHBoxLayout(footer_frame)
+        footer.setContentsMargins(12, 8, 12, 8)
+
+        hint = QLabel(
+            "Selecciona únicamente los recursos necesarios para el objetivo."
+        )
+        hint.setObjectName("DialogHint")
+        footer.addWidget(hint, 1)
+
         close = QPushButton("Cerrar")
+        close.setObjectName("DialogSecondaryButton")
+        close.setMinimumWidth(98)
         close.clicked.connect(self.reject)
         footer.addWidget(close)
-        root.addLayout(footer)
+
+        root.addWidget(footer_frame)
 
     def _emit_and_close(self, signal):
         self.accept()
@@ -190,39 +259,72 @@ class AutoProfileDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("AegisDialog")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("Aegis Auditor — Nuevo proyecto")
         self.setWindowIcon(brand_icon())
-        self.resize(1080, 720)
-        self.setMinimumSize(820, 560)
+        self.resize(1120, 740)
+        self.setMinimumSize(880, 600)
 
         self.project_root: Path | None = None
         self.detection = None
         self.draft: dict | None = None
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(20, 18, 20, 18)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.dialog_root = QWidget()
+        self.dialog_root.setObjectName("DialogRoot")
+        self.dialog_root.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
+        outer.addWidget(self.dialog_root)
+
+        root = QVBoxLayout(self.dialog_root)
+        root.setContentsMargins(22, 20, 22, 18)
         root.setSpacing(12)
 
         header = Card(elevated=True)
+        header.setObjectName("DialogHero")
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(18, 14, 18, 14)
+        header_layout.setSpacing(14)
+
+        logo = QLabel()
+        logo.setObjectName("DialogBrandIcon")
+        logo.setPixmap(brand_icon().pixmap(48, 48))
+        logo.setFixedSize(52, 52)
+        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_layout.addWidget(logo)
 
         titles = QVBoxLayout()
+        titles.setSpacing(2)
+
         title = QLabel("Incorporar aplicación")
-        title.setObjectName("PageTitle")
+        title.setObjectName("DialogTitle")
         subtitle = QLabel(
-            "Aegis detecta stack, runtime, manifiestos y endpoints candidatos."
+            "Aegis detecta stack, runtime, manifiestos y endpoints "
+            "candidatos para construir el perfil inicial."
         )
-        subtitle.setObjectName("Subheading")
+        subtitle.setObjectName("DialogSubtitle")
+        subtitle.setWordWrap(True)
         titles.addWidget(title)
         titles.addWidget(subtitle)
 
         choose = PrimaryButton("Seleccionar aplicación")
+        choose.setMinimumWidth(176)
         choose.clicked.connect(self._select_project)
 
         header_layout.addLayout(titles, 1)
         header_layout.addWidget(choose)
         root.addWidget(header)
+
+        step_card = Card()
+        step_card.setObjectName("DialogStepperCard")
+        step_layout = QVBoxLayout(step_card)
+        step_layout.setContentsMargins(16, 10, 16, 10)
 
         self.stepper = Stepper(
             [
@@ -233,14 +335,17 @@ class AutoProfileDialog(QDialog):
                 ("Listo", "Auditar"),
             ]
         )
-        root.addWidget(self.stepper)
+        step_layout.addWidget(self.stepper)
+        root.addWidget(step_card)
 
         content = QHBoxLayout()
-        content.setSpacing(10)
+        content.setSpacing(12)
 
         left = Card()
+        left.setObjectName("DialogContentCard")
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(16, 14, 16, 14)
+        left_layout.setSpacing(10)
         left_layout.addWidget(
             SectionHeader(
                 "Análisis del proyecto",
@@ -248,19 +353,37 @@ class AutoProfileDialog(QDialog):
             )
         )
 
+        empty_state = QFrame()
+        empty_state.setObjectName("DialogEmptyState")
+        empty_layout = QVBoxLayout(empty_state)
+        empty_layout.setContentsMargins(18, 18, 18, 18)
+        empty_layout.setSpacing(8)
+
+        empty_icon = QLabel("◇")
+        empty_icon.setObjectName("DialogEmptyIcon")
+        empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(empty_icon)
+
         self.summary = QLabel(
-            "Selecciona una carpeta de proyecto para comenzar."
+            "Selecciona una carpeta de proyecto para comenzar.\n\n"
+            "Aegis inspeccionará estructura, lenguajes, frameworks, "
+            "manifiestos y endpoints candidatos."
         )
-        self.summary.setObjectName("Muted")
+        self.summary.setObjectName("DialogBodyText")
         self.summary.setWordWrap(True)
         self.summary.setAlignment(
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+            Qt.AlignmentFlag.AlignTop
+            | Qt.AlignmentFlag.AlignHCenter
         )
-        left_layout.addWidget(self.summary, 1)
+        empty_layout.addWidget(self.summary, 1)
+
+        left_layout.addWidget(empty_state, 1)
 
         right = Card()
+        right.setObjectName("DialogContentCard")
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(16, 14, 16, 14)
+        right_layout.setSpacing(10)
         right_layout.addWidget(
             SectionHeader(
                 "Vista previa del perfil",
@@ -269,32 +392,47 @@ class AutoProfileDialog(QDialog):
         )
 
         self.preview = QPlainTextEdit()
+        self.preview.setObjectName("DialogCodePreview")
         self.preview.setReadOnly(True)
-        self.preview.setPlainText('{\n  "perfil": "pendiente"\n}')
+        self.preview.setPlainText(
+            '{\n  "perfil": "pendiente"\n}'
+        )
         right_layout.addWidget(self.preview, 1)
 
         content.addWidget(left, 4)
         content.addWidget(right, 6)
         root.addLayout(content, 1)
 
-        footer = QHBoxLayout()
-        self.path_label = QLabel("Sin proyecto seleccionado")
-        self.path_label.setObjectName("Muted")
+        footer_frame = QFrame()
+        footer_frame.setObjectName("DialogFooter")
+        footer = QHBoxLayout(footer_frame)
+        footer.setContentsMargins(12, 8, 12, 8)
+        footer.setSpacing(8)
+
+        self.path_label = QLabel(
+            "Sin proyecto seleccionado"
+        )
+        self.path_label.setObjectName("DialogHint")
         self.path_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
 
         cancel = QPushButton("Cancelar")
+        cancel.setObjectName("DialogSecondaryButton")
+        cancel.setMinimumWidth(96)
         cancel.clicked.connect(self.reject)
 
-        self.save = PrimaryButton("Guardar perfil y continuar")
+        self.save = PrimaryButton(
+            "Guardar perfil y continuar"
+        )
+        self.save.setMinimumWidth(184)
         self.save.setEnabled(False)
         self.save.clicked.connect(self._save_profile)
 
         footer.addWidget(self.path_label, 1)
         footer.addWidget(cancel)
         footer.addWidget(self.save)
-        root.addLayout(footer)
+        root.addWidget(footer_frame)
 
     def _select_project(self):
         selected = QFileDialog.getExistingDirectory(
