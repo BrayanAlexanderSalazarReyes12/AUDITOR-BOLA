@@ -4,3 +4,4 @@ __pycache__/
 reportes/*.json
 .pytest_cache/
 evidencias/
+.env\n.env.*\n!.env.example\n

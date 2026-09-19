@@ -26,6 +26,25 @@ docs/GUIA_INTERFAZ_CORRECCIONES.md
 
 La guía cubre carga del perfil, diagnóstico, corrección individual y múltiple, verificación, evidencias y rollback manual.
 
+## Asistente IA de recetas
+
+La versión 2.2 incorpora generación asistida de recetas correctivas. Para un hallazgo seleccionado, la GUI puede solicitar tres alternativas —**MINIMA, ESTRUCTURAL y ALTERNATIVA**—, mostrar su diff antes de escribir y dejar que el usuario seleccione cuál someter al ciclo determinista de corrección.
+
+La IA propone; el usuario decide; el auditor verifica.
+
+Configuración rápida en PowerShell:
+
+```powershell
+$env:OPENAI_API_KEY="TU_CLAVE"
+python -m auditor_bola.gui
+```
+
+La clave nunca se guarda en el perfil JSON. Consulte:
+
+```text
+docs/ASISTENTE_IA.md
+```
+
 ## Interfaz gráfica completa
 
 Ejecute:
