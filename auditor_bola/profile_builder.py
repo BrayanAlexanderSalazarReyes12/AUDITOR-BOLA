@@ -2419,6 +2419,15 @@ def detect_project(root: str | Path) -> ProjectDetection:
         descriptor,
     )
     accounts, account_sources = _extract_accounts(root_path)
+    (
+        detected_version,
+        version_source,
+        version_confidence,
+        version_candidates,
+    ) = _detect_project_version(
+        root_path,
+        descriptor,
+    )
 
     detection = ProjectDetection(
         root=root_path,
@@ -2434,12 +2443,24 @@ def detect_project(root: str | Path) -> ProjectDetection:
         routes=_extract_routes(root_path),
         runtime=runtime,
         package_descriptor=descriptor,
+        version=detected_version,
+        version_source=version_source,
+        version_confidence=version_confidence,
+        version_candidates=version_candidates,
         accounts=accounts,
         account_sources=account_sources,
     )
     detection.notes.append(f"Base URL sugerida: {base_url}")
     detection.notes.append(
         f"Cuentas candidatas detectadas: {len(accounts)}"
+    )
+    detection.notes.append(
+        "Versión detectada: "
+        + (
+            f"{detected_version} ({version_source})"
+            if detected_version
+            else "no encontrada"
+        )
     )
     return detection
 
@@ -2478,7 +2499,11 @@ def build_profile_draft(
 
     profile = {
         "sistema": _slug(name),
-        "version_objetivo": version or "1.0.0",
+        "version_objetivo": (
+            _normalize_version_candidate(version)
+            if version is not None
+            else detection.version
+        ) or "desconocida",
         "base_url": (base_url or suggested_url).rstrip("/"),
         "cuentas": list(detection.accounts),
         "roles_privilegiados": sorted(
@@ -2498,6 +2523,10 @@ def build_profile_draft(
         "correcciones": [],
         "metadata_detectada": {
             "nombre_proyecto": detection.name,
+            "version_detectada": detection.version,
+            "version_fuente": detection.version_source,
+            "version_confianza": detection.version_confidence,
+            "version_candidatas": list(detection.version_candidates),
             "lenguajes": detection.languages,
             "frameworks": detection.frameworks,
             "manifiestos": detection.manifests,
