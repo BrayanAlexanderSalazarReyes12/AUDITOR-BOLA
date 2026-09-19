@@ -1109,6 +1109,19 @@ class AutoProfileDialog(AegisDialog):
             meta = self.draft.get("metadata_detectada") or {}
             lines = [
                 f"Proyecto: {meta.get('nombre_proyecto') or root.name}",
+                (
+                    "Versión: "
+                    + str(
+                        meta.get("version_detectada")
+                        or self.draft.get("version_objetivo")
+                        or "desconocida"
+                    )
+                    + (
+                        f"  ·  fuente: {meta.get('version_fuente')}"
+                        if meta.get("version_fuente")
+                        else ""
+                    )
+                ),
                 f"Ruta: {root}",
                 f"Lenguajes: {', '.join(meta.get('lenguajes') or []) or '-'}",
                 f"Frameworks: {', '.join(meta.get('frameworks') or []) or '-'}",
