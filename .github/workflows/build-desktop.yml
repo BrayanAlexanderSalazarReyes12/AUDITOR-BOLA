@@ -91,6 +91,7 @@ jobs:
         run: |
           mkdir -p dmg-root
           cp -R dist/AegisAuditor.app dmg-root/
+          cp LICENSE NOTICE dmg-root/
           hdiutil create -volname "Aegis Auditor" -srcfolder dmg-root -ov -format UDZO "dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg"
           ditto -c -k --sequesterRsrc --keepParent dist/AegisAuditor.app "dist/AegisAuditor-macOS-${{ matrix.arch }}.zip"
           shasum -a 256 "dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg" > "dist/AegisAuditor-macOS-${{ matrix.arch }}.sha256"
@@ -141,13 +142,16 @@ jobs:
           mkdir -p package
           cp dist/AegisAuditor package/
           cp docs/REQUISITOS_APLICACION.md package/REQUISITOS.md
+          cp LICENSE NOTICE package/
           tar -C package -czf "dist/AegisAuditor-Linux-${{ matrix.arch }}.tar.gz" .
       - name: Construir DEB
         shell: bash
         run: |
           root="debroot"
-          mkdir -p "$root/DEBIAN" "$root/usr/local/bin" "$root/usr/share/applications" "$root/usr/share/icons/hicolor/256x256/apps"
+          mkdir -p "$root/DEBIAN" "$root/usr/local/bin" "$root/usr/share/applications" "$root/usr/share/icons/hicolor/256x256/apps" "$root/usr/share/doc/aegis-auditor"
           cp dist/AegisAuditor "$root/usr/local/bin/AegisAuditor"
+          cp LICENSE "$root/usr/share/doc/aegis-auditor/LICENSE"
+          cp NOTICE "$root/usr/share/doc/aegis-auditor/NOTICE"
           chmod 755 "$root/usr/local/bin/AegisAuditor"
           cp assets/aegis-auditor.png "$root/usr/share/icons/hicolor/256x256/apps/aegis-auditor.png"
           printf '%s\n' \
@@ -245,6 +249,10 @@ jobs:
 
           Cada plataforma incluye archivos SHA-256 para verificar la integridad.
 
+          ## Licencia
+          Aegis Auditor se distribuye bajo Apache License 2.0. Los archivos
+          `LICENSE` y `NOTICE` acompañan el release y los paquetes instalables.
+
           > Los perfiles de aplicaciones no se distribuyen dentro del release. Aegis genera o carga los perfiles desde la interfaz.
           EOF
 
@@ -266,6 +274,8 @@ jobs:
             echo "No se encontraron artefactos para publicar."
             exit 1
           fi
+
+          files+=("LICENSE" "NOTICE")
 
           if gh release view "v1.1.0" >/dev/null 2>&1; then
             gh release upload "v1.1.0" "${files[@]}" --clobber
