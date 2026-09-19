@@ -30,6 +30,41 @@ QSS = """
 QMainWindow, QWidget#Root {
     background: #06121D;
 }
+QWidget#StartupSplash {
+    background: qradialgradient(cx:0.5, cy:0.42, radius:0.9, fx:0.5, fy:0.42, stop:0 #0D2D43, stop:0.48 #071B29, stop:1 #040B12);
+}
+QFrame#SplashPanel {
+    background: rgba(7, 25, 37, 235);
+    border: 1px solid #1E638B;
+    border-radius: 22px;
+}
+QLabel#SplashTitle { color:#FFFFFF; font-size:30px; font-weight:800; }
+QLabel#SplashSubtitle { color:#8FA9BC; font-size:12px; }
+QLabel#SplashPercent { color:#39C7FF; font-size:24px; font-weight:800; }
+QLabel#SplashStatus { color:#B7CFDD; font-size:10px; }
+QProgressBar#SplashProgress, QProgressBar#TaskProgressBar, QProgressBar#InlineTaskBar {
+    background:#173448; border:none; border-radius:4px;
+}
+QProgressBar#SplashProgress { min-height:10px; max-height:10px; border-radius:5px; }
+QProgressBar#TaskProgressBar { min-height:9px; max-height:9px; }
+QProgressBar#InlineTaskBar { min-height:8px; max-height:8px; }
+QProgressBar#SplashProgress::chunk, QProgressBar#TaskProgressBar::chunk {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #31D3A2,stop:1 #169BFF);
+    border-radius:4px;
+}
+QProgressBar#InlineTaskBar::chunk { background:#169BFF; border-radius:4px; }
+QFrame#TaskOverlay { background:rgba(2,10,16,205); border:none; }
+QFrame#TaskProgressPanel {
+    background:#0B2030; border:1px solid #1E638B; border-radius:18px;
+}
+QLabel#TaskProgressTitle { color:#FFFFFF; font-size:18px; font-weight:800; }
+QLabel#TaskProgressStatus { color:#9BB4C5; font-size:10px; }
+QLabel#TaskProgressPercent { color:#39C7FF; font-size:30px; font-weight:800; }
+QFrame#InlineTaskProgress {
+    background:#081824; border:1px solid #1A5274; border-radius:10px;
+}
+QLabel#InlineTaskLabel { color:#C6DBE7; font-size:9px; font-weight:600; }
+QLabel#InlineTaskPercent { color:#39C7FF; font-size:11px; font-weight:800; }
 QDialog#AegisDialog {
     background: #06121D;
     color: #F4F8FB;
