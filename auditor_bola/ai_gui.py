@@ -33,6 +33,7 @@ class AIAssistantMixin:
         self.ai_model_var = tk.StringVar(
             value=os.getenv("AUDITOR_AI_MODEL", DEFAULT_MODEL)
         )
+        self.ai_api_key_var = tk.StringVar(value="")
 
         outer = ttk.Frame(self.tab_ai, padding=8)
         outer.pack(fill="both", expand=True)
@@ -80,14 +81,34 @@ class AIAssistantMixin:
         self.lbl_ai_key = ttk.Label(
             header,
             text=(
-                "OPENAI_API_KEY: configurada"
+                "Entorno: API key configurada"
                 if os.getenv("OPENAI_API_KEY")
-                else "OPENAI_API_KEY: no configurada"
+                else "Entorno: sin API key"
             ),
         )
         self.lbl_ai_key.grid(
             row=2, column=2, sticky="e", padx=(8, 0), pady=(4, 0)
         )
+
+        ttk.Label(header, text="API key temporal:").grid(
+            row=3, column=0, sticky="w", padx=(0, 6), pady=(4, 0)
+        )
+        self.ai_key_entry = ttk.Entry(
+            header,
+            textvariable=self.ai_api_key_var,
+            show="*",
+            width=38,
+        )
+        self.ai_key_entry.grid(
+            row=3, column=1, sticky="ew", pady=(4, 0)
+        )
+        self.ai_key_entry.bind(
+            "<KeyRelease>", lambda _e: self._refresh_ai_state()
+        )
+        ttk.Label(
+            header,
+            text="Solo memoria; no se guarda",
+        ).grid(row=3, column=2, sticky="e", padx=(8, 0), pady=(4, 0))
 
         buttons = ttk.Frame(outer)
         buttons.grid(row=1, column=0, sticky="ew", pady=(0, 6))
@@ -196,7 +217,10 @@ class AIAssistantMixin:
         has_target = self.target_root is not None
         has_source = bool(self.ai_source_relative)
         has_proposal = self.ai_current_recipe is not None
-        api_key = bool(os.getenv("OPENAI_API_KEY"))
+        api_key = bool(
+            os.getenv("OPENAI_API_KEY")
+            or self.ai_api_key_var.get().strip()
+        )
         enabled = lambda ok: "normal" if ok and not self.busy else "disabled"
 
         self.btn_ai_generate.configure(
@@ -215,9 +239,9 @@ class AIAssistantMixin:
 
         self.lbl_ai_key.configure(
             text=(
-                "OPENAI_API_KEY: configurada"
+                "API key disponible"
                 if api_key
-                else "OPENAI_API_KEY: no configurada"
+                else "API key no configurada"
             )
         )
 
@@ -319,6 +343,7 @@ class AIAssistantMixin:
                 detalle=detalle,
                 source_relative=self.ai_source_relative,
                 source_text=source_text,
+                api_key=self.ai_api_key_var.get().strip() or None,
                 model=model,
             )
             session = guardar_sesion_ia(
