@@ -93,6 +93,31 @@ La ventana permite realizar todo el ciclo sin usar la terminal:
 
 La tabla indica explícitamente si cada hallazgo tiene **Corrección: Sí/No**.
 
+## Resolución automática del archivo fuente
+
+Al seleccionar una fila del diagnóstico, el auditor intenta cargar
+automáticamente el archivo relacionado con el hallazgo en la pestaña
+**Asistente IA**.
+
+La resolución funciona en este orden:
+
+```text
+receta existente
+    ↓
+archivos_fuente del perfil
+    ↓
+archivo estático del control
+    ↓
+búsqueda por método + ruta + pistas + contenido
+```
+
+La búsqueda no depende de un framework concreto y contempla archivos Java,
+Kotlin, Python, JavaScript/TypeScript, PHP, C#, Go, Ruby, JSP, XML, YAML,
+properties y otros archivos de texto usados por aplicaciones web.
+
+Si el auditor no puede resolverlo con suficiente información, mantiene
+**Elegir archivo** como alternativa manual.
+
 ## Ciclo correctivo
 
 ```text
