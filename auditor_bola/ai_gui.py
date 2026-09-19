@@ -1160,7 +1160,11 @@ class AIAssistantMixin:
             raise RuntimeError("No hay un hallazgo seleccionado.")
         return str(values[1]), str(values[2]), str(values[6])
 
-    def _generate_ai_recipes(self, intento_anterior: dict | None = None):
+    def _generate_ai_recipes(
+        self,
+        intento_anterior: dict | None = None,
+        conocimiento: KnowledgeCandidate | None = None,
+    ):
         if (
             not self.cfg
             or not self.target_root
@@ -1178,6 +1182,18 @@ class AIAssistantMixin:
         matriz = self._ai_test_matrix()
         source_path = self.target_root / self.ai_source_relative
         provider = self.ai_provider
+
+        if conocimiento is not None:
+            self.ai_active_knowledge_candidate = conocimiento
+        elif intento_anterior is None:
+            self.ai_active_knowledge_candidate = None
+
+        active_knowledge = self.ai_active_knowledge_candidate
+        knowledge_payload = (
+            asdict(active_knowledge.knowledge)
+            if active_knowledge is not None
+            else None
+        )
         self._close_ai_proposals_window()
 
         def task():
@@ -1193,6 +1209,7 @@ class AIAssistantMixin:
                 metadata_hallazgo=metadata,
                 matriz_pruebas=matriz,
                 intento_anterior=intento_anterior,
+                conocimiento_reutilizable=knowledge_payload,
             )
             session = guardar_sesion_ia(
                 self.evidence_base,
@@ -1224,7 +1241,15 @@ class AIAssistantMixin:
                     ),
                 )
 
-            ronda = "reformuladas" if intento_anterior else "generadas"
+            if active_knowledge is not None:
+                ronda = (
+                    "adaptadas desde medicina conocida "
+                    f"{active_knowledge.knowledge.knowledge_id[:12]}"
+                )
+            elif intento_anterior:
+                ronda = "reformuladas"
+            else:
+                ronda = "generadas desde cero"
             self._log(
                 f"Gemma: 3 propuestas {ronda} para {control}. "
                 f"Evidencia: {session}"
