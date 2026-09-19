@@ -36,24 +36,14 @@ from .cycle import (
 from .process_manager import LocalTargetProcess
 from .profile_wizard import ProfileWizard
 from .remediation_knowledge import knowledge_root
+from .responsive import calculate_responsive_layout
 from .runner import diagnosticar, filas_gui
 
 
 def calcular_layout(screen_w: int, screen_h: int) -> tuple[int, int, bool]:
-    """Calcula tamaño inicial y modo compacto sin depender de Tk."""
-    compact_mode = screen_w < 1280 or screen_h < 760
-
-    margen_w = 40
-    margen_h = 80
-    max_w = 1360
-    max_h = 820
-
-    disponible_w = max(640, screen_w - margen_w)
-    disponible_h = max(500, screen_h - margen_h)
-
-    width = min(max_w, disponible_w)
-    height = min(max_h, disponible_h)
-    return width, height, compact_mode
+    """Compatibilidad: delega el cálculo al motor responsivo."""
+    layout = calculate_responsive_layout(screen_w, screen_h)
+    return layout.width, layout.height, layout.compact
 
 
 class AuditorGUI(AIAssistantMixin, tk.Tk):
@@ -63,21 +53,35 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self.configure(background="#06111d")
         self.data_root = configure_packaged_environment()
 
-        icon_path = resource_path("assets", "aegis-auditor.ico")
-        if icon_path.exists():
+        self._icon_image = None
+        png_icon = resource_path("assets", "aegis-auditor.png")
+        ico_icon = resource_path("assets", "aegis-auditor.ico")
+        if png_icon.exists():
             try:
-                self.iconbitmap(default=str(icon_path))
+                self._icon_image = tk.PhotoImage(file=str(png_icon))
+                self.iconphoto(True, self._icon_image)
+            except tk.TclError:
+                self._icon_image = None
+        if os.name == "nt" and ico_icon.exists():
+            try:
+                self.iconbitmap(default=str(ico_icon))
             except tk.TclError:
                 pass
 
-        # Inicializar el modo responsivo ANTES de construir cualquier
-        # sección que lo consulte.
+        # Inicializar responsividad antes de construir la interfaz.
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        width, height, self.compact_mode = calcular_layout(screen_w, screen_h)
+        self.responsive_layout = calculate_responsive_layout(screen_w, screen_h)
+        self.compact_mode = self.responsive_layout.compact
+        self.ultra_compact_mode = self.responsive_layout.ultra_compact
 
-        self.geometry(f"{width}x{height}")
-        self.minsize(min(760, width), min(520, height))
+        self.geometry(
+            f"{self.responsive_layout.width}x{self.responsive_layout.height}"
+        )
+        self.minsize(
+            min(760, self.responsive_layout.width),
+            min(520, self.responsive_layout.height),
+        )
 
         self.config_path: Path | None = None
         self.cfg: ConfigObjetivo | None = None
@@ -105,6 +109,8 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self._refresh_evidence_list()
         self._refresh_state()
         self._apply_dark_native_widgets(self)
+        self.bind("<Configure>", self._on_window_configure, add="+")
+        self.after(80, self._apply_responsive_layout)
 
     # ------------------------------------------------------------------
     # Construcción de interfaz
@@ -303,7 +309,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self.sidebar = tk.Frame(
             self.shell,
             background=self.colors["sidebar"],
-            width=236,
+            width=self.responsive_layout.sidebar_width,
             highlightbackground="#15384f",
             highlightthickness=1,
         )
@@ -316,8 +322,12 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         )
         self.content.pack(side="left", fill="both", expand=True)
 
-        brand = tk.Frame(self.sidebar, background=self.colors["sidebar"])
-        brand.pack(fill="x", padx=16, pady=(18, 12))
+        self.sidebar_brand = tk.Frame(
+            self.sidebar,
+            background=self.colors["sidebar"],
+        )
+        self.sidebar_brand.pack(fill="x", padx=16, pady=(18, 12))
+        brand = self.sidebar_brand
 
         logo = tk.Canvas(
             brand,
@@ -364,8 +374,13 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
             font=("Segoe UI", 8),
         ).pack(anchor="w", pady=(10, 4))
 
-        nav = tk.Frame(self.sidebar, background=self.colors["sidebar"])
-        nav.pack(fill="x", padx=8, pady=(4, 0))
+        self.sidebar_nav = tk.Frame(
+            self.sidebar,
+            background=self.colors["sidebar"],
+        )
+        self.sidebar_nav.pack(fill="x", padx=8, pady=(4, 0))
+        nav = self.sidebar_nav
+        self.nav_buttons = []
 
         def nav_button(label, command, primary=False):
             button = tk.Button(
@@ -387,6 +402,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
                 font=("Segoe UI Semibold" if primary else "Segoe UI", 9),
             )
             button.pack(fill="x", pady=1)
+            self.nav_buttons.append(button)
             return button
 
         nav_button("⌂   Inicio", lambda: self.notebook.select(self.tab_dashboard), True)
@@ -401,8 +417,9 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         nav_button("▦   Reportes", self._save_report)
         nav_button("⚙   Configuración", self._show_profile)
 
-        footer = tk.Frame(self.sidebar, background="#081a28")
-        footer.pack(side="bottom", fill="x", padx=10, pady=10)
+        self.sidebar_footer = tk.Frame(self.sidebar, background="#081a28")
+        self.sidebar_footer.pack(side="bottom", fill="x", padx=10, pady=10)
+        footer = self.sidebar_footer
         tk.Label(
             footer,
             text="MULTIPLATAFORMA",
@@ -445,6 +462,104 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
                     highlightcolor="#169cff",
                 )
             self._apply_dark_native_widgets(child)
+
+    def _on_window_configure(self, event):
+        if event.widget is not self:
+            return
+        if getattr(self, "_responsive_after_id", None):
+            try:
+                self.after_cancel(self._responsive_after_id)
+            except tk.TclError:
+                pass
+        self._responsive_after_id = self.after(
+            90,
+            self._apply_responsive_layout,
+        )
+
+    def _apply_responsive_layout(self):
+        """Reorganiza densidad visual según el tamaño actual de la ventana."""
+        if not hasattr(self, "sidebar"):
+            return
+
+        width = max(800, self.winfo_width())
+        height = max(500, self.winfo_height())
+
+        ultra = width < 1050 or height < 650
+        compact = ultra or width < 1380 or height < 780
+
+        sidebar_width = 148 if ultra else (188 if compact else 236)
+        self.sidebar.configure(width=sidebar_width)
+
+        self.compact_mode = compact
+        self.ultra_compact_mode = ultra
+
+        if ultra:
+            if self.sidebar_brand.winfo_manager():
+                self.sidebar_brand.pack_forget()
+            if self.sidebar_footer.winfo_manager():
+                self.sidebar_footer.pack_forget()
+            self.brand_header_frame.configure(height=58)
+            if self.brand_header_subtitle.winfo_manager():
+                self.brand_header_subtitle.pack_forget()
+            self.brand_new_project_button.configure(text="＋ Proyecto")
+            self.brand_new_project_button.pack_configure(
+                padx=8,
+                pady=10,
+            )
+        else:
+            if not self.sidebar_brand.winfo_manager():
+                self.sidebar_brand.pack(
+                    fill="x",
+                    padx=16,
+                    pady=(12 if compact else 18, 8 if compact else 12),
+                    before=self.sidebar_nav,
+                )
+            if not self.sidebar_footer.winfo_manager():
+                self.sidebar_footer.pack(
+                    side="bottom",
+                    fill="x",
+                    padx=8 if compact else 10,
+                    pady=8 if compact else 10,
+                )
+            self.brand_header_frame.configure(height=66 if compact else 76)
+            if not self.brand_header_subtitle.winfo_manager():
+                self.brand_header_subtitle.pack(anchor="w", pady=(2, 0))
+            self.brand_new_project_button.configure(
+                text="＋ Proyecto" if compact else "＋ Nuevo proyecto"
+            )
+            self.brand_new_project_button.pack_configure(
+                padx=10 if compact else 18,
+                pady=12 if compact else 18,
+            )
+
+        nav_pad_y = 6 if ultra else (8 if compact else 10)
+        nav_pad_x = 9 if ultra else (12 if compact else 16)
+        nav_font_size = 8 if ultra else 9
+        for button in self.nav_buttons:
+            button.configure(
+                padx=nav_pad_x,
+                pady=nav_pad_y,
+                font=("Segoe UI", nav_font_size),
+            )
+
+        notebook_pad = 4 if ultra else (7 if compact else 10)
+        self.notebook.pack_configure(
+            padx=notebook_pad,
+            pady=3 if ultra else 5,
+        )
+
+        if hasattr(self, "lbl_summary"):
+            self.lbl_summary.configure(
+                wraplength=240 if ultra else (340 if compact else 520)
+            )
+        if hasattr(self, "lbl_status"):
+            self.lbl_status.configure(
+                wraplength=180 if ultra else (260 if compact else 420)
+            )
+        if hasattr(self, "progress"):
+            self.progress.configure(
+                length=110 if ultra else (145 if compact else 180)
+            )
 
     def _build_menu(self):
         menubar = tk.Menu(self)
@@ -546,6 +661,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         frame = tk.Frame(self.content, background="#091b2b", height=76)
         frame.pack(fill="x")
         frame.pack_propagate(False)
+        self.brand_header_frame = frame
 
         logo = tk.Canvas(
             frame,
@@ -575,18 +691,23 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
             text="AEGIS AUDITOR",
             style="Aegis.Brand.TLabel",
         ).pack(anchor="w")
-        ttk.Label(
+        self.brand_header_subtitle = ttk.Label(
             titles,
-            text="Security Remediation Studio · Diagnóstico, corrección y aprendizaje verificable",
+            text=(
+                "Security Remediation Studio · Diagnóstico, corrección "
+                "y aprendizaje verificable"
+            ),
             style="Aegis.BrandSub.TLabel",
-        ).pack(anchor="w", pady=(2, 0))
+        )
+        self.brand_header_subtitle.pack(anchor="w", pady=(2, 0))
 
-        ttk.Button(
+        self.brand_new_project_button = ttk.Button(
             frame,
             text="＋ Nuevo proyecto",
             command=self._new_project_wizard,
             style="Aegis.Primary.TButton",
-        ).pack(side="right", padx=18, pady=18)
+        )
+        self.brand_new_project_button.pack(side="right", padx=18, pady=18)
 
     def _new_project_wizard(self):
         initial = self.target_root if self.target_root else None
@@ -733,8 +854,13 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
                 frame.columnconfigure(col + 1, weight=1)
 
     def _build_runtime_bar(self):
-        frame = ttk.LabelFrame(self.content, text="Ejecución y diagnóstico", padding=8)
+        frame = ttk.LabelFrame(
+            self.content,
+            text="Ejecución y diagnóstico",
+            padding=8,
+        )
         frame.pack(fill="x", padx=8, pady=4)
+        self.runtime_frame = frame
 
         self.btn_start = ttk.Button(
             frame, text="Iniciar objetivo", command=self._start_target
@@ -794,7 +920,12 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
 
     def _build_notebook(self):
         self.notebook = ttk.Notebook(self.content)
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=5)
+        self.notebook.pack(
+            fill="both",
+            expand=True,
+            padx=self.responsive_layout.content_padding,
+            pady=5,
+        )
 
         self.tab_dashboard = ttk.Frame(self.notebook)
         self.tab_results = ttk.Frame(self.notebook)
@@ -1185,8 +1316,13 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         scroll_x.grid(row=1, column=0, sticky="ew")
 
     def _build_actions(self):
-        frame = ttk.LabelFrame(self.content, text="Acciones correctivas", padding=8)
+        frame = ttk.LabelFrame(
+            self.content,
+            text="Acciones correctivas",
+            padding=8,
+        )
         frame.pack(fill="x", padx=8, pady=4)
+        self.actions_frame = frame
 
         self.btn_verify = ttk.Button(
             frame,
