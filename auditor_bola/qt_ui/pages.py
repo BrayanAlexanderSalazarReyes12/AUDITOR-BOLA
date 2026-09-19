@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPlainTextEdit,
     QProgressBar,
+    QSizePolicy,
     QPushButton,
     QSplitter,
     QTableWidget,
