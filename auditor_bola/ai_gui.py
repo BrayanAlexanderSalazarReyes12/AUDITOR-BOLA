@@ -758,12 +758,18 @@ class AIAssistantMixin:
 
         def task():
             reiniciar = self._prepare_restart_callback([control])
+            selector = (
+                self._selected_selector()
+                if hasattr(self, "_selected_selector")
+                else None
+            )
             result = ciclo_correctivo(
                 self.cfg,
                 control,
                 self.target_root,
                 evidence_base=self.evidence_base,
                 reiniciar=reiniciar,
+                selector=selector,
             )
             marcar_uso_receta(
                 candidate.path,
@@ -815,13 +821,61 @@ class AIAssistantMixin:
         )
         self._refresh_state()
 
+    def _ai_selected_metadata(self) -> dict:
+        row = (
+            self._selected_row_data()
+            if hasattr(self, "_selected_row_data")
+            else None
+        ) or {}
+        values = self._selected_values() or ()
+        return {
+            "control_id": row.get("id") or (str(values[1]) if len(values) > 1 else None),
+            "descripcion": row.get("control") or (
+                str(values[2]) if len(values) > 2 else None
+            ),
+            "cuenta": row.get("cuenta") or (
+                str(values[3]) if len(values) > 3 else None
+            ),
+            "estado": row.get("estado") or (
+                str(values[4]) if len(values) > 4 else None
+            ),
+            "detalle": row.get("detalle") or (
+                str(values[6]) if len(values) > 6 else None
+            ),
+            "metodo": row.get("metodo"),
+            "ruta": row.get("ruta"),
+            "tipo_control": row.get("tipo_control"),
+        }
+
+    def _ai_test_matrix(self) -> list[dict]:
+        control = self._selected_control()
+        if not control:
+            return []
+        rows = getattr(self, "result_rows", {}) or {}
+        matrix: list[dict] = []
+        for row in rows.values():
+            if row.get("id") != control:
+                continue
+            matrix.append(
+                {
+                    "cuenta": row.get("cuenta"),
+                    "metodo": row.get("metodo"),
+                    "ruta": row.get("ruta"),
+                    "tipo_control": row.get("tipo_control"),
+                    "estado": row.get("estado"),
+                    "detalle": row.get("detalle"),
+                    "descripcion": row.get("control"),
+                }
+            )
+        return matrix
+
     def _current_finding_data(self) -> tuple[str, str, str]:
         values = self._selected_values()
         if not values:
             raise RuntimeError("No hay un hallazgo seleccionado.")
         return str(values[1]), str(values[2]), str(values[6])
 
-    def _generate_ai_recipes(self):
+    def _generate_ai_recipes(self, intento_anterior: dict | None = None):
         if (
             not self.cfg
             or not self.target_root
@@ -835,8 +889,11 @@ class AIAssistantMixin:
                 return
 
         control, descripcion, detalle = self._current_finding_data()
+        metadata = self._ai_selected_metadata()
+        matriz = self._ai_test_matrix()
         source_path = self.target_root / self.ai_source_relative
         provider = self.ai_provider
+        self._close_ai_proposals_window()
 
         def task():
             source_text = source_path.read_text(encoding="utf-8")
@@ -848,6 +905,9 @@ class AIAssistantMixin:
                 source_relative=self.ai_source_relative,
                 source_text=source_text,
                 provider=provider,
+                metadata_hallazgo=metadata,
+                matriz_pruebas=matriz,
+                intento_anterior=intento_anterior,
             )
             session = guardar_sesion_ia(
                 self.evidence_base,
@@ -879,8 +939,9 @@ class AIAssistantMixin:
                     ),
                 )
 
+            ronda = "reformuladas" if intento_anterior else "generadas"
             self._log(
-                f"Gemma: 3 propuestas generadas para {control}. "
+                f"Gemma: 3 propuestas {ronda} para {control}. "
                 f"Evidencia: {session}"
             )
             self.notebook.select(self.tab_ai)
@@ -1321,12 +1382,18 @@ class AIAssistantMixin:
                 )
 
             reiniciar = self._prepare_restart_callback([selected_control])
+            selector = (
+                self._selected_selector()
+                if hasattr(self, "_selected_selector")
+                else None
+            )
             result = ciclo_correctivo(
                 self.cfg,
                 selected_control,
                 self.target_root,
                 evidence_base=self.evidence_base,
                 reiniciar=reiniciar,
+                selector=selector,
             )
 
             if self.ai_session_dir:
@@ -1373,10 +1440,48 @@ class AIAssistantMixin:
                     "\n\nLa receta validada quedó guardada también en:\n"
                     f"{library_path}"
                 )
+            if estado == "NO_CORREGIDO":
+                motivo = result.get("motivo") or (
+                    "La verificación reprodujo nuevamente el hallazgo."
+                )
+                mensaje += f"\n\n{motivo}"
+
             messagebox.showinfo(
                 "Resultado de receta Gemma",
                 mensaje,
             )
+
+            if estado == "NO_CORREGIDO":
+                feedback = {
+                    "propuesta_anterior": proposal.as_dict(),
+                    "receta_anterior": asdict(self.ai_current_recipe),
+                    "resultado": {
+                        "estado_final": result.get("estado_final"),
+                        "estado_despues": result.get("estado_despues"),
+                        "estado_global_despues": result.get(
+                            "estado_global_despues"
+                        ),
+                        "motivo": result.get("motivo"),
+                        "regresiones": result.get("regresiones", []),
+                    },
+                    "correccion_aplicada": result.get(
+                        "correccion_aplicada"
+                    ),
+                }
+                if messagebox.askyesno(
+                    "Reformular recetas",
+                    (
+                        "La receta no solucionó la prueba objetivo y el "
+                        "auditor ya hizo rollback.\n\n"
+                        "¿Deseas que Gemma genere 3 recetas nuevas usando "
+                        "el resultado fallido como retroalimentación?"
+                    ),
+                ):
+                    self._generate_ai_recipes(
+                        intento_anterior=feedback
+                    )
+                    return
+
             self._diagnose()
 
         self._run_background(

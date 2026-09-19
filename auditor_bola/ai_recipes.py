@@ -208,6 +208,24 @@ def redactar_secretos(texto: str) -> str:
     return "".join(_redactar_linea_sensible(linea) for linea in lineas)
 
 
+def _redactar_estructura(valor):
+    if isinstance(valor, dict):
+        resultado = {}
+        for clave, contenido in valor.items():
+            if _SENSITIVE_NAME.search(str(clave)):
+                resultado[clave] = "<REDACTED>"
+            else:
+                resultado[clave] = _redactar_estructura(contenido)
+        return resultado
+    if isinstance(valor, list):
+        return [_redactar_estructura(item) for item in valor]
+    if isinstance(valor, tuple):
+        return [_redactar_estructura(item) for item in valor]
+    if isinstance(valor, str):
+        return redactar_secretos(valor)
+    return valor
+
+
 def _pistas_utiles(*textos: str) -> list[str]:
     palabras: list[str] = []
     for texto in textos:
@@ -397,6 +415,9 @@ def _construir_contexto(
     detalle: str,
     source_relative: str,
     source_text: str,
+    metadata_hallazgo: dict | None = None,
+    matriz_pruebas: list[dict] | None = None,
+    intento_anterior: dict | None = None,
 ) -> dict:
     pistas = _pistas_utiles(control_id, descripcion, detalle, source_relative)
     limpio = redactar_secretos(source_text)
@@ -408,13 +429,24 @@ def _construir_contexto(
         "control_id": control_id,
         "descripcion_hallazgo": descripcion,
         "detalle_observado": detalle,
+        "hallazgo_objetivo": _redactar_estructura(metadata_hallazgo or {}),
+        "matriz_de_pruebas_del_mismo_control": _redactar_estructura(
+            matriz_pruebas or []
+        ),
+        "intento_anterior_fallido": _redactar_estructura(intento_anterior),
         "archivo_seleccionado": source_relative,
         "codigo_relevante_redactado": recortado,
+        "criterio_de_exito": (
+            "La fila objetivo debe pasar a SIN_HALLAZGO y ninguna fila del "
+            "mismo control que estaba en SIN_HALLAZGO puede convertirse en "
+            "HALLAZGO o ERROR."
+        ),
         "restricciones": {
             "solo_archivo_seleccionado": True,
             "no_incluir_credenciales": True,
             "tres_propuestas_diferentes": True,
             "verificacion_posterior_obligatoria": True,
+            "no_romper_pruebas_que_ya_pasaban": True,
         },
     }
 
@@ -428,6 +460,9 @@ def generar_tres_recetas(
     source_relative: str,
     source_text: str,
     provider: AIProviderConfig | None = None,
+    metadata_hallazgo: dict | None = None,
+    matriz_pruebas: list[dict] | None = None,
+    intento_anterior: dict | None = None,
     timeout: int = 120,
 ) -> tuple[list[AIRecipeProposal], dict, AIProviderConfig]:
     """Solicita tres recetas a llmlab/lab-coder vía chat/completions."""
@@ -440,6 +475,9 @@ def generar_tres_recetas(
         detalle=detalle,
         source_relative=source_relative,
         source_text=source_text,
+        metadata_hallazgo=metadata_hallazgo,
+        matriz_pruebas=matriz_pruebas,
+        intento_anterior=intento_anterior,
     )
 
     system_prompt = (
@@ -456,7 +494,17 @@ def generar_tres_recetas(
         "buscar debe ser una expresión regular acotada. "
         "La IA solo propone; un humano seleccionará una opción y un motor "
         "determinista hará preview, backup, aplicación y verificación. "
-        "Responde únicamente con JSON válido, sin Markdown."
+        "El objetivo NO es solo producir un cambio sintáctico: la receta debe "
+        "hacer que la prueba objetivo pase de HALLAZGO a SIN_HALLAZGO. Usa "
+        "hallazgo_objetivo como contrato exacto (cuenta, método, ruta y "
+        "resultado esperado/observado). Usa matriz_de_pruebas_del_mismo_control "
+        "como conjunto de regresión: cualquier fila que ya estaba en "
+        "SIN_HALLAZGO debe seguir segura después del cambio. Si existe "
+        "intento_anterior_fallido, analiza por qué no resolvió el comportamiento "
+        "y NO repitas la misma solución ni una variante superficial. "
+        "Prioriza la validación de autorización/propiedad en el punto donde se "
+        "decide el acceso al recurso. Responde únicamente con JSON válido, "
+        "sin Markdown."
     )
 
     formato = {
@@ -501,7 +549,9 @@ def generar_tres_recetas(
     }
 
     user_prompt = (
-        "Analiza el siguiente hallazgo y genera exactamente tres recetas.\n\n"
+        "Analiza el siguiente hallazgo y genera exactamente tres recetas que "
+        "tengan posibilidad real de hacer pasar la prueba de seguridad. "
+        "No repitas una receta fallida incluida en el contexto.\n\n"
         "FORMATO JSON OBLIGATORIO:\n"
         + json.dumps(formato, ensure_ascii=False, indent=2)
         + "\n\nCONTEXTO:\n"
