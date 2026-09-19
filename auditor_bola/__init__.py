@@ -1,3 +1,3 @@
 """Auditor Correctivo de Seguridad de Dos Pilares."""
 
-__version__ = "2.5.1"
+__version__ = "3.0.0"
