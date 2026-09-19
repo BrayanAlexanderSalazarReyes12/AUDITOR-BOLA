@@ -73,8 +73,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "Aegis Auditor",
             "CFBundleDisplayName": "Aegis Auditor",
-            "CFBundleShortVersionString": "1.1.3",
-            "CFBundleVersion": "1.1.3",
+            "CFBundleShortVersionString": "1.1.4",
+            "CFBundleVersion": "1.1.4",
             "NSHighResolutionCapable": True,
         },
     )
