@@ -18,7 +18,6 @@ import customtkinter as ctk
 from ..app_paths import default_evidence_dir
 from ..config import cargar_config
 from ..gui import AuditorGUI
-from ..profile_wizard import ProfileWizard
 from ..recipe_library import biblioteca_por_defecto
 from ..remediation_knowledge import knowledge_root
 from ..runner import filas_gui
@@ -32,6 +31,7 @@ from .pages.knowledge import KnowledgePage
 from .pages.project import ProjectPage
 from .pages.reports import ReportsPage
 from .pages.settings import SettingsPage
+from .project_wizard import ModernProfileWizard
 from .router import PageRouter
 from .theme import COLORS, FONT_FAMILY
 
@@ -516,6 +516,14 @@ class ModernAuditorGUI(AuditorGUI):
         if name == "project":
             self._refresh_project_page()
 
+    def _new_project_wizard(self):
+        initial = self.target_root if self.target_root else None
+        ModernProfileWizard(
+            self,
+            initial_project=initial,
+            on_saved=self._profile_wizard_saved,
+        )
+
     def _open_load_center(self):
         old = getattr(self, "_load_center_window", None)
         if old is not None:
@@ -587,7 +595,7 @@ class ModernAuditorGUI(AuditorGUI):
         )
         self._refresh_state()
 
-        ProfileWizard(
+        ModernProfileWizard(
             self,
             initial_project=self.target_root,
             on_saved=self._profile_wizard_saved,
