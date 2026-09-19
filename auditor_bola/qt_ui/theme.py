@@ -710,11 +710,6 @@ QToolTip {
     border: 1px solid #1A5274;
     padding: 5px;
 }
-"""
-
-def color(name: str) -> str:
-    return COLORS[name]
-
 
 QMessageBox {
     background: #081824;
@@ -739,3 +734,8 @@ QMessageBox QPushButton:hover {
     background: #14506F;
     border-color: #39C7FF;
 }
+"""
+
+def color(name: str) -> str:
+    return COLORS[name]
+
