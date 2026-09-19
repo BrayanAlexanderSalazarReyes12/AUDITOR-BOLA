@@ -1,0 +1,149 @@
+{
+  "sistema": "vulndesk-python",
+  "version_objetivo": "1.0.0",
+  "base_url": "http://127.0.0.1:5000",
+  "cuentas": [
+    {
+      "username": "admin",
+      "password": "admin123",
+      "role": "ADMIN",
+      "auth_type": "none",
+      "headers": {}
+    },
+    {
+      "username": "analyst",
+      "password": "analyst123",
+      "role": "ANALYST",
+      "auth_type": "none",
+      "headers": {}
+    },
+    {
+      "username": "user",
+      "password": "user123",
+      "role": "USER",
+      "auth_type": "none",
+      "headers": {}
+    }
+  ],
+  "roles_privilegiados": [
+    "ADMIN"
+  ],
+  "runtime": {
+    "comando_inicio": [
+      "python",
+      "run.py"
+    ],
+    "directorio_trabajo": ".",
+    "espera_inicio": 2.0,
+    "variables": {}
+  },
+  "endpoints": [
+    {
+      "id_control": "P1-BOLA-PY-001",
+      "descripcion": "Un usuario no debe poder consultar el perfil del administrador",
+      "metodo": "GET",
+      "ruta": "/api/profile/{id}",
+      "id_prueba": "1",
+      "propietario_esperado": "admin",
+      "codigos_permitidos": [200],
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "pistas_codigo": ["profile", "user_id", "authorization"]
+    },
+    {
+      "id_control": "P1-BOLA-PY-002",
+      "descripcion": "Un usuario no debe poder consultar el perfil del analista",
+      "metodo": "GET",
+      "ruta": "/api/profile/{id}",
+      "id_prueba": "2",
+      "propietario_esperado": "analyst",
+      "codigos_permitidos": [200],
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "pistas_codigo": ["profile", "user_id", "owner"]
+    },
+    {
+      "id_control": "P1-BOLA-PY-003",
+      "descripcion": "Un usuario no debe poder consultar el perfil de otro usuario",
+      "metodo": "GET",
+      "ruta": "/api/profile/{id}",
+      "id_prueba": "3",
+      "propietario_esperado": "user",
+      "codigos_permitidos": [200],
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "pistas_codigo": ["profile", "user_id", "authorization"]
+    }
+  ],
+  "chequeos_agente": [],
+  "chequeos_acceso": [],
+  "chequeos_pilar2": [
+    {
+      "id_control": "P2-PY-CORS-001",
+      "nombre": "No permitir CORS global con comodín",
+      "tipo": "source_contains",
+      "archivo": "vulndesk/app.py",
+      "patron_inseguro": "Access-Control-Allow-Origin\"] = \"*",
+      "archivos_fuente": ["vulndesk/app.py"],
+      "pistas_codigo": ["cors", "allow-origin"]
+    },
+    {
+      "id_control": "P2-PY-CMD-001",
+      "nombre": "No ejecutar comandos con shell=True y entrada no confiable",
+      "tipo": "source_contains",
+      "archivo": "vulndesk/routes/system_routes.py",
+      "patron_inseguro": "shell=True",
+      "archivos_fuente": ["vulndesk/routes/system_routes.py"],
+      "pistas_codigo": ["subprocess", "shell", "command"]
+    },
+    {
+      "id_control": "P2-PY-SSRF-001",
+      "nombre": "No realizar solicitudes a URLs arbitrarias",
+      "tipo": "source_contains",
+      "archivo": "vulndesk/routes/network_routes.py",
+      "patron_inseguro": "requests.get(target",
+      "archivos_fuente": ["vulndesk/routes/network_routes.py"],
+      "pistas_codigo": ["requests", "target", "url"]
+    },
+    {
+      "id_control": "P2-PY-SSTI-001",
+      "nombre": "No interpretar plantillas controladas por el usuario",
+      "tipo": "source_contains",
+      "archivo": "vulndesk/routes/template_routes.py",
+      "patron_inseguro": "render_template_string(template_text",
+      "archivos_fuente": ["vulndesk/routes/template_routes.py"],
+      "pistas_codigo": ["render_template_string", "template"]
+    },
+    {
+      "id_control": "P2-PY-CRYPTO-001",
+      "nombre": "No utilizar MD5 para contraseñas",
+      "tipo": "source_contains",
+      "archivo": "vulndesk/weak_crypto.py",
+      "patron_inseguro": "hashlib.md5",
+      "archivos_fuente": ["vulndesk/weak_crypto.py"],
+      "pistas_codigo": ["md5", "hashlib"]
+    },
+    {
+      "id_control": "P2-PY-SESSION-001",
+      "nombre": "No mantener una clave de sesión débil embebida",
+      "tipo": "source_contains",
+      "archivo": "vulndesk/config.py",
+      "patron_inseguro": "FLASK_SECRET_KEY =",
+      "archivos_fuente": ["vulndesk/config.py", "vulndesk/app.py"],
+      "pistas_codigo": ["secret_key", "session", "config"]
+    },
+    {
+      "id_control": "P2-PY-MASS-001",
+      "nombre": "No permitir modificación directa del rol desde el request",
+      "tipo": "source_contains",
+      "archivo": "vulndesk/routes/user_routes.py",
+      "patron_inseguro": "payload.get(\"role\"",
+      "archivos_fuente": ["vulndesk/routes/user_routes.py"],
+      "pistas_codigo": ["role", "payload", "update"]
+    }
+  ],
+  "correcciones": []
+}
