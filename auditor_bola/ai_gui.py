@@ -483,6 +483,220 @@ class AIAssistantMixin:
         self._refresh_recipe_library()
         self._refresh_ai_state()
 
+    def _close_knowledge_window(self):
+        window = getattr(self, "ai_knowledge_window", None)
+        if window is not None:
+            try:
+                if window.winfo_exists():
+                    window.destroy()
+            except tk.TclError:
+                pass
+        self.ai_knowledge_window = None
+
+    def _selected_knowledge_candidate(self):
+        table = getattr(self, "ai_knowledge_table", None)
+        if table is None:
+            return self.ai_active_knowledge_candidate
+        selected = table.selection()
+        if not selected:
+            return self.ai_active_knowledge_candidate
+        try:
+            index = int(selected[0])
+        except (TypeError, ValueError):
+            return None
+        if index < 0 or index >= len(self.ai_knowledge_candidates):
+            return None
+        return self.ai_knowledge_candidates[index]
+
+    def _render_knowledge_candidate(self, _event=None):
+        candidate = self._selected_knowledge_candidate()
+        if candidate is None:
+            return
+        text = getattr(self, "ai_knowledge_detail", None)
+        if text is None:
+            return
+        payload = {
+            "knowledge_id": candidate.knowledge.knowledge_id,
+            "titulo": candidate.knowledge.titulo,
+            "afinidad": candidate.score,
+            "razones": candidate.razones,
+            "causa_raiz": candidate.knowledge.causa_raiz,
+            "invariante_seguridad": (
+                candidate.knowledge.invariante_seguridad
+            ),
+            "estrategia_general": (
+                candidate.knowledge.estrategia_general
+            ),
+            "señales_aplicabilidad": (
+                candidate.knowledge.señales_aplicabilidad
+            ),
+            "requisitos_implementacion": (
+                candidate.knowledge.requisitos_implementacion
+            ),
+            "anti_patrones": candidate.knowledge.anti_patrones,
+            "contrato_verificacion": (
+                candidate.knowledge.contrato_verificacion
+            ),
+            "casos_exitosos": candidate.knowledge.casos_exitosos,
+            "usos_exitosos": candidate.knowledge.usos_exitosos,
+        }
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        text.insert(
+            "1.0",
+            json.dumps(payload, ensure_ascii=False, indent=2),
+        )
+        text.configure(state="disabled")
+
+    def _open_knowledge_window(self):
+        if not self.ai_knowledge_candidates:
+            messagebox.showinfo(
+                "Medicinas conocidas",
+                "No hay conocimiento correctivo verificado para este control.",
+            )
+            return
+
+        old = getattr(self, "ai_knowledge_window", None)
+        if old is not None:
+            try:
+                if old.winfo_exists():
+                    old.lift()
+                    old.focus_force()
+                    return
+            except tk.TclError:
+                pass
+
+        window = tk.Toplevel(self)
+        self.ai_knowledge_window = window
+        window.title("Medicinas correctivas reutilizables")
+        screen_w = window.winfo_screenwidth()
+        screen_h = window.winfo_screenheight()
+        width = max(780, min(1300, screen_w - 100))
+        height = max(560, min(820, screen_h - 140))
+        window.geometry(f"{width}x{height}")
+        window.minsize(min(780, width), min(560, height))
+        window.protocol("WM_DELETE_WINDOW", self._close_knowledge_window)
+
+        outer = ttk.Frame(window, padding=10)
+        outer.pack(fill="both", expand=True)
+        outer.rowconfigure(1, weight=1)
+        outer.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            outer,
+            text=(
+                "Estas medicinas describen la solución de seguridad, no un "
+                "parche literal. Gemma las adapta al código actual."
+            ),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        pane = tk.PanedWindow(
+            outer,
+            orient=tk.HORIZONTAL,
+            sashwidth=6,
+            relief="flat",
+            bd=0,
+        )
+        pane.grid(row=1, column=0, sticky="nsew")
+
+        left = ttk.Frame(pane, padding=4)
+        right = ttk.Frame(pane, padding=4)
+        pane.add(left, minsize=340, stretch="always")
+        pane.add(right, minsize=440, stretch="always")
+        left.rowconfigure(0, weight=1)
+        left.columnconfigure(0, weight=1)
+        right.rowconfigure(0, weight=1)
+        right.columnconfigure(0, weight=1)
+
+        table = ttk.Treeview(
+            left,
+            columns=("score", "casos", "titulo"),
+            show="headings",
+        )
+        self.ai_knowledge_table = table
+        table.heading("score", text="Afinidad")
+        table.heading("casos", text="Éxitos")
+        table.heading("titulo", text="Medicina")
+        table.column("score", width=75, anchor="center")
+        table.column("casos", width=65, anchor="center")
+        table.column("titulo", width=250, anchor="w")
+        table.grid(row=0, column=0, sticky="nsew")
+
+        scroll = ttk.Scrollbar(
+            left, orient="vertical", command=table.yview
+        )
+        table.configure(yscrollcommand=scroll.set)
+        scroll.grid(row=0, column=1, sticky="ns")
+
+        for index, candidate in enumerate(self.ai_knowledge_candidates):
+            table.insert(
+                "",
+                "end",
+                iid=str(index),
+                values=(
+                    candidate.score,
+                    candidate.knowledge.usos_exitosos
+                    or candidate.knowledge.casos_exitosos,
+                    candidate.knowledge.titulo,
+                ),
+            )
+
+        detail = tk.Text(
+            right,
+            wrap="none",
+            font=("Consolas", 10),
+        )
+        self.ai_knowledge_detail = detail
+        sy = ttk.Scrollbar(
+            right, orient="vertical", command=detail.yview
+        )
+        sx = ttk.Scrollbar(
+            right, orient="horizontal", command=detail.xview
+        )
+        detail.configure(
+            yscrollcommand=sy.set,
+            xscrollcommand=sx.set,
+        )
+        detail.grid(row=0, column=0, sticky="nsew")
+        sy.grid(row=0, column=1, sticky="ns")
+        sx.grid(row=1, column=0, sticky="ew")
+        detail.configure(state="disabled")
+
+        footer = ttk.Frame(outer)
+        footer.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(
+            footer,
+            text="Adaptar esta medicina al aplicativo",
+            command=self._adapt_selected_knowledge,
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            footer,
+            text="Cerrar",
+            command=self._close_knowledge_window,
+        ).pack(side="right")
+
+        table.bind(
+            "<<TreeviewSelect>>",
+            self._render_knowledge_candidate,
+        )
+        table.selection_set("0")
+        table.focus("0")
+        self._render_knowledge_candidate()
+
+        window.transient(self)
+        window.lift()
+        window.focus_force()
+
+    def _adapt_selected_knowledge(self):
+        candidate = self._selected_knowledge_candidate()
+        if candidate is None:
+            return
+        self.ai_active_knowledge_candidate = candidate
+        self._close_knowledge_window()
+        self._generate_ai_recipes(
+            conocimiento=candidate
+        )
+
     def _close_recipe_library_window(self):
         window = getattr(self, "ai_library_window", None)
         if window is not None:
@@ -497,6 +711,8 @@ class AIAssistantMixin:
     def _refresh_recipe_library(self):
         self.ai_library_candidates = []
         self.ai_selected_library_candidate = None
+        self.ai_knowledge_candidates = []
+        self.ai_active_knowledge_candidate = None
 
         if (
             not self.cfg
@@ -508,6 +724,10 @@ class AIAssistantMixin:
                 self.lbl_ai_library.configure(
                     text=f"0 compatibles — {biblioteca_por_defecto()}"
                 )
+            if hasattr(self, "lbl_ai_knowledge"):
+                self.lbl_ai_knowledge.configure(
+                    text=f"0 conocidas — {knowledge_root()}"
+                )
             return
 
         row = (
@@ -515,6 +735,19 @@ class AIAssistantMixin:
             if hasattr(self, "_selected_row_data")
             else None
         ) or {}
+        source_path = self.target_root / self.ai_source_relative
+        try:
+            source_text = source_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            source_text = ""
+
+        self.ai_knowledge_candidates = buscar_conocimiento(
+            control_id=self._selected_control(),
+            descripcion=row.get("control"),
+            tipo_control=row.get("tipo_control"),
+            source_text=source_text,
+            extension=source_path.suffix.lower(),
+        )
 
         self.ai_library_candidates = buscar_recetas_compatibles(
             control_id=self._selected_control(),
@@ -524,6 +757,14 @@ class AIAssistantMixin:
             ruta=row.get("ruta"),
         )
 
+        if hasattr(self, "lbl_ai_knowledge"):
+            self.lbl_ai_knowledge.configure(
+                text=(
+                    f"{len(self.ai_knowledge_candidates)} conocida(s) — "
+                    f"{knowledge_root()}"
+                )
+            )
+
         if hasattr(self, "lbl_ai_library"):
             count = len(self.ai_library_candidates)
             verificadas = sum(
@@ -532,15 +773,21 @@ class AIAssistantMixin:
             )
             self.lbl_ai_library.configure(
                 text=(
-                    f"{count} compatible(s), {verificadas} verificada(s) — "
+                    f"{count} exacto(s), {verificadas} verificado(s) — "
                     f"{biblioteca_por_defecto()}"
                 )
             )
 
+        if self.ai_knowledge_candidates:
+            self._log(
+                "Conocimiento correctivo: "
+                f"{len(self.ai_knowledge_candidates)} medicina(s) "
+                f"para {self._selected_control()}."
+            )
         if self.ai_library_candidates:
             self._log(
-                "Biblioteca: "
-                f"{len(self.ai_library_candidates)} receta(s) compatibles "
+                "Parches concretos: "
+                f"{len(self.ai_library_candidates)} coincidencia(s) exacta(s) "
                 f"para {self._selected_control()}."
             )
         self._refresh_ai_state()
