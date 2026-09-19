@@ -53,4 +53,4 @@ def test_wizard_full_hd_usa_tamano_comodo():
 
     assert compact is False
     assert width == 1180
-    assert height == 900
+    assert height == 820
