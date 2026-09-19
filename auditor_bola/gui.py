@@ -15,6 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 
 import requests
 
+from .ai_gui import AIAssistantMixin
 from .config import ConfigObjetivo, cargar_config
 from .corrective import correction_available
 from .cycle import (
@@ -46,7 +47,7 @@ def calcular_layout(screen_w: int, screen_h: int) -> tuple[int, int, bool]:
     return width, height, compact_mode
 
 
-class AuditorGUI(tk.Tk):
+class AuditorGUI(AIAssistantMixin, tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Auditor Correctivo de Seguridad — Dos Pilares")
@@ -208,16 +209,19 @@ class AuditorGUI(tk.Tk):
 
         self.tab_results = ttk.Frame(self.notebook)
         self.tab_detail = ttk.Frame(self.notebook)
+        self.tab_ai = ttk.Frame(self.notebook)
         self.tab_evidence = ttk.Frame(self.notebook)
         self.tab_log = ttk.Frame(self.notebook)
 
         self.notebook.add(self.tab_results, text="Resultados")
         self.notebook.add(self.tab_detail, text="Detalle / Corrección")
+        self.notebook.add(self.tab_ai, text="Asistente IA")
         self.notebook.add(self.tab_evidence, text="Evidencias")
         self.notebook.add(self.tab_log, text="Registro")
 
         self._build_results_tab()
         self._build_detail_tab()
+        self._build_ai_tab()
         self._build_evidence_tab()
         self._build_log_tab()
 
@@ -470,6 +474,11 @@ class AuditorGUI(tk.Tk):
             text="Corregir todos los hallazgos",
             command=self._correct_all,
         )
+        self.btn_ai_open = ttk.Button(
+            frame,
+            text="Generar recetas con IA",
+            command=self._open_ai_for_selected,
+        )
         self.btn_show_profile = ttk.Button(
             frame,
             text="Ver perfil JSON",
@@ -485,10 +494,11 @@ class AuditorGUI(tk.Tk):
             self.btn_verify,
             self.btn_correct,
             self.btn_correct_all,
+            self.btn_ai_open,
             self.btn_show_profile,
             self.btn_save,
         ]
-        columns = 2 if self.compact_mode else 5
+        columns = 2 if self.compact_mode else 6
 
         for index, widget in enumerate(widgets):
             row = index // columns
@@ -564,6 +574,7 @@ class AuditorGUI(tk.Tk):
     def _background_success(self, result, callback):
         self._set_busy(False, "Listo.")
         self._refresh_process_state()
+        self._refresh_ai_state()
         callback(result)
 
     def _background_error(self, exc: Exception):
@@ -1379,6 +1390,7 @@ class AuditorGUI(tk.Tk):
             json.dumps(detail, ensure_ascii=False, indent=2),
         )
         self._refresh_state()
+        self._ai_sync_selected_control()
 
     def _show_profile(self):
         if not self.config_path:
