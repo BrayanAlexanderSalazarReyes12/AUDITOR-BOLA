@@ -84,5 +84,7 @@ def preview_recipe(
         "archivo": receta.archivo,
         "operaciones_aplicables": aplicadas,
         "cambia_archivo": antes != despues,
+        "codigo_antes": antes,
+        "codigo_despues": despues,
         "diff": diff,
     }
