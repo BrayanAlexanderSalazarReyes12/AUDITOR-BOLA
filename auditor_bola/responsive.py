@@ -20,8 +20,8 @@ def calculate_responsive_layout(
     screen_w: int,
     screen_h: int,
     *,
-    preferred_w: int = 1540,
-    preferred_h: int = 920,
+    preferred_w: int = 1360,
+    preferred_h: int = 820,
 ) -> ResponsiveLayout:
     """Calcula geometría segura para pantallas desde 1024×600 hasta 4K.
 
@@ -32,8 +32,8 @@ def calculate_responsive_layout(
     screen_w = max(800, int(screen_w or 0))
     screen_h = max(500, int(screen_h or 0))
 
-    margin_x = max(12, min(48, screen_w // 40))
-    margin_y = max(28, min(86, screen_h // 14))
+    margin_x = 40
+    margin_y = 80
 
     width = min(preferred_w, max(760, screen_w - margin_x))
     height = min(preferred_h, max(520, screen_h - margin_y))
