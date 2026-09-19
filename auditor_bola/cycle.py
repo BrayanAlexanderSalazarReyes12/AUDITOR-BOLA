@@ -17,8 +17,36 @@ from .evidence import EvidenceSession, sha256_file
 from .runner import diagnosticar, filas_gui
 
 
-def estado_control(resultado: dict, control_id: str) -> str | None:
-    filas = [fila for fila in filas_gui(resultado) if fila["id"] == control_id]
+def _fila_coincide_selector(fila: dict, selector: dict | None) -> bool:
+    if not selector:
+        return True
+    for campo in ("cuenta", "metodo", "ruta", "tipo_control"):
+        esperado = selector.get(campo)
+        if esperado in (None, "", "-"):
+            continue
+        if str(fila.get(campo) or "") != str(esperado):
+            return False
+    return True
+
+
+def filas_control(
+    resultado: dict,
+    control_id: str,
+    selector: dict | None = None,
+) -> list[dict]:
+    return [
+        fila
+        for fila in filas_gui(resultado)
+        if fila["id"] == control_id and _fila_coincide_selector(fila, selector)
+    ]
+
+
+def estado_control(
+    resultado: dict,
+    control_id: str,
+    selector: dict | None = None,
+) -> str | None:
+    filas = filas_control(resultado, control_id, selector)
     if not filas:
         return None
     if any(fila["estado"] == "ERROR" for fila in filas):
@@ -26,6 +54,58 @@ def estado_control(resultado: dict, control_id: str) -> str | None:
     if any(fila["estado"] == "HALLAZGO" for fila in filas):
         return "HALLAZGO"
     return "SIN_HALLAZGO"
+
+
+def _clave_fila(fila: dict) -> tuple:
+    return (
+        fila.get("id"),
+        fila.get("tipo_control"),
+        fila.get("metodo"),
+        fila.get("ruta"),
+        fila.get("cuenta"),
+    )
+
+
+def regresiones_control(
+    baseline: dict,
+    verificacion: dict,
+    control_id: str,
+) -> list[dict]:
+    """Detecta filas que estaban seguras y pasan a HALLAZGO/ERROR."""
+    antes = {
+        _clave_fila(fila): fila
+        for fila in filas_control(baseline, control_id)
+    }
+    despues = {
+        _clave_fila(fila): fila
+        for fila in filas_control(verificacion, control_id)
+    }
+
+    regresiones: list[dict] = []
+    for key, fila_antes in antes.items():
+        if fila_antes.get("estado") != "SIN_HALLAZGO":
+            continue
+        fila_despues = despues.get(key)
+        if fila_despues is None:
+            regresiones.append(
+                {
+                    "clave": key,
+                    "antes": fila_antes,
+                    "despues": None,
+                    "motivo": "la fila desapareció durante la verificación",
+                }
+            )
+            continue
+        if fila_despues.get("estado") in {"HALLAZGO", "ERROR"}:
+            regresiones.append(
+                {
+                    "clave": key,
+                    "antes": fila_antes,
+                    "despues": fila_despues,
+                    "motivo": "una fila previamente segura dejó de serlo",
+                }
+            )
+    return regresiones
 
 
 def controles_hallazgo(resultado: dict) -> list[str]:
@@ -44,15 +124,17 @@ def verificar_control(
     target_root: str | Path | None,
     *,
     evidence_base: str | Path = "evidencias",
+    selector: dict | None = None,
 ) -> dict:
     """Repite el diagnóstico y conserva evidencia de una verificación manual."""
     evidence = EvidenceSession.create(evidence_base)
     resultado = diagnosticar(cfg, target_root)
-    estado = estado_control(resultado, control_id)
+    estado = estado_control(resultado, control_id, selector)
     payload = {
         "sistema": cfg.sistema,
         "version_objetivo": cfg.version_objetivo,
         "control": control_id,
+        "selector": selector,
         "estado": estado,
         "resultado": resultado,
         "evidencia": str(evidence.root),
@@ -107,6 +189,7 @@ def ciclo_correctivo(
     *,
     evidence_base: str | Path = "evidencias",
     reiniciar: Callable[[], None] | None = None,
+    selector: dict | None = None,
 ) -> dict:
     evidence = EvidenceSession.create(evidence_base)
 
@@ -128,12 +211,13 @@ def ciclo_correctivo(
         return manifest
 
     evidence.write_json("baseline/resultados.json", baseline)
-    estado_inicial = estado_control(baseline, control_id)
+    estado_inicial = estado_control(baseline, control_id, selector)
 
     manifest = {
         "sistema": cfg.sistema,
         "version_objetivo": cfg.version_objetivo,
         "control": control_id,
+        "selector": selector,
         "tipo": "CICLO_CORRECTIVO",
         "estado_inicial": estado_inicial,
         "estado_final": None,
@@ -184,10 +268,19 @@ def ciclo_correctivo(
 
         verificacion = diagnosticar(cfg, target_root)
         evidence.write_json("verification/resultados.json", verificacion)
-        estado_despues = estado_control(verificacion, control_id)
+        estado_despues = estado_control(verificacion, control_id, selector)
+        estado_global_despues = estado_control(verificacion, control_id)
+        regresiones = regresiones_control(
+            baseline,
+            verificacion,
+            control_id,
+        )
         manifest["estado_despues"] = estado_despues
+        manifest["estado_global_despues"] = estado_global_despues
+        manifest["regresiones"] = regresiones
+        manifest["correccion_aplicada"] = correccion.as_dict()
 
-        if estado_despues == "SIN_HALLAZGO":
+        if estado_despues == "SIN_HALLAZGO" and not regresiones:
             manifest["estado_final"] = "CORREGIDO"
             evidence.write_json("manifest.json", manifest)
             return manifest
@@ -195,9 +288,21 @@ def ciclo_correctivo(
         _rollback_seguro(
             cfg, correccion, target_root, evidence, reiniciar, manifest
         )
-        manifest["estado_final"] = (
-            "NO_CORREGIDO" if estado_despues == "HALLAZGO" else "ERROR"
-        )
+        if regresiones:
+            manifest["estado_final"] = "NO_CORREGIDO"
+            manifest["motivo"] = (
+                "La fila objetivo pudo cambiar, pero la receta introdujo "
+                "regresiones en otras pruebas que antes estaban seguras."
+            )
+        else:
+            manifest["estado_final"] = (
+                "NO_CORREGIDO" if estado_despues == "HALLAZGO" else "ERROR"
+            )
+            if manifest["estado_final"] == "NO_CORREGIDO":
+                manifest["motivo"] = (
+                    "La receta se aplicó y se verificó, pero la fila objetivo "
+                    "sigue reproduciendo el hallazgo. El cambio fue revertido."
+                )
         evidence.write_json("manifest.json", manifest)
         return manifest
 
