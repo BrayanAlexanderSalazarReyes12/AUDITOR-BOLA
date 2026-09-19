@@ -145,7 +145,7 @@ QPushButton#DialogSecondaryButton:hover {
     background: #16405E;
     border-color: #2B7FAE;
 }
-QPushButton#LoadCard {
+QFrame#LoadCard {
     background: qlineargradient(
         x1:0, y1:0, x2:1, y2:0,
         stop:0 #0D2A3D,
@@ -153,13 +153,8 @@ QPushButton#LoadCard {
     );
     border: 1px solid #1B587D;
     border-radius: 12px;
-    text-align: left;
-    padding: 13px 16px;
-    color: #F4F8FB;
-    font-size: 10px;
-    font-weight: 700;
 }
-QPushButton#LoadCard:hover {
+QFrame#LoadCard:hover {
     background: qlineargradient(
         x1:0, y1:0, x2:1, y2:0,
         stop:0 #123B55,
@@ -167,8 +162,33 @@ QPushButton#LoadCard:hover {
     );
     border-color: #39C7FF;
 }
-QPushButton#LoadCard:pressed {
-    background: #0A2131;
+QLabel#LoadCardIcon {
+    background: #0B3A56;
+    border: 1px solid #1A6D9C;
+    border-radius: 9px;
+    color: #7DDAFF;
+    font-size: 16px;
+    font-weight: 700;
+}
+QLabel#LoadCardTitle {
+    background: transparent;
+    border: none;
+    color: #F4F8FB;
+    font-size: 11px;
+    font-weight: 700;
+}
+QLabel#LoadCardDescription {
+    background: transparent;
+    border: none;
+    color: #87A6B9;
+    font-size: 9px;
+}
+QLabel#LoadCardArrow {
+    background: transparent;
+    border: none;
+    color: #5FCBFF;
+    font-size: 21px;
+    font-weight: 700;
 }
 QScrollArea {
     border: none;
