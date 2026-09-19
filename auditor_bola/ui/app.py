@@ -1,0 +1,1291 @@
+"""Interfaz moderna de Aegis Auditor.
+
+Mantiene el motor probado de AuditorGUI y sustituye la composición visual
+por una experiencia CustomTkinter orientada a producto.
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+import shutil
+import tkinter as tk
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
+
+import customtkinter as ctk
+
+from ..app_paths import default_evidence_dir
+from ..config import cargar_config
+from ..gui import AuditorGUI
+from ..profile_wizard import ProfileWizard
+from ..recipe_library import biblioteca_por_defecto
+from ..remediation_knowledge import knowledge_root
+from ..runner import filas_gui
+from .adapters import TextProxy
+from .components.load_center import LoadCenter
+from .components.sidebar import Sidebar
+from .components.topbar import Topbar
+from .pages.audit import AuditPage
+from .pages.home import HomePage
+from .pages.knowledge import KnowledgePage
+from .pages.project import ProjectPage
+from .pages.reports import ReportsPage
+from .pages.settings import SettingsPage
+from .router import PageRouter
+from .theme import COLORS, FONT_FAMILY
+
+
+class ModernAuditorGUI(AuditorGUI):
+    """Nueva capa visual manteniendo los contratos del motor existente."""
+
+    def _configure_theme(self):
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
+
+        self.colors = dict(COLORS)
+
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+
+        style.configure(
+            ".",
+            font=(FONT_FAMILY, 9),
+            background=COLORS["surface"],
+            foreground=COLORS["text"],
+        )
+        style.configure("TFrame", background=COLORS["surface"])
+        style.configure(
+            "TLabel",
+            background=COLORS["surface"],
+            foreground=COLORS["text"],
+        )
+        style.configure(
+            "TLabelframe",
+            background=COLORS["surface"],
+            foreground=COLORS["text"],
+            bordercolor=COLORS["border_soft"],
+            relief="solid",
+            borderwidth=1,
+        )
+        style.configure(
+            "TLabelframe.Label",
+            background=COLORS["surface"],
+            foreground="#C7DCEB",
+            font=(FONT_FAMILY, 9, "bold"),
+        )
+        style.configure(
+            "TButton",
+            background=COLORS["surface_3"],
+            foreground=COLORS["text"],
+            bordercolor=COLORS["border"],
+            padding=(10, 6),
+        )
+        style.map(
+            "TButton",
+            background=[("active", "#16405E"), ("disabled", "#132331")],
+            foreground=[("disabled", "#577083")],
+        )
+        style.configure(
+            "Treeview",
+            background="#071724",
+            fieldbackground="#071724",
+            foreground=COLORS["text"],
+            bordercolor=COLORS["border_soft"],
+            rowheight=30,
+        )
+        style.map(
+            "Treeview",
+            background=[("selected", "#124E75")],
+            foreground=[("selected", "#FFFFFF")],
+        )
+        style.configure(
+            "Treeview.Heading",
+            background="#0E2A40",
+            foreground="#C8DDEB",
+            bordercolor=COLORS["border"],
+            font=(FONT_FAMILY, 9, "bold"),
+        )
+        style.map(
+            "Treeview.Heading",
+            background=[("active", "#123A57")],
+        )
+        style.configure(
+            "TScrollbar",
+            background="#12384F",
+            troughcolor="#071724",
+            bordercolor="#071724",
+            arrowcolor="#9BB6C8",
+        )
+        style.configure(
+            "TEntry",
+            fieldbackground="#071724",
+            foreground=COLORS["text"],
+            insertcolor="#FFFFFF",
+            bordercolor=COLORS["border"],
+        )
+        style.configure(
+            "TCombobox",
+            fieldbackground="#071724",
+            foreground=COLORS["text"],
+            background=COLORS["surface_3"],
+            arrowcolor=COLORS["text"],
+            bordercolor=COLORS["border"],
+        )
+        style.configure(
+            "TCheckbutton",
+            background=COLORS["surface"],
+            foreground=COLORS["text"],
+        )
+
+    def _build_menu(self):
+        menubar = tk.Menu(
+            self,
+            background="#081A28",
+            foreground="#E6F1F8",
+            activebackground="#124E75",
+            activeforeground="#FFFFFF",
+        )
+
+        archivo = tk.Menu(menubar, tearoff=False)
+        archivo.add_command(
+            label="Centro de carga / Importar…",
+            command=self._open_load_center,
+            accelerator="Ctrl+L",
+        )
+        archivo.add_command(
+            label="Nuevo proyecto / Auto-configurar…",
+            command=self._new_project_wizard,
+            accelerator="Ctrl+N",
+        )
+        archivo.add_separator()
+        archivo.add_command(
+            label="Cargar perfil JSON…",
+            command=self._choose_config,
+        )
+        archivo.add_command(
+            label="Cargar código fuente…",
+            command=self._choose_target,
+        )
+        archivo.add_command(
+            label="Cargar evidencias…",
+            command=self._load_evidence_from_center,
+        )
+        archivo.add_command(
+            label="Importar auditor-package.json…",
+            command=self._import_auditor_package,
+        )
+        archivo.add_command(
+            label="Importar cuentas / roles…",
+            command=self._import_accounts_roles,
+        )
+        archivo.add_command(
+            label="Importar recetas / medicinas…",
+            command=self._import_recipes,
+        )
+        archivo.add_separator()
+        archivo.add_command(
+            label="Exportar evidencia para artículo…",
+            command=self._export_article_evidence,
+        )
+        archivo.add_command(label="Salir", command=self.destroy)
+        menubar.add_cascade(label="Archivo", menu=archivo)
+
+        proyecto = tk.Menu(menubar, tearoff=False)
+        proyecto.add_command(
+            label="Auto-configuración",
+            command=lambda: self._route("project"),
+        )
+        proyecto.add_command(
+            label="Ver perfil JSON",
+            command=self._show_profile,
+        )
+        proyecto.add_separator()
+        proyecto.add_command(
+            label="Iniciar objetivo",
+            command=self._start_target,
+        )
+        proyecto.add_command(
+            label="Detener objetivo",
+            command=self._stop_target,
+        )
+        proyecto.add_command(
+            label="Reiniciar objetivo",
+            command=self._restart_target,
+        )
+        menubar.add_cascade(label="Proyecto", menu=proyecto)
+
+        auditoria = tk.Menu(menubar, tearoff=False)
+        auditoria.add_command(
+            label="Auditoría P1 + P2",
+            command=lambda: self._route("audit"),
+        )
+        auditoria.add_command(
+            label="Diagnosticar P1 + P2",
+            command=self._diagnose,
+            accelerator="F5",
+        )
+        auditoria.add_command(
+            label="Verificar seleccionado",
+            command=self._verify_selected,
+        )
+        auditoria.add_command(
+            label="Corregir seleccionado",
+            command=self._correct_selected,
+        )
+        auditoria.add_command(
+            label="Corregir todos los hallazgos",
+            command=self._correct_all,
+        )
+        menubar.add_cascade(label="Auditoría", menu=auditoria)
+
+        conocimiento = tk.Menu(menubar, tearoff=False)
+        conocimiento.add_command(
+            label="Correcciones con IA",
+            command=lambda: self._route("remediation"),
+        )
+        conocimiento.add_command(
+            label="Recetas y conocimiento",
+            command=lambda: self._route("knowledge"),
+        )
+        conocimiento.add_command(
+            label="Recargar Gemma / OpenCode",
+            command=self._configure_ai_from_load_center,
+        )
+        menubar.add_cascade(label="Conocimiento", menu=conocimiento)
+
+        ayuda = tk.Menu(menubar, tearoff=False)
+        ayuda.add_command(
+            label="Requisitos técnicos",
+            command=lambda: self._route("settings"),
+        )
+        ayuda.add_command(
+            label="Acerca de Aegis Auditor",
+            command=self._show_about,
+        )
+        menubar.add_cascade(label="Ayuda", menu=ayuda)
+
+        self.config(menu=menubar)
+        self.bind_all("<Control-l>", lambda _event: self._open_load_center())
+        self.bind_all("<Control-n>", lambda _event: self._new_project_wizard())
+        self.bind_all("<F5>", lambda _event: self._diagnose())
+
+    def _build_shell(self):
+        self.shell = ctk.CTkFrame(
+            self,
+            fg_color=COLORS["bg"],
+            corner_radius=0,
+        )
+        self.shell.pack(fill="both", expand=True)
+
+        self.sidebar = Sidebar(
+            self.shell,
+            on_navigate=self._route,
+            on_new_project=self._new_project_wizard,
+            on_load_center=self._open_load_center,
+        )
+        self.sidebar.pack(side="left", fill="y")
+
+        self.content = ctk.CTkFrame(
+            self.shell,
+            fg_color=COLORS["bg"],
+            corner_radius=0,
+        )
+        self.content.pack(
+            side="left",
+            fill="both",
+            expand=True,
+            padx=(8, 10),
+            pady=8,
+        )
+
+    def _build_brand_header(self):
+        self.topbar = Topbar(
+            self.content,
+            on_load=self._open_load_center,
+            on_new_project=self._new_project_wizard,
+        )
+        self.topbar.pack(fill="x", pady=(0, 8))
+
+        self.brand_header_frame = self.topbar
+        self.brand_header_subtitle = self.topbar.subtitle_label
+        self.brand_new_project_button = self.topbar.load_button
+
+    def _build_header(self):
+        self.lbl_config = TextProxy("Sin perfil seleccionado")
+        self.lbl_target = TextProxy("Sin carpeta")
+        self.lbl_evidence = TextProxy(str(self.evidence_base))
+
+    def _build_runtime_bar(self):
+        return None
+
+    def _build_actions(self):
+        return None
+
+    def _page(self):
+        return ctk.CTkFrame(
+            self.page_container,
+            fg_color=COLORS["bg"],
+            corner_radius=0,
+        )
+
+    def _build_notebook(self):
+        self.page_container = ctk.CTkFrame(
+            self.content,
+            fg_color=COLORS["bg"],
+            corner_radius=0,
+        )
+        self.page_container.pack(fill="both", expand=True)
+
+        self.notebook = PageRouter()
+        self.notebook.on_change = self._on_page_change
+
+        self.tab_dashboard = HomePage(
+            self.page_container,
+            self,
+        )
+        self.home_page = self.tab_dashboard
+        self.notebook.register("home", self.tab_dashboard)
+
+        self.tab_project = ProjectPage(
+            self.page_container,
+            self,
+        )
+        self.project_page = self.tab_project
+        self.notebook.register("project", self.tab_project)
+
+        self.tab_results = AuditPage(
+            self.page_container,
+            self,
+        )
+        self.audit_page = self.tab_results
+        self.notebook.register("audit", self.tab_results)
+
+        self.tab_detail = self._page()
+        ctk.CTkLabel(
+            self.tab_detail,
+            text="Detalle / Corrección",
+            text_color=COLORS["text"],
+            font=(FONT_FAMILY, 22, "bold"),
+            anchor="w",
+        ).pack(fill="x", pady=(2, 8))
+        super()._build_detail_tab()
+        self.notebook.register("detail", self.tab_detail)
+
+        self.tab_ai = self._page()
+        ctk.CTkLabel(
+            self.tab_ai,
+            text="Correcciones con IA",
+            text_color=COLORS["text"],
+            font=(FONT_FAMILY, 22, "bold"),
+            anchor="w",
+        ).pack(fill="x", pady=(2, 6))
+        self._build_ai_tab()
+        self.notebook.register("remediation", self.tab_ai)
+
+        self.tab_knowledge = KnowledgePage(
+            self.page_container,
+            self,
+        )
+        self.knowledge_page = self.tab_knowledge
+        self.notebook.register("knowledge", self.tab_knowledge)
+
+        self.tab_evidence = self._page()
+        ctk.CTkLabel(
+            self.tab_evidence,
+            text="Evidencias",
+            text_color=COLORS["text"],
+            font=(FONT_FAMILY, 22, "bold"),
+            anchor="w",
+        ).pack(fill="x", pady=(2, 6))
+        super()._build_evidence_tab()
+        self.notebook.register("evidence", self.tab_evidence)
+
+        self.tab_reports = ReportsPage(
+            self.page_container,
+            self,
+        )
+        self.reports_page = self.tab_reports
+        self.notebook.register("reports", self.tab_reports)
+
+        self.tab_log = self._page()
+        ctk.CTkLabel(
+            self.tab_log,
+            text="Registro de actividad",
+            text_color=COLORS["text"],
+            font=(FONT_FAMILY, 22, "bold"),
+            anchor="w",
+        ).pack(fill="x", pady=(2, 6))
+        super()._build_log_tab()
+        self.notebook.register("log", self.tab_log)
+
+        self.tab_settings = SettingsPage(
+            self.page_container,
+            self,
+        )
+        self.settings_page = self.tab_settings
+        self.notebook.register("settings", self.tab_settings)
+
+        self.btn_show_profile = ctk.CTkButton(
+            self.tab_project,
+            text="Ver perfil JSON",
+            command=self._show_profile,
+        )
+
+        self.notebook.select("home")
+
+    def _build_status(self):
+        self.status_bar = ctk.CTkFrame(
+            self.content,
+            height=42,
+            fg_color="#071724",
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["border_soft"],
+        )
+        self.status_bar.pack(fill="x", pady=(8, 0))
+        self.status_bar.pack_propagate(False)
+        self.status_bar.grid_columnconfigure(0, weight=1)
+
+        self.lbl_summary = ctk.CTkLabel(
+            self.status_bar,
+            text="Sin diagnóstico.",
+            text_color=COLORS["muted"],
+            font=(FONT_FAMILY, 9),
+            anchor="w",
+        )
+        self.lbl_summary.grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=12,
+        )
+
+        self.lbl_status = ctk.CTkLabel(
+            self.status_bar,
+            text="Listo.",
+            text_color=COLORS["text"],
+            font=(FONT_FAMILY, 9, "bold"),
+            anchor="e",
+        )
+        self.lbl_status.grid(
+            row=0,
+            column=1,
+            sticky="e",
+            padx=8,
+        )
+
+        self.progress = ctk.CTkProgressBar(
+            self.status_bar,
+            width=160,
+            height=7,
+            mode="indeterminate",
+            fg_color="#183246",
+            progress_color=COLORS["accent"],
+        )
+        self.progress.grid(
+            row=0,
+            column=2,
+            sticky="e",
+            padx=(4, 12),
+        )
+        self.progress.stop()
+        self.progress.set(0)
+
+    def _route(self, name: str):
+        aliases = {
+            "dashboard": "home",
+            "results": "audit",
+            "ai": "remediation",
+        }
+        name = aliases.get(name, name)
+        if hasattr(self, "notebook"):
+            self.notebook.select(name)
+
+    def _on_page_change(self, name: str):
+        if hasattr(self, "sidebar"):
+            self.sidebar.set_active(name)
+
+        if name == "reports" and hasattr(self, "reports_page"):
+            self.reports_page.refresh()
+        if name == "knowledge" and hasattr(self, "knowledge_page"):
+            self.knowledge_page.refresh()
+        if name == "project":
+            self._refresh_project_page()
+
+    def _open_load_center(self):
+        old = getattr(self, "_load_center_window", None)
+        if old is not None:
+            try:
+                if old.winfo_exists():
+                    old.lift()
+                    return
+            except tk.TclError:
+                pass
+
+        callbacks = {
+            "new_project": self._new_project_wizard,
+            "profile": self._choose_config,
+            "source": self._choose_target,
+            "package": self._import_auditor_package,
+            "accounts": self._import_accounts_roles,
+            "evidence": self._load_evidence_from_center,
+            "recipes": self._import_recipes,
+            "ai": self._configure_ai_from_load_center,
+        }
+        self._load_center_window = LoadCenter(
+            self,
+            callbacks,
+        )
+
+    def _import_auditor_package(self):
+        path = filedialog.askopenfilename(
+            title="Selecciona auditor-package.json",
+            filetypes=[
+                ("auditor-package.json", "auditor-package.json"),
+                ("JSON", "*.json"),
+            ],
+        )
+        if not path:
+            return
+
+        package = Path(path).resolve()
+        try:
+            data = json.loads(
+                package.read_text(encoding="utf-8")
+            )
+        except Exception as exc:
+            messagebox.showerror(
+                "auditor-package.json inválido",
+                str(exc),
+            )
+            return
+
+        if not isinstance(data, dict):
+            messagebox.showerror(
+                "auditor-package.json inválido",
+                "El documento debe ser un objeto JSON.",
+            )
+            return
+
+        if self.proceso and self.proceso.is_running():
+            self.proceso.stop()
+
+        self.proceso = None
+        self.target_root = package.parent
+
+        if hasattr(self.lbl_target, "configure"):
+            self.lbl_target.configure(
+                text=str(self.target_root)
+            )
+
+        self._log(
+            f"auditor-package.json importado: {package}"
+        )
+        self._refresh_state()
+
+        ProfileWizard(
+            self,
+            initial_project=self.target_root,
+            on_saved=self._profile_wizard_saved,
+        )
+
+    def _import_accounts_roles(self):
+        if not self.config_path:
+            messagebox.showinfo(
+                "Cuentas y roles",
+                (
+                    "Carga o genera primero un perfil JSON "
+                    "para poder incorporar las cuentas."
+                ),
+            )
+            return
+
+        path = filedialog.askopenfilename(
+            title="Importar cuentas y roles",
+            filetypes=[
+                ("JSON o CSV", "*.json *.csv"),
+                ("JSON", "*.json"),
+                ("CSV", "*.csv"),
+            ],
+        )
+        if not path:
+            return
+
+        source = Path(path)
+        accounts = []
+        roles = []
+
+        try:
+            if source.suffix.lower() == ".csv":
+                with source.open(
+                    "r",
+                    encoding="utf-8-sig",
+                    newline="",
+                ) as handle:
+                    for row in csv.DictReader(handle):
+                        username = (
+                            row.get("username")
+                            or row.get("usuario")
+                            or ""
+                        ).strip()
+                        role = (
+                            row.get("role")
+                            or row.get("rol")
+                            or "USER"
+                        ).strip()
+                        if not username:
+                            continue
+                        accounts.append(
+                            {
+                                "username": username,
+                                "password": (
+                                    row.get("password")
+                                    or row.get("contraseña")
+                                    or None
+                                ),
+                                "role": role,
+                                "auth_type": (
+                                    row.get("auth_type")
+                                    or "none"
+                                ).strip(),
+                                "token": row.get("token") or None,
+                                "headers": {},
+                            }
+                        )
+                        privileged = str(
+                            row.get("privileged")
+                            or row.get("privilegiado")
+                            or ""
+                        ).lower()
+                        if privileged in {
+                            "1",
+                            "true",
+                            "si",
+                            "sí",
+                            "yes",
+                        }:
+                            roles.append(role)
+            else:
+                raw = json.loads(
+                    source.read_text(encoding="utf-8")
+                )
+                if isinstance(raw, list):
+                    accounts = raw
+                elif isinstance(raw, dict):
+                    accounts = list(
+                        raw.get("cuentas")
+                        or raw.get("accounts")
+                        or []
+                    )
+                    roles = list(
+                        raw.get("roles_privilegiados")
+                        or raw.get("privileged_roles")
+                        or []
+                    )
+                else:
+                    raise ValueError(
+                        "El JSON debe ser una lista o un objeto."
+                    )
+        except Exception as exc:
+            messagebox.showerror(
+                "No se pudieron importar las cuentas",
+                str(exc),
+            )
+            return
+
+        try:
+            profile = json.loads(
+                self.config_path.read_text(encoding="utf-8")
+            )
+            existing = {
+                str(item.get("username")): item
+                for item in profile.get("cuentas", [])
+                if item.get("username")
+            }
+
+            for account in accounts:
+                username = str(
+                    account.get("username")
+                    or ""
+                ).strip()
+                if username:
+                    existing[username] = account
+
+            profile["cuentas"] = list(existing.values())
+
+            merged_roles = list(
+                profile.get("roles_privilegiados")
+                or []
+            )
+            for role in roles:
+                if role and role not in merged_roles:
+                    merged_roles.append(role)
+
+            profile["roles_privilegiados"] = merged_roles
+
+            self.config_path.write_text(
+                json.dumps(
+                    profile,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.cfg = cargar_config(
+                self.config_path
+            )
+        except Exception as exc:
+            messagebox.showerror(
+                "No se pudo actualizar el perfil",
+                str(exc),
+            )
+            return
+
+        self._log(
+            f"Cuentas/roles importados: {len(accounts)} cuenta(s)."
+        )
+        self._refresh_state()
+        self._refresh_project_page()
+
+        messagebox.showinfo(
+            "Importación completada",
+            (
+                f"Se incorporaron {len(accounts)} cuenta(s) "
+                f"y {len(set(roles))} rol(es) privilegiados."
+            ),
+        )
+
+    def _load_evidence_from_center(self):
+        path = filedialog.askdirectory(
+            title="Selecciona una carpeta o sesión de evidencias",
+            initialdir=str(default_evidence_dir()),
+        )
+        if not path:
+            return
+
+        selected = Path(path).resolve()
+
+        if (selected / "manifest.json").exists():
+            self.evidence_base = selected.parent
+            self.lbl_evidence.configure(
+                text=str(self.evidence_base)
+            )
+            self._refresh_evidence_list(
+                select_path=selected
+            )
+        else:
+            self.evidence_base = selected
+            self.lbl_evidence.configure(
+                text=str(self.evidence_base)
+            )
+            self._refresh_evidence_list()
+
+        self._route("evidence")
+        self._log(
+            f"Evidencias cargadas desde: {selected}"
+        )
+
+    def _import_recipes(self):
+        source_dir = filedialog.askdirectory(
+            title="Selecciona carpeta de recetas o medicinas",
+        )
+        if not source_dir:
+            return
+
+        source = Path(source_dir).resolve()
+        recipe_root = biblioteca_por_defecto()
+        knowledge_base = knowledge_root()
+        imported_recipes = 0
+        imported_knowledge = 0
+        skipped = 0
+
+        for path in source.rglob("*.json"):
+            try:
+                data = json.loads(
+                    path.read_text(encoding="utf-8")
+                )
+            except Exception:
+                skipped += 1
+                continue
+
+            if (
+                data.get("tipo")
+                == "conocimiento_correctivo_semantico"
+            ):
+                family = str(
+                    data.get("familia_control")
+                    or data.get("control_id")
+                    or "conocimiento"
+                )
+                safe_family = (
+                    family.replace("/", "-")
+                    .replace("\\", "-")
+                )
+                folder = knowledge_base / safe_family
+                folder.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+                shutil.copy2(
+                    path,
+                    folder / path.name,
+                )
+                imported_knowledge += 1
+            elif data.get("control_id") and (
+                data.get("operaciones") is not None
+                or data.get("recipe_id")
+            ):
+                safe_control = (
+                    str(data["control_id"])
+                    .replace("/", "-")
+                    .replace("\\", "-")
+                )
+                folder = recipe_root / safe_control
+                folder.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+                shutil.copy2(
+                    path,
+                    folder / path.name,
+                )
+                imported_recipes += 1
+            else:
+                skipped += 1
+
+        self._log(
+            "Importación de conocimiento: "
+            f"recetas={imported_recipes}, "
+            f"medicinas={imported_knowledge}, "
+            f"omitidos={skipped}"
+        )
+        self._refresh_ai_state()
+
+        if hasattr(self, "knowledge_page"):
+            self.knowledge_page.refresh()
+
+        messagebox.showinfo(
+            "Importación completada",
+            (
+                f"Parches concretos: {imported_recipes}\n"
+                f"Medicinas semánticas: {imported_knowledge}\n"
+                f"Omitidos: {skipped}"
+            ),
+        )
+
+    def _configure_ai_from_load_center(self):
+        self._route("remediation")
+        self.after(
+            120,
+            lambda: self._reload_ai_provider(
+                silent=False
+            ),
+        )
+
+    def _refresh_project_page(self):
+        if not hasattr(self, "project_page"):
+            return
+
+        lines = []
+
+        if self.cfg:
+            lines.extend(
+                [
+                    f"Sistema: {self.cfg.sistema}",
+                    (
+                        "Versión: "
+                        f"{self.cfg.version_objetivo or '-'}"
+                    ),
+                    f"Base URL: {self.cfg.base_url or '-'}",
+                    f"Cuentas: {len(self.cfg.cuentas)}",
+                    (
+                        "Roles privilegiados: "
+                        f"{', '.join(self.cfg.roles_privilegiados) or '-'}"
+                    ),
+                    (
+                        "Controles P1: "
+                        f"{len(self.cfg.endpoints) + len(self.cfg.chequeos_acceso) + len(self.cfg.chequeos_agente)}"
+                    ),
+                    (
+                        "Controles P2: "
+                        f"{len(self.cfg.chequeos_pilar2)}"
+                    ),
+                    f"Runtime: {self.cfg.runtime.modo}",
+                ]
+            )
+        else:
+            lines.append("Sin perfil cargado.")
+
+        if self.target_root:
+            lines.append(
+                f"Código: {self.target_root}"
+            )
+
+        self.project_page.set_info(
+            "\n".join(lines)
+        )
+
+    def _refresh_dashboard(self):
+        if not hasattr(self, "home_page"):
+            return
+
+        project = (
+            self.target_root.name
+            if self.target_root
+            else "Sin cargar"
+        )
+        profile = (
+            self.cfg.sistema
+            if self.cfg
+            else "Sin perfil"
+        )
+        running = self._process_running()
+
+        p1 = 0
+        p2 = 0
+        rows = []
+
+        if self.resultado:
+            rows = filas_gui(
+                self.resultado
+            )
+            p1 = sum(
+                1
+                for row in rows
+                if row["pilar"] == "P1"
+                and row["estado"] == "HALLAZGO"
+            )
+            p2 = sum(
+                1
+                for row in rows
+                if row["pilar"] == "P2"
+                and row["estado"] == "HALLAZGO"
+            )
+
+        self.home_page.project_card.set(
+            project,
+            str(
+                self.target_root
+                or "Código objetivo"
+            ),
+        )
+        self.home_page.profile_card.set(
+            profile,
+            str(
+                self.config_path
+                or "Configuración"
+            ),
+        )
+        self.home_page.process_card.set(
+            (
+                "En ejecución"
+                if running
+                else (
+                    "Detenido"
+                    if self.proceso
+                    else "No administrado"
+                )
+            ),
+            (
+                self.cfg.runtime.modo
+                if self.cfg
+                else "Runtime"
+            ),
+        )
+        self.home_page.findings_card.set(
+            str(p1 + p2),
+            f"P1 {p1} · P2 {p2}",
+        )
+
+        project_lines = [
+            f"Nombre: {profile}",
+            f"Ruta: {self.target_root or '-'}",
+            (
+                "Base URL: "
+                f"{self.cfg.base_url if self.cfg else '-'}"
+            ),
+            (
+                "Runtime: "
+                f"{self.cfg.runtime.modo if self.cfg else '-'}"
+            ),
+            f"Pilar 1: {p1} hallazgo(s)",
+            f"Pilar 2: {p2} hallazgo(s)",
+        ]
+        self.home_page.project_info.configure(
+            text="\n".join(project_lines)
+        )
+
+        step = 0
+        if self.target_root:
+            step = 1
+        if self.cfg:
+            step = 2
+        if self.resultado:
+            step = 3
+        if (
+            self.evidence_base.exists()
+            and any(
+                self.evidence_base.iterdir()
+            )
+        ):
+            step = 4
+
+        corrected = False
+        if self.evidence_base.exists():
+            for session in self.evidence_base.iterdir():
+                manifest = session / "manifest.json"
+                if not manifest.exists():
+                    continue
+                try:
+                    payload = json.loads(
+                        manifest.read_text(
+                            encoding="utf-8"
+                        )
+                    )
+                    if (
+                        payload.get("estado_final")
+                        == "CORREGIDO"
+                    ):
+                        corrected = True
+                        break
+                except Exception:
+                    pass
+
+        if corrected:
+            step = 5
+
+        self.home_page.progress_steps.set_step(
+            step
+        )
+
+        if hasattr(self, "audit_page"):
+            self.audit_page.p1_card.set(
+                f"{p1} hallazgo(s)",
+                "Identidad y Control de Acceso",
+            )
+            self.audit_page.p2_card.set(
+                f"{p2} hallazgo(s)",
+                "Arquitectura y Configuración",
+            )
+            state = (
+                "Seguro"
+                if self.resultado
+                and p1 + p2 == 0
+                else (
+                    f"{p1 + p2} hallazgo(s)"
+                    if self.resultado
+                    else "Sin diagnóstico"
+                )
+            )
+            self.audit_page.total_card.set(
+                state,
+                (
+                    f"{len(rows)} controles"
+                    if rows
+                    else "P1 + P2"
+                ),
+            )
+
+        if hasattr(self, "reports_page"):
+            self.reports_page.refresh()
+
+        if hasattr(self, "knowledge_page"):
+            self.knowledge_page.refresh()
+
+        self._refresh_project_page()
+
+        if hasattr(self, "topbar"):
+            self.topbar.set_project(profile)
+            self.topbar.set_process(
+                running,
+                self.proceso is not None,
+            )
+
+    def _refresh_process_state(self):
+        running = self._process_running()
+
+        if hasattr(self, "lbl_process"):
+            if running:
+                self.lbl_process.configure(
+                    text="Proceso: EN EJECUCIÓN",
+                    text_color=COLORS["success"],
+                )
+            elif self.proceso:
+                self.lbl_process.configure(
+                    text="Proceso: DETENIDO",
+                    text_color=COLORS["warning"],
+                )
+            else:
+                self.lbl_process.configure(
+                    text="Proceso: no administrado",
+                    text_color=COLORS["muted"],
+                )
+
+        if hasattr(self, "topbar"):
+            self.topbar.set_process(
+                running,
+                self.proceso is not None,
+            )
+
+    def _set_busy(self, busy: bool, status: str):
+        self.busy = busy
+
+        if hasattr(self, "lbl_status"):
+            self.lbl_status.configure(
+                text=status
+            )
+
+        if hasattr(self, "progress"):
+            if busy:
+                self.progress.start()
+            else:
+                self.progress.stop()
+                self.progress.set(0)
+
+        self._refresh_state()
+
+    def _log(self, text: str):
+        if hasattr(self, "log_text"):
+            self.log_text.configure(
+                state="normal"
+            )
+            self.log_text.insert(
+                "end",
+                text.rstrip() + "\n",
+            )
+            self.log_text.see("end")
+            self.log_text.configure(
+                state="disabled"
+            )
+
+        if hasattr(self, "home_page"):
+            self.home_page.console.append(
+                text
+            )
+
+    def _apply_dark_native_widgets(self, widget):
+        for child in widget.winfo_children():
+            if isinstance(child, tk.Text):
+                child.configure(
+                    background="#04101A",
+                    foreground="#CBE0EC",
+                    insertbackground="#FFFFFF",
+                    selectbackground="#124E75",
+                    selectforeground="#FFFFFF",
+                    relief="flat",
+                    borderwidth=0,
+                    highlightbackground=COLORS["border_soft"],
+                    highlightcolor=COLORS["accent"],
+                )
+            elif isinstance(child, tk.Listbox):
+                child.configure(
+                    background="#071724",
+                    foreground="#CBE0EC",
+                    selectbackground="#124E75",
+                    selectforeground="#FFFFFF",
+                    borderwidth=0,
+                    highlightbackground=COLORS["border_soft"],
+                    highlightcolor=COLORS["accent"],
+                )
+
+            self._apply_dark_native_widgets(
+                child
+            )
+
+    def _apply_responsive_layout(self):
+        if not hasattr(self, "sidebar"):
+            return
+
+        width = max(
+            800,
+            self.winfo_width(),
+        )
+        height = max(
+            500,
+            self.winfo_height(),
+        )
+
+        ultra = (
+            width < 1050
+            or height < 650
+        )
+        compact = (
+            ultra
+            or width < 1380
+            or height < 780
+        )
+
+        self.compact_mode = compact
+        self.ultra_compact_mode = ultra
+
+        self.sidebar.set_compact(
+            compact,
+            ultra,
+        )
+
+        if hasattr(self, "topbar"):
+            self.topbar.set_compact(
+                compact,
+                ultra,
+            )
+
+        if (
+            hasattr(self, "home_page")
+            and hasattr(
+                self.home_page,
+                "set_compact",
+            )
+        ):
+            self.home_page.set_compact(
+                compact,
+                ultra,
+            )
+
+        if (
+            hasattr(self, "audit_page")
+            and hasattr(
+                self.audit_page,
+                "set_compact",
+            )
+        ):
+            self.audit_page.set_compact(
+                compact,
+                ultra,
+            )
+
+    def _choose_config(self):
+        super()._choose_config()
+        self._refresh_dashboard()
+
+    def _choose_target(self):
+        super()._choose_target()
+        self._refresh_dashboard()
+
+    def _choose_evidence_base(self):
+        super()._choose_evidence_base()
+        self._refresh_dashboard()
+
+    def _profile_wizard_saved(
+        self,
+        profile_path: Path,
+        project_root: Path,
+    ):
+        super()._profile_wizard_saved(
+            profile_path,
+            project_root,
+        )
+        self._refresh_dashboard()
+        self._route("home")
+
+
+def main():
+    ModernAuditorGUI().mainloop()
+
+
+if __name__ == "__main__":
+    main()
