@@ -250,3 +250,42 @@ rollback automático si falla
 **Agregar una aplicación nueva no debe requerir editar `engine.py`, `pilar2.py`, `corrective.py`, `cycle.py` ni la GUI.**
 
 Se agrega un perfil JSON. Solo cuando aparece un mecanismo de autenticación, protocolo o clase de control que el auditor todavía no conoce se crea un adaptador/control reutilizable, no código específico de la aplicación.
+
+
+## Inventario automático de endpoints
+
+Al incorporar una aplicación, Aegis recorre todos los archivos de texto
+relevantes del proyecto (excluyendo dependencias y artefactos generados como
+`node_modules`, `dist`, `build`, `target`, `venv`, etc.) y construye un
+inventario estático de rutas.
+
+El perfil guardado en `config/` incluye:
+
+```json
+{
+  "endpoints_detectados": [
+    {
+      "metodo": "GET",
+      "ruta": "/api/usuarios/{id}",
+      "archivo": "src/UsuarioController.java",
+      "framework": "spring",
+      "archivos": ["src/UsuarioController.java"],
+      "frameworks": ["spring"]
+    }
+  ]
+}
+```
+
+`endpoints_detectados` es el inventario automático y no debe confundirse con
+`endpoints`, que contiene controles BOLA ya configurados con propietario e ID
+de prueba.
+
+El detector no aplica un límite artificial de 300 rutas. Reconoce, entre otros:
+Spring, Servlet/WebServlet, web.xml, JAX-RS, Flask/FastAPI, Express/Fastify,
+NestJS, Django, Laravel, Symfony, ASP.NET, Go, Rails/Sinatra/Phoenix, Rust,
+Play, Next.js y especificaciones OpenAPI/Swagger. También puede registrar
+referencias encontradas en formularios, fetch, axios y jQuery cuando ayudan a
+descubrir rutas que no tienen una declaración de servidor visible.
+
+Las rutas creadas dinámicamente en tiempo de ejecución, desde plugins externos,
+bases de datos o metaprogramación pueden requerir validación en runtime.
