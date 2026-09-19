@@ -31,6 +31,8 @@ class AIAssistantMixin:
         self.ai_session_dir: Path | None = None
         self.ai_current_recipe = None
         self.ai_provider: AIProviderConfig | None = None
+        self.ai_proposals_window = None
+        self.ai_proposals_notebook = None
 
         outer = ttk.Frame(self.tab_ai, padding=8)
         outer.pack(fill="both", expand=True)
@@ -113,6 +115,7 @@ class AIAssistantMixin:
         buttons.columnconfigure(0, weight=1)
         buttons.columnconfigure(1, weight=1)
         buttons.columnconfigure(2, weight=1)
+        buttons.columnconfigure(3, weight=1)
 
         self.btn_ai_generate = ttk.Button(
             buttons,
@@ -134,6 +137,13 @@ class AIAssistantMixin:
             command=self._save_ai_recipe_to_profile,
         )
         self.btn_ai_save.grid(row=0, column=2, sticky="ew", padx=3)
+
+        self.btn_ai_window = ttk.Button(
+            buttons,
+            text="Ver propuestas en ventana",
+            command=self._open_ai_proposals_window,
+        )
+        self.btn_ai_window.grid(row=0, column=3, sticky="ew", padx=3)
 
         orient = tk.VERTICAL if self.compact_mode else tk.HORIZONTAL
         pane = tk.PanedWindow(
@@ -272,6 +282,10 @@ class AIAssistantMixin:
         self.btn_ai_save.configure(
             state=enabled(has_proposal and self.config_path is not None)
         )
+        if hasattr(self, "btn_ai_window"):
+            self.btn_ai_window.configure(
+                state=enabled(bool(self.ai_proposals))
+            )
         if hasattr(self, "btn_ai_open"):
             self.btn_ai_open.configure(
                 state=enabled(has_control and has_target)
@@ -291,6 +305,7 @@ class AIAssistantMixin:
         self.ai_current_recipe = None
         self.ai_proposals = []
         self.ai_session_dir = None
+        self._close_ai_proposals_window()
 
         for item in self.ai_table.get_children():
             self.ai_table.delete(item)
@@ -464,6 +479,7 @@ class AIAssistantMixin:
             self.ai_table.focus("0")
             self._on_ai_proposal_selected()
             self._refresh_ai_state()
+            self._open_ai_proposals_window()
 
         self._run_background(
             task,
@@ -530,6 +546,312 @@ class AIAssistantMixin:
             json.dumps(detail, ensure_ascii=False, indent=2),
         )
         self._refresh_ai_state()
+
+    def _close_ai_proposals_window(self):
+        window = getattr(self, "ai_proposals_window", None)
+        if window is not None:
+            try:
+                if window.winfo_exists():
+                    window.destroy()
+            except tk.TclError:
+                pass
+        self.ai_proposals_window = None
+        self.ai_proposals_notebook = None
+
+    def _select_ai_proposal_index(self, index: int):
+        if index < 0 or index >= len(self.ai_proposals):
+            return
+        iid = str(index)
+        if iid in self.ai_table.get_children():
+            self.ai_table.selection_set(iid)
+            self.ai_table.focus(iid)
+            self.ai_table.see(iid)
+        self._on_ai_proposal_selected()
+
+    def _copy_to_clipboard(self, text: str):
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self.update_idletasks()
+
+    def _proposal_preview_data(self, index: int) -> dict:
+        proposal = self.ai_proposals[index]
+        control = self._selected_control()
+        if (
+            not control
+            or not self.target_root
+            or not self.ai_source_relative
+        ):
+            return {
+                "proposal": proposal,
+                "recipe": None,
+                "preview": None,
+                "error": "No hay contexto suficiente para previsualizar.",
+            }
+
+        recipe = propuesta_a_correccion(
+            proposal,
+            control_id=control,
+            source_relative=self.ai_source_relative,
+        )
+        try:
+            preview = preview_recipe(recipe, self.target_root)
+            error = None
+        except Exception as exc:
+            preview = None
+            error = str(exc)
+
+        return {
+            "proposal": proposal,
+            "recipe": recipe,
+            "preview": preview,
+            "error": error,
+        }
+
+    def _open_ai_proposals_window(self):
+        if not self.ai_proposals:
+            messagebox.showinfo(
+                "Propuestas Gemma",
+                "Primero genera las tres recetas con Gemma.",
+            )
+            return
+
+        old = getattr(self, "ai_proposals_window", None)
+        if old is not None:
+            try:
+                if old.winfo_exists():
+                    old.lift()
+                    old.focus_force()
+                    return
+            except tk.TclError:
+                pass
+
+        window = tk.Toplevel(self)
+        self.ai_proposals_window = window
+        window.title("Propuestas de corrección — Gemma / Laboratorio UTB")
+
+        screen_w = window.winfo_screenwidth()
+        screen_h = window.winfo_screenheight()
+        width = min(1500, max(900, screen_w - 100))
+        height = min(900, max(650, screen_h - 140))
+        window.geometry(f"{width}x{height}")
+        window.minsize(820, 600)
+        window.protocol("WM_DELETE_WINDOW", self._close_ai_proposals_window)
+
+        outer = ttk.Frame(window, padding=10)
+        outer.pack(fill="both", expand=True)
+        outer.rowconfigure(2, weight=1)
+        outer.columnconfigure(0, weight=1)
+
+        control = self._selected_control() or "-"
+        ttk.Label(
+            outer,
+            text=(
+                f"Control: {control}    |    "
+                f"Archivo: {self.ai_source_relative or '-'}"
+            ),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 6))
+
+        ttk.Label(
+            outer,
+            text=(
+                "Compara las tres soluciones. Cambiar de pestaña selecciona "
+                "esa receta también en la ventana principal."
+            ),
+        ).grid(row=1, column=0, sticky="w", pady=(0, 8))
+
+        notebook = ttk.Notebook(outer)
+        self.ai_proposals_notebook = notebook
+        notebook.grid(row=2, column=0, sticky="nsew")
+
+        for index, proposal in enumerate(self.ai_proposals):
+            data = self._proposal_preview_data(index)
+            tab = ttk.Frame(notebook, padding=8)
+            tab.rowconfigure(2, weight=1)
+            tab.columnconfigure(0, weight=1)
+            notebook.add(
+                tab,
+                text=f"{proposal.enfoque} — {proposal.id}",
+            )
+
+            summary = ttk.LabelFrame(
+                tab,
+                text=proposal.titulo,
+                padding=8,
+            )
+            summary.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+            summary.columnconfigure(1, weight=1)
+
+            ttk.Label(summary, text="Enfoque:").grid(
+                row=0, column=0, sticky="nw", padx=(0, 8)
+            )
+            ttk.Label(summary, text=proposal.enfoque).grid(
+                row=0, column=1, sticky="w"
+            )
+            ttk.Label(summary, text="Riesgo:").grid(
+                row=0, column=2, sticky="nw", padx=(18, 8)
+            )
+            ttk.Label(summary, text=proposal.riesgo).grid(
+                row=0, column=3, sticky="w"
+            )
+            ttk.Label(summary, text="Explicación:").grid(
+                row=1, column=0, sticky="nw", padx=(0, 8), pady=(4, 0)
+            )
+            ttk.Label(
+                summary,
+                text=proposal.explicacion,
+                wraplength=max(600, width - 340),
+                justify="left",
+            ).grid(
+                row=1, column=1, columnspan=3, sticky="ew", pady=(4, 0)
+            )
+            ttk.Label(summary, text="Consideraciones:").grid(
+                row=2, column=0, sticky="nw", padx=(0, 8), pady=(4, 0)
+            )
+            ttk.Label(
+                summary,
+                text=proposal.consideraciones,
+                wraplength=max(600, width - 340),
+                justify="left",
+            ).grid(
+                row=2, column=1, columnspan=3, sticky="ew", pady=(4, 0)
+            )
+
+            actions = ttk.Frame(tab)
+            actions.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+            ttk.Button(
+                actions,
+                text="Seleccionar esta receta",
+                command=lambda i=index: self._select_ai_proposal_index(i),
+            ).pack(side="left", padx=(0, 6))
+            ttk.Button(
+                actions,
+                text="Copiar código propuesto",
+                command=lambda p=proposal: self._copy_to_clipboard(
+                    p.reemplazar
+                ),
+            ).pack(side="left", padx=(0, 6))
+
+            panes = tk.PanedWindow(
+                tab,
+                orient=tk.HORIZONTAL,
+                sashwidth=6,
+                relief="flat",
+                bd=0,
+            )
+            panes.grid(row=2, column=0, sticky="nsew")
+
+            code_frame = ttk.LabelFrame(
+                panes, text="Código propuesto", padding=6
+            )
+            diff_frame = ttk.LabelFrame(
+                panes, text="Diff / vista previa", padding=6
+            )
+            panes.add(code_frame, minsize=360, stretch="always")
+            panes.add(diff_frame, minsize=420, stretch="always")
+
+            for frame in (code_frame, diff_frame):
+                frame.rowconfigure(0, weight=1)
+                frame.columnconfigure(0, weight=1)
+
+            code_text = tk.Text(
+                code_frame,
+                wrap="none",
+                font=("Consolas", 10),
+            )
+            code_y = ttk.Scrollbar(
+                code_frame,
+                orient="vertical",
+                command=code_text.yview,
+            )
+            code_x = ttk.Scrollbar(
+                code_frame,
+                orient="horizontal",
+                command=code_text.xview,
+            )
+            code_text.configure(
+                yscrollcommand=code_y.set,
+                xscrollcommand=code_x.set,
+            )
+            code_text.grid(row=0, column=0, sticky="nsew")
+            code_y.grid(row=0, column=1, sticky="ns")
+            code_x.grid(row=1, column=0, sticky="ew")
+            code_text.insert("1.0", proposal.reemplazar)
+            code_text.configure(state="disabled")
+
+            diff_text = tk.Text(
+                diff_frame,
+                wrap="none",
+                font=("Consolas", 10),
+            )
+            diff_y = ttk.Scrollbar(
+                diff_frame,
+                orient="vertical",
+                command=diff_text.yview,
+            )
+            diff_x = ttk.Scrollbar(
+                diff_frame,
+                orient="horizontal",
+                command=diff_text.xview,
+            )
+            diff_text.configure(
+                yscrollcommand=diff_y.set,
+                xscrollcommand=diff_x.set,
+            )
+            diff_text.grid(row=0, column=0, sticky="nsew")
+            diff_y.grid(row=0, column=1, sticky="ns")
+            diff_x.grid(row=1, column=0, sticky="ew")
+
+            if data["preview"] is not None:
+                diff_content = data["preview"].get("diff") or (
+                    "La propuesta es válida pero no produjo un diff visible."
+                )
+            else:
+                diff_content = (
+                    "PREVIEW NO DISPONIBLE\n\n"
+                    + (data["error"] or "Error desconocido")
+                    + "\n\n"
+                    "Código propuesto por Gemma:\n"
+                    + proposal.reemplazar
+                )
+            diff_text.insert("1.0", diff_content)
+            diff_text.configure(state="disabled")
+
+        footer = ttk.Frame(outer)
+        footer.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(
+            footer,
+            text="Aplicar receta seleccionada",
+            command=self._apply_ai_recipe,
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            footer,
+            text="Guardar receta seleccionada en perfil",
+            command=self._save_ai_recipe_to_profile,
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            footer,
+            text="Cerrar",
+            command=self._close_ai_proposals_window,
+        ).pack(side="right")
+
+        def on_tab_changed(_event=None):
+            current = notebook.index(notebook.select())
+            self._select_ai_proposal_index(current)
+
+        notebook.bind("<<NotebookTabChanged>>", on_tab_changed)
+
+        selected = self.ai_table.selection()
+        try:
+            selected_index = int(selected[0]) if selected else 0
+        except (TypeError, ValueError):
+            selected_index = 0
+        selected_index = max(0, min(selected_index, len(self.ai_proposals) - 1))
+        notebook.select(selected_index)
+        self._select_ai_proposal_index(selected_index)
+
+        window.transient(self)
+        window.lift()
+        window.focus_force()
 
     def _install_ai_recipe_in_memory(self):
         proposal = self._selected_ai_proposal()
