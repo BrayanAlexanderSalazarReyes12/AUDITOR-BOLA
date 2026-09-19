@@ -118,18 +118,21 @@ class ProfileWizard(tk.Toplevel):
         self.tab_runtime = ttk.Frame(self.notebook, padding=14)
         self.tab_accounts = ttk.Frame(self.notebook, padding=14)
         self.tab_routes = ttk.Frame(self.notebook, padding=14)
+        self.tab_p2 = ttk.Frame(self.notebook, padding=14)
         self.tab_json = ttk.Frame(self.notebook, padding=14)
 
         self.notebook.add(self.tab_summary, text="1. Proyecto")
         self.notebook.add(self.tab_runtime, text="2. Runtime")
         self.notebook.add(self.tab_accounts, text="3. Cuentas")
-        self.notebook.add(self.tab_routes, text="4. Endpoints")
-        self.notebook.add(self.tab_json, text="5. Perfil JSON")
+        self.notebook.add(self.tab_routes, text="4. Pilar 1")
+        self.notebook.add(self.tab_p2, text="5. Pilar 2")
+        self.notebook.add(self.tab_json, text="6. Perfil JSON")
 
         self._build_summary()
         self._build_runtime()
         self._build_accounts()
         self._build_routes()
+        self._build_p2()
         self._build_json()
 
         footer = ttk.Frame(self, padding=(18, 0, 18, 18))
@@ -322,6 +325,72 @@ class ProfileWizard(tk.Toplevel):
             style="Aegis.Muted.TLabel",
         ).grid(row=2, column=0, sticky="w", pady=(8, 0))
 
+    def _build_p2(self):
+        self.tab_p2.rowconfigure(0, weight=1)
+        self.tab_p2.columnconfigure(0, weight=1)
+
+        columns = ("id", "type", "name", "target")
+        self.p2_table = ttk.Treeview(
+            self.tab_p2,
+            columns=columns,
+            show="headings",
+        )
+        self.p2_table.heading("id", text="Control")
+        self.p2_table.heading("type", text="Tipo")
+        self.p2_table.heading("name", text="Descripción")
+        self.p2_table.heading("target", text="Ruta / archivo")
+        self.p2_table.column("id", width=150)
+        self.p2_table.column("type", width=160)
+        self.p2_table.column("name", width=300)
+        self.p2_table.column("target", width=280)
+        self.p2_table.grid(row=0, column=0, sticky="nsew")
+
+        sy = ttk.Scrollbar(
+            self.tab_p2,
+            orient="vertical",
+            command=self.p2_table.yview,
+        )
+        self.p2_table.configure(yscrollcommand=sy.set)
+        sy.grid(row=0, column=1, sticky="ns")
+
+        actions = ttk.Frame(self.tab_p2)
+        actions.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        ttk.Button(
+            actions,
+            text="Docker no-root",
+            command=self._add_p2_docker,
+        ).pack(side="left")
+        ttk.Button(
+            actions,
+            text="Patrón de fuente",
+            command=self._add_p2_source,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            actions,
+            text="CORS",
+            command=self._add_p2_cors,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            actions,
+            text="Política HTTP",
+            command=self._add_p2_http,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            actions,
+            text="Eliminar",
+            command=self._remove_p2,
+        ).pack(side="right")
+
+        ttk.Label(
+            self.tab_p2,
+            text=(
+                "Los controles del Pilar 2 se configuran de forma declarativa. "
+                "Aegis no inventa una política segura específica del proyecto."
+            ),
+            style="Aegis.Muted.TLabel",
+            wraplength=820,
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
     def _build_json(self):
         self.tab_json.rowconfigure(0, weight=1)
         self.tab_json.columnconfigure(0, weight=1)
@@ -413,6 +482,7 @@ class ProfileWizard(tk.Toplevel):
                 values=(route.method, route.path, route.source),
             )
 
+        self._refresh_p2_table()
         self._refresh_profile_preview()
 
     @staticmethod
@@ -671,6 +741,201 @@ class ProfileWizard(tk.Toplevel):
             f"Se agregó {control_id} al perfil.",
             parent=self,
         )
+
+    def _next_p2_id(self) -> str:
+        checks = (self.profile or {}).get("chequeos_pilar2") or []
+        return f"P2-AUTO-{len(checks) + 1:03d}"
+
+    def _refresh_p2_table(self):
+        if not hasattr(self, "p2_table"):
+            return
+        for iid in self.p2_table.get_children():
+            self.p2_table.delete(iid)
+
+        for index, item in enumerate(
+            (self.profile or {}).get("chequeos_pilar2") or []
+        ):
+            target = item.get("archivo") or item.get("ruta") or ""
+            self.p2_table.insert(
+                "",
+                "end",
+                iid=str(index),
+                values=(
+                    item.get("id_control", ""),
+                    item.get("tipo", ""),
+                    item.get("nombre", ""),
+                    target,
+                ),
+            )
+
+    def _append_p2(self, item: dict):
+        if self.profile is None:
+            self.profile = {}
+        self.profile.setdefault("chequeos_pilar2", []).append(item)
+        self._refresh_p2_table()
+        self._refresh_profile_preview()
+
+    def _add_p2_docker(self):
+        archivo = simpledialog.askstring(
+            "Pilar 2 — Docker",
+            "Archivo Docker a revisar:",
+            initialvalue="Dockerfile",
+            parent=self,
+        )
+        if not archivo:
+            return
+        self._append_p2(
+            {
+                "id_control": self._next_p2_id(),
+                "nombre": "El contenedor debe ejecutar con usuario no root",
+                "tipo": "docker_non_root",
+                "archivo": archivo.strip(),
+                "archivos_fuente": [archivo.strip()],
+                "pistas_codigo": ["USER", "Dockerfile", "non-root"],
+            }
+        )
+
+    def _add_p2_source(self):
+        archivo = simpledialog.askstring(
+            "Pilar 2 — Patrón de fuente",
+            "Archivo relativo al proyecto:",
+            parent=self,
+        )
+        if not archivo:
+            return
+        patron = simpledialog.askstring(
+            "Pilar 2 — Patrón de fuente",
+            "Patrón inseguro que debe detectarse:",
+            parent=self,
+        )
+        if not patron:
+            return
+        seguro = simpledialog.askstring(
+            "Pilar 2 — Patrón de fuente",
+            "Patrón seguro opcional (Cancelar para omitir):",
+            parent=self,
+        )
+        nombre = simpledialog.askstring(
+            "Pilar 2 — Patrón de fuente",
+            "Descripción del control:",
+            initialvalue=f"Revisar configuración insegura en {archivo.strip()}",
+            parent=self,
+        )
+        if nombre is None:
+            return
+
+        item = {
+            "id_control": self._next_p2_id(),
+            "nombre": nombre.strip() or "Control de configuración",
+            "tipo": "source_contains",
+            "archivo": archivo.strip(),
+            "patron_inseguro": patron,
+            "archivos_fuente": [archivo.strip()],
+            "pistas_codigo": [patron[:80]],
+        }
+        if seguro:
+            item["patron_seguro"] = seguro
+        self._append_p2(item)
+
+    def _add_p2_cors(self):
+        ruta = simpledialog.askstring(
+            "Pilar 2 — CORS",
+            "Ruta HTTP que se probará:",
+            initialvalue="/",
+            parent=self,
+        )
+        if ruta is None:
+            return
+        metodo = simpledialog.askstring(
+            "Pilar 2 — CORS",
+            "Método HTTP:",
+            initialvalue="GET",
+            parent=self,
+        )
+        if metodo is None:
+            return
+        cuenta = simpledialog.askstring(
+            "Pilar 2 — CORS",
+            "Cuenta opcional (Cancelar para ninguna):",
+            parent=self,
+        )
+        item = {
+            "id_control": self._next_p2_id(),
+            "nombre": "No reflejar orígenes no autorizados con credenciales",
+            "tipo": "cors_reflection",
+            "metodo": (metodo.strip() or "GET").upper(),
+            "ruta": ruta.strip() or "/",
+            "headers": {},
+        }
+        if cuenta:
+            item["cuenta"] = cuenta.strip()
+        self._append_p2(item)
+
+    def _add_p2_http(self):
+        ruta = simpledialog.askstring(
+            "Pilar 2 — Política HTTP",
+            "Ruta HTTP:",
+            initialvalue="/",
+            parent=self,
+        )
+        if ruta is None:
+            return
+        metodo = simpledialog.askstring(
+            "Pilar 2 — Política HTTP",
+            "Método HTTP:",
+            initialvalue="GET",
+            parent=self,
+        )
+        if metodo is None:
+            return
+        codes = simpledialog.askstring(
+            "Pilar 2 — Política HTTP",
+            "Códigos considerados seguros, separados por coma:",
+            initialvalue="400,401,403,429",
+            parent=self,
+        )
+        if codes is None:
+            return
+        try:
+            parsed = [int(value.strip()) for value in codes.split(",") if value.strip()]
+        except ValueError:
+            messagebox.showerror(
+                "Códigos inválidos",
+                "Usa números separados por coma.",
+                parent=self,
+            )
+            return
+        cuenta = simpledialog.askstring(
+            "Pilar 2 — Política HTTP",
+            "Cuenta opcional (Cancelar para ninguna):",
+            parent=self,
+        )
+        item = {
+            "id_control": self._next_p2_id(),
+            "nombre": f"Política HTTP para {(metodo.strip() or 'GET').upper()} {ruta.strip() or '/'}",
+            "tipo": "http_status_policy",
+            "metodo": (metodo.strip() or "GET").upper(),
+            "ruta": ruta.strip() or "/",
+            "codigos_seguros": parsed or [400, 401, 403, 429],
+        }
+        if cuenta:
+            item["cuenta"] = cuenta.strip()
+        self._append_p2(item)
+
+    def _remove_p2(self):
+        selected = self.p2_table.selection()
+        if not selected or not self.profile:
+            return
+        indexes = sorted(
+            (self.p2_table.index(iid) for iid in selected),
+            reverse=True,
+        )
+        checks = self.profile.get("chequeos_pilar2") or []
+        for index in indexes:
+            if 0 <= index < len(checks):
+                checks.pop(index)
+        self._refresh_p2_table()
+        self._refresh_profile_preview()
 
     def _compose_profile(self) -> dict:
         if self.detection is None:
