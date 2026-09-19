@@ -565,19 +565,21 @@ class LocalTargetProcess:
 
         return raw.decode("utf-8", errors="replace").strip()
 
-    def start(self) -> None:
+    def start(self) -> dict[str, object]:
+        if self.is_running():
+            return self.runtime_status()
+
+        self._select_runtime_if_needed()
         mode = self._modo()
 
         if mode == "external":
             raise RuntimeError(
-                "Este perfil declara runtime.modo='external'. "
-                "El objetivo debe iniciarse fuera del Auditor; después puede "
-                "ejecutarse el diagnóstico contra base_url."
+                "Este perfil requiere un runtime externo. "
+                "Inicia la aplicación fuera de Aegis y luego "
+                "ejecuta el diagnóstico contra base_url."
             )
 
-        if self.is_running():
-            return
-
+        self._started_successfully = False
         self._prepare_if_needed()
 
         start_command = self._command_for("inicio")
@@ -593,11 +595,16 @@ class LocalTargetProcess:
                 action_name="iniciar",
             )
             self._service_running = True
+            self._started_successfully = True
             time.sleep(self.runtime.espera_inicio)
-            return
+            return self.runtime_status()
 
         cwd, env = self._context()
-        command = self._resolver_comando(cwd, env, raw=start_command)
+        command = self._resolver_comando(
+            cwd,
+            env,
+            raw=start_command,
+        )
 
         self._reset_output_buffer()
 
@@ -609,9 +616,6 @@ class LocalTargetProcess:
                 "stderr": subprocess.STDOUT,
             }
 
-            # Crear un grupo/sesión independiente permite detener también los
-            # procesos hijo que lance el runtime (npm -> node, mvn -> java,
-            # scripts -> servidores, etc.).
             if _is_windows():
                 popen_kwargs["creationflags"] = getattr(
                     subprocess,
@@ -627,6 +631,7 @@ class LocalTargetProcess:
             )
         except FileNotFoundError as exc:
             self._close_output_buffer()
+            self.process = None
             raise FileNotFoundError(
                 errno.ENOENT,
                 (
@@ -657,6 +662,9 @@ class LocalTargetProcess:
                     "dependencias del proyecto."
                 )
             raise RuntimeError(message)
+
+        self._started_successfully = True
+        return self.runtime_status()
 
     def _terminate_process_tree(self) -> None:
         """Detiene el proceso administrado y todos sus descendientes.
@@ -745,20 +753,29 @@ class LocalTargetProcess:
             pass
 
     def stop(self) -> None:
+        # Si el arranque falló, no ejecutar comandos de parada del runtime
+        # configurado. Evita, por ejemplo, intentar "docker compose down"
+        # después de que Docker no estaba instalado.
+        if not self.has_started():
+            self._close_output_buffer()
+            return
+
         mode = self._modo()
 
         if mode == "external":
+            self._started_successfully = False
             return
 
         stop_command = self._command_for("detener")
 
         if mode == "service":
-            if stop_command:
+            if self._service_running and stop_command:
                 self._run_control_command(
                     stop_command,
                     action_name="detener",
                 )
             self._service_running = False
+            self._started_successfully = False
             return
 
         if self.process is not None:
@@ -767,13 +784,18 @@ class LocalTargetProcess:
 
         self._close_output_buffer()
 
-        if stop_command:
+        if self._started_successfully and stop_command:
             self._run_control_command(
                 stop_command,
                 action_name="detener",
             )
 
-    def restart(self) -> None:
+        self._started_successfully = False
+
+    def restart(self) -> dict[str, object]:
+        if not self.has_started():
+            return self.start()
+
         mode = self._modo()
 
         if mode == "external":
@@ -790,8 +812,9 @@ class LocalTargetProcess:
                 action_name="reiniciar",
             )
             self._service_running = True
+            self._started_successfully = True
             time.sleep(self.runtime.espera_inicio)
-            return
+            return self.runtime_status()
 
         self.stop()
-        self.start()
+        return self.start()
