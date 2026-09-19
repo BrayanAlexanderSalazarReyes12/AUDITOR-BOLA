@@ -1,33 +1,62 @@
-# Biblioteca de recetas reutilizables
+# Biblioteca correctiva
 
-Esta carpeta contiene recetas correctivas aceptadas por el auditor para poder
-reutilizarlas en otros sistemas cuando el mismo patrón de vulnerabilidad pueda
-resolverse de la misma forma.
+Esta carpeta conserva dos tipos de conocimiento diferentes.
 
-Las recetas se organizan por `control_id`:
+## 1. Conocimiento semántico
 
 ```text
 recetas/
-├── P1-BOLA/
-│   └── <recipe_id>.json
-├── P1-RBAC-004/
-│   └── <recipe_id>.json
-└── P2-CORS-001/
+└── conocimiento/
+    └── <familia_control>/
+        └── <knowledge_id>.json
+```
+
+Este es el nivel reusable entre aplicativos. No almacena un `buscar` /
+`reemplazar` como solución universal.
+
+Cada medicina contiene conceptos como:
+
+- causa raíz;
+- invariante de seguridad;
+- estrategia general;
+- señales de aplicabilidad;
+- requisitos de implementación;
+- anti-patrones;
+- contrato de verificación;
+- tecnologías donde ya fue observada;
+- cantidad de usos exitosos.
+
+La medicina se crea únicamente después de que una implementación concreta
+termina en `CORREGIDO`.
+
+Cuando aparece el mismo problema en otro aplicativo, Gemma recibe esa medicina
+junto con el código actual y genera una implementación nueva adaptada al
+proyecto.
+
+## 2. Instancias concretas
+
+```text
+recetas/
+└── <control_id>/
     └── <recipe_id>.json
 ```
 
-Una receta de biblioteca no se aplica solo porque tenga el mismo control.
-Antes de ofrecerla al usuario el auditor:
+Son parches exactos que ya funcionaron en un sistema. Se conservan para
+trazabilidad y para reutilización directa cuando el código nuevo realmente
+coincide con el patrón.
 
-1. adapta la receta al archivo actual;
-2. ejecuta un preview en memoria;
-3. descarta la receta si el patrón no coincide;
-4. muestra el código resultante y el diff;
-5. requiere confirmación humana;
-6. aplica el ciclo normal de backup, verificación y rollback.
+No se consideran universales.
 
-Las recetas marcadas como `verificada: true` ya han corregido al menos una
-instancia y tienen prioridad sobre recetas no verificadas.
+## Regla
+
+```text
+Parche concreto = cómo se corrigió un caso.
+Medicina semántica = qué propiedad hay que restaurar y cómo comprobarla.
+```
+
+El auditor siempre ejecuta preview, confirmación humana, backup, verificación
+y rollback. Compartir el mismo nombre de control nunca basta para modificar un
+archivo automáticamente.
 
 No deben almacenarse credenciales, API keys ni archivos fuente completos en
 esta carpeta.

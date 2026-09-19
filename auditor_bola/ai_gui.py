@@ -14,12 +14,20 @@ from .ai_recipes import (
     AIRecipeProposal,
     cargar_configuracion_opencode,
     generar_tres_recetas,
+    generalizar_correccion_exitosa,
     guardar_seleccion_ia,
     guardar_sesion_ia,
     propuesta_a_correccion,
 )
 from .cycle import ciclo_correctivo
 from .source_locator import resolver_archivo_fuente
+from .remediation_knowledge import (
+    KnowledgeCandidate,
+    buscar_conocimiento,
+    guardar_conocimiento,
+    knowledge_root,
+    registrar_uso_conocimiento,
+)
 from .recipe_library import (
     RecipeLibraryCandidate,
     biblioteca_por_defecto,
@@ -43,6 +51,9 @@ class AIAssistantMixin:
         self.ai_library_candidates: list[RecipeLibraryCandidate] = []
         self.ai_library_window = None
         self.ai_selected_library_candidate: RecipeLibraryCandidate | None = None
+        self.ai_knowledge_candidates: list[KnowledgeCandidate] = []
+        self.ai_active_knowledge_candidate: KnowledgeCandidate | None = None
+        self.ai_knowledge_window = None
 
         outer = ttk.Frame(self.tab_ai, padding=8)
         outer.pack(fill="both", expand=True)
@@ -120,8 +131,28 @@ class AIAssistantMixin:
             row=4, column=1, columnspan=2, sticky="ew", pady=(4, 0)
         )
 
-        ttk.Label(header, text="Biblioteca de recetas:").grid(
+        ttk.Label(header, text="Medicinas conocidas:").grid(
             row=5, column=0, sticky="w", padx=(0, 6), pady=(4, 0)
+        )
+        self.lbl_ai_knowledge = ttk.Label(
+            header,
+            text=f"0 conocidas — {knowledge_root()}",
+            anchor="w",
+        )
+        self.lbl_ai_knowledge.grid(
+            row=5, column=1, sticky="ew", pady=(4, 0)
+        )
+        self.btn_ai_knowledge = ttk.Button(
+            header,
+            text="Ver medicinas",
+            command=self._open_knowledge_window,
+        )
+        self.btn_ai_knowledge.grid(
+            row=5, column=2, sticky="e", padx=(8, 0), pady=(4, 0)
+        )
+
+        ttk.Label(header, text="Parches concretos:").grid(
+            row=6, column=0, sticky="w", padx=(0, 6), pady=(4, 0)
         )
         self.lbl_ai_library = ttk.Label(
             header,
@@ -129,15 +160,15 @@ class AIAssistantMixin:
             anchor="w",
         )
         self.lbl_ai_library.grid(
-            row=5, column=1, sticky="ew", pady=(4, 0)
+            row=6, column=1, sticky="ew", pady=(4, 0)
         )
         self.btn_ai_library = ttk.Button(
             header,
-            text="Ver recetas guardadas",
+            text="Ver parches exactos",
             command=self._open_recipe_library_window,
         )
         self.btn_ai_library.grid(
-            row=5, column=2, sticky="e", padx=(8, 0), pady=(4, 0)
+            row=6, column=2, sticky="e", padx=(8, 0), pady=(4, 0)
         )
 
         buttons = ttk.Frame(outer)
@@ -163,7 +194,7 @@ class AIAssistantMixin:
 
         self.btn_ai_save = ttk.Button(
             buttons,
-            text="Guardar receta en perfil + biblioteca",
+            text="Guardar propuesta en perfil",
             command=self._save_ai_recipe_to_profile,
         )
         self.btn_ai_save.grid(row=0, column=2, sticky="ew", padx=3)
@@ -328,6 +359,10 @@ class AIAssistantMixin:
             self.btn_ai_library.configure(
                 state=enabled(bool(self.ai_library_candidates))
             )
+        if hasattr(self, "btn_ai_knowledge"):
+            self.btn_ai_knowledge.configure(
+                state=enabled(bool(self.ai_knowledge_candidates))
+            )
 
 
     def _ai_sync_selected_control(self):
@@ -341,8 +376,11 @@ class AIAssistantMixin:
         self.ai_session_dir = None
         self.ai_library_candidates = []
         self.ai_selected_library_candidate = None
+        self.ai_knowledge_candidates = []
+        self.ai_active_knowledge_candidate = None
         self._close_ai_proposals_window()
         self._close_recipe_library_window()
+        self._close_knowledge_window()
 
         for item in self.ai_table.get_children():
             self.ai_table.delete(item)
@@ -445,6 +483,220 @@ class AIAssistantMixin:
         self._refresh_recipe_library()
         self._refresh_ai_state()
 
+    def _close_knowledge_window(self):
+        window = getattr(self, "ai_knowledge_window", None)
+        if window is not None:
+            try:
+                if window.winfo_exists():
+                    window.destroy()
+            except tk.TclError:
+                pass
+        self.ai_knowledge_window = None
+
+    def _selected_knowledge_candidate(self):
+        table = getattr(self, "ai_knowledge_table", None)
+        if table is None:
+            return self.ai_active_knowledge_candidate
+        selected = table.selection()
+        if not selected:
+            return self.ai_active_knowledge_candidate
+        try:
+            index = int(selected[0])
+        except (TypeError, ValueError):
+            return None
+        if index < 0 or index >= len(self.ai_knowledge_candidates):
+            return None
+        return self.ai_knowledge_candidates[index]
+
+    def _render_knowledge_candidate(self, _event=None):
+        candidate = self._selected_knowledge_candidate()
+        if candidate is None:
+            return
+        text = getattr(self, "ai_knowledge_detail", None)
+        if text is None:
+            return
+        payload = {
+            "knowledge_id": candidate.knowledge.knowledge_id,
+            "titulo": candidate.knowledge.titulo,
+            "afinidad": candidate.score,
+            "razones": candidate.razones,
+            "causa_raiz": candidate.knowledge.causa_raiz,
+            "invariante_seguridad": (
+                candidate.knowledge.invariante_seguridad
+            ),
+            "estrategia_general": (
+                candidate.knowledge.estrategia_general
+            ),
+            "señales_aplicabilidad": (
+                candidate.knowledge.señales_aplicabilidad
+            ),
+            "requisitos_implementacion": (
+                candidate.knowledge.requisitos_implementacion
+            ),
+            "anti_patrones": candidate.knowledge.anti_patrones,
+            "contrato_verificacion": (
+                candidate.knowledge.contrato_verificacion
+            ),
+            "casos_exitosos": candidate.knowledge.casos_exitosos,
+            "usos_exitosos": candidate.knowledge.usos_exitosos,
+        }
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        text.insert(
+            "1.0",
+            json.dumps(payload, ensure_ascii=False, indent=2),
+        )
+        text.configure(state="disabled")
+
+    def _open_knowledge_window(self):
+        if not self.ai_knowledge_candidates:
+            messagebox.showinfo(
+                "Medicinas conocidas",
+                "No hay conocimiento correctivo verificado para este control.",
+            )
+            return
+
+        old = getattr(self, "ai_knowledge_window", None)
+        if old is not None:
+            try:
+                if old.winfo_exists():
+                    old.lift()
+                    old.focus_force()
+                    return
+            except tk.TclError:
+                pass
+
+        window = tk.Toplevel(self)
+        self.ai_knowledge_window = window
+        window.title("Medicinas correctivas reutilizables")
+        screen_w = window.winfo_screenwidth()
+        screen_h = window.winfo_screenheight()
+        width = max(780, min(1300, screen_w - 100))
+        height = max(560, min(820, screen_h - 140))
+        window.geometry(f"{width}x{height}")
+        window.minsize(min(780, width), min(560, height))
+        window.protocol("WM_DELETE_WINDOW", self._close_knowledge_window)
+
+        outer = ttk.Frame(window, padding=10)
+        outer.pack(fill="both", expand=True)
+        outer.rowconfigure(1, weight=1)
+        outer.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            outer,
+            text=(
+                "Estas medicinas describen la solución de seguridad, no un "
+                "parche literal. Gemma las adapta al código actual."
+            ),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        pane = tk.PanedWindow(
+            outer,
+            orient=tk.HORIZONTAL,
+            sashwidth=6,
+            relief="flat",
+            bd=0,
+        )
+        pane.grid(row=1, column=0, sticky="nsew")
+
+        left = ttk.Frame(pane, padding=4)
+        right = ttk.Frame(pane, padding=4)
+        pane.add(left, minsize=340, stretch="always")
+        pane.add(right, minsize=440, stretch="always")
+        left.rowconfigure(0, weight=1)
+        left.columnconfigure(0, weight=1)
+        right.rowconfigure(0, weight=1)
+        right.columnconfigure(0, weight=1)
+
+        table = ttk.Treeview(
+            left,
+            columns=("score", "casos", "titulo"),
+            show="headings",
+        )
+        self.ai_knowledge_table = table
+        table.heading("score", text="Afinidad")
+        table.heading("casos", text="Éxitos")
+        table.heading("titulo", text="Medicina")
+        table.column("score", width=75, anchor="center")
+        table.column("casos", width=65, anchor="center")
+        table.column("titulo", width=250, anchor="w")
+        table.grid(row=0, column=0, sticky="nsew")
+
+        scroll = ttk.Scrollbar(
+            left, orient="vertical", command=table.yview
+        )
+        table.configure(yscrollcommand=scroll.set)
+        scroll.grid(row=0, column=1, sticky="ns")
+
+        for index, candidate in enumerate(self.ai_knowledge_candidates):
+            table.insert(
+                "",
+                "end",
+                iid=str(index),
+                values=(
+                    candidate.score,
+                    candidate.knowledge.usos_exitosos
+                    or candidate.knowledge.casos_exitosos,
+                    candidate.knowledge.titulo,
+                ),
+            )
+
+        detail = tk.Text(
+            right,
+            wrap="none",
+            font=("Consolas", 10),
+        )
+        self.ai_knowledge_detail = detail
+        sy = ttk.Scrollbar(
+            right, orient="vertical", command=detail.yview
+        )
+        sx = ttk.Scrollbar(
+            right, orient="horizontal", command=detail.xview
+        )
+        detail.configure(
+            yscrollcommand=sy.set,
+            xscrollcommand=sx.set,
+        )
+        detail.grid(row=0, column=0, sticky="nsew")
+        sy.grid(row=0, column=1, sticky="ns")
+        sx.grid(row=1, column=0, sticky="ew")
+        detail.configure(state="disabled")
+
+        footer = ttk.Frame(outer)
+        footer.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(
+            footer,
+            text="Adaptar esta medicina al aplicativo",
+            command=self._adapt_selected_knowledge,
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            footer,
+            text="Cerrar",
+            command=self._close_knowledge_window,
+        ).pack(side="right")
+
+        table.bind(
+            "<<TreeviewSelect>>",
+            self._render_knowledge_candidate,
+        )
+        table.selection_set("0")
+        table.focus("0")
+        self._render_knowledge_candidate()
+
+        window.transient(self)
+        window.lift()
+        window.focus_force()
+
+    def _adapt_selected_knowledge(self):
+        candidate = self._selected_knowledge_candidate()
+        if candidate is None:
+            return
+        self.ai_active_knowledge_candidate = candidate
+        self._close_knowledge_window()
+        self._generate_ai_recipes(
+            conocimiento=candidate
+        )
+
     def _close_recipe_library_window(self):
         window = getattr(self, "ai_library_window", None)
         if window is not None:
@@ -459,6 +711,8 @@ class AIAssistantMixin:
     def _refresh_recipe_library(self):
         self.ai_library_candidates = []
         self.ai_selected_library_candidate = None
+        self.ai_knowledge_candidates = []
+        self.ai_active_knowledge_candidate = None
 
         if (
             not self.cfg
@@ -470,6 +724,10 @@ class AIAssistantMixin:
                 self.lbl_ai_library.configure(
                     text=f"0 compatibles — {biblioteca_por_defecto()}"
                 )
+            if hasattr(self, "lbl_ai_knowledge"):
+                self.lbl_ai_knowledge.configure(
+                    text=f"0 conocidas — {knowledge_root()}"
+                )
             return
 
         row = (
@@ -477,6 +735,19 @@ class AIAssistantMixin:
             if hasattr(self, "_selected_row_data")
             else None
         ) or {}
+        source_path = self.target_root / self.ai_source_relative
+        try:
+            source_text = source_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            source_text = ""
+
+        self.ai_knowledge_candidates = buscar_conocimiento(
+            control_id=self._selected_control(),
+            descripcion=row.get("control"),
+            tipo_control=row.get("tipo_control"),
+            source_text=source_text,
+            extension=source_path.suffix.lower(),
+        )
 
         self.ai_library_candidates = buscar_recetas_compatibles(
             control_id=self._selected_control(),
@@ -486,6 +757,14 @@ class AIAssistantMixin:
             ruta=row.get("ruta"),
         )
 
+        if hasattr(self, "lbl_ai_knowledge"):
+            self.lbl_ai_knowledge.configure(
+                text=(
+                    f"{len(self.ai_knowledge_candidates)} conocida(s) — "
+                    f"{knowledge_root()}"
+                )
+            )
+
         if hasattr(self, "lbl_ai_library"):
             count = len(self.ai_library_candidates)
             verificadas = sum(
@@ -494,15 +773,21 @@ class AIAssistantMixin:
             )
             self.lbl_ai_library.configure(
                 text=(
-                    f"{count} compatible(s), {verificadas} verificada(s) — "
+                    f"{count} exacto(s), {verificadas} verificado(s) — "
                     f"{biblioteca_por_defecto()}"
                 )
             )
 
+        if self.ai_knowledge_candidates:
+            self._log(
+                "Conocimiento correctivo: "
+                f"{len(self.ai_knowledge_candidates)} medicina(s) "
+                f"para {self._selected_control()}."
+            )
         if self.ai_library_candidates:
             self._log(
-                "Biblioteca: "
-                f"{len(self.ai_library_candidates)} receta(s) compatibles "
+                "Parches concretos: "
+                f"{len(self.ai_library_candidates)} coincidencia(s) exacta(s) "
                 f"para {self._selected_control()}."
             )
         self._refresh_ai_state()
@@ -875,7 +1160,11 @@ class AIAssistantMixin:
             raise RuntimeError("No hay un hallazgo seleccionado.")
         return str(values[1]), str(values[2]), str(values[6])
 
-    def _generate_ai_recipes(self, intento_anterior: dict | None = None):
+    def _generate_ai_recipes(
+        self,
+        intento_anterior: dict | None = None,
+        conocimiento: KnowledgeCandidate | None = None,
+    ):
         if (
             not self.cfg
             or not self.target_root
@@ -893,6 +1182,30 @@ class AIAssistantMixin:
         matriz = self._ai_test_matrix()
         source_path = self.target_root / self.ai_source_relative
         provider = self.ai_provider
+
+        if (
+            conocimiento is None
+            and intento_anterior is None
+            and self.ai_knowledge_candidates
+        ):
+            conocimiento = self.ai_knowledge_candidates[0]
+            self._log(
+                "Se reutilizará automáticamente la medicina con mayor "
+                f"afinidad: {conocimiento.knowledge.titulo} "
+                f"(score {conocimiento.score})."
+            )
+
+        if conocimiento is not None:
+            self.ai_active_knowledge_candidate = conocimiento
+        elif intento_anterior is None:
+            self.ai_active_knowledge_candidate = None
+
+        active_knowledge = self.ai_active_knowledge_candidate
+        knowledge_payload = (
+            asdict(active_knowledge.knowledge)
+            if active_knowledge is not None
+            else None
+        )
         self._close_ai_proposals_window()
 
         def task():
@@ -908,6 +1221,7 @@ class AIAssistantMixin:
                 metadata_hallazgo=metadata,
                 matriz_pruebas=matriz,
                 intento_anterior=intento_anterior,
+                conocimiento_reutilizable=knowledge_payload,
             )
             session = guardar_sesion_ia(
                 self.evidence_base,
@@ -939,7 +1253,15 @@ class AIAssistantMixin:
                     ),
                 )
 
-            ronda = "reformuladas" if intento_anterior else "generadas"
+            if active_knowledge is not None:
+                ronda = (
+                    "adaptadas desde medicina conocida "
+                    f"{active_knowledge.knowledge.knowledge_id[:12]}"
+                )
+            elif intento_anterior:
+                ronda = "reformuladas"
+            else:
+                ronda = "generadas desde cero"
             self._log(
                 f"Gemma: 3 propuestas {ronda} para {control}. "
                 f"Evidencia: {session}"
@@ -1354,6 +1676,10 @@ class AIAssistantMixin:
             if hasattr(self, "_selected_row_data")
             else None
         ) or {}
+        _, descripcion, detalle = self._current_finding_data()
+        metadata = self._ai_selected_metadata()
+        matriz = self._ai_test_matrix()
+        active_knowledge = self.ai_active_knowledge_candidate
 
         if not messagebox.askyesno(
             "Aplicar receta generada por Gemma",
@@ -1362,17 +1688,20 @@ class AIAssistantMixin:
                 f"Propuesta: {proposal.titulo}\n"
                 f"Enfoque: {proposal.enfoque}\n"
                 f"Riesgo declarado: {proposal.riesgo}\n\n"
-                "Gemma solo propuso la receta. El auditor hará backup, "
-                "aplicación, verificación y rollback si corresponde. "
-                "Si queda CORREGIDO, la receta se guardará además en la "
-                "biblioteca reutilizable del auditor.\n\n"
+                "El auditor hará backup, aplicará la implementación y "
+                "verificará la prueba exacta y sus regresiones. "
+                "Si termina en CORREGIDO, conservará el parche concreto "
+                "como evidencia y aprenderá/actualizará la medicina "
+                "semántica reutilizable.\n\n"
                 "¿Deseas continuar?"
             ),
         ):
             return
 
         def task():
-            selected_proposal, selected_control = self._install_ai_recipe_in_memory()
+            selected_proposal, selected_control = (
+                self._install_ai_recipe_in_memory()
+            )
 
             if self.ai_session_dir:
                 guardar_seleccion_ia(
@@ -1404,7 +1733,21 @@ class AIAssistantMixin:
                     resultado=result,
                 )
 
-            if result.get("estado_final") == "CORREGIDO":
+            estado = result.get("estado_final")
+            source_rel = self.ai_current_recipe.archivo
+            extension = Path(source_rel).suffix.lower()
+            caso = {
+                "sistema": self.cfg.sistema,
+                "version": self.cfg.version_objetivo,
+                "control_id": selected_control,
+                "tipo_control": row.get("tipo_control"),
+                "metodo": row.get("metodo"),
+                "ruta": row.get("ruta"),
+                "extension": extension,
+                "enfoque": selected_proposal.enfoque,
+            }
+
+            if estado == "CORREGIDO":
                 provider = self.ai_provider
                 library_path = guardar_receta_biblioteca(
                     self.ai_current_recipe,
@@ -1419,26 +1762,152 @@ class AIAssistantMixin:
                     modelo=provider.model_id if provider else None,
                     verificada=True,
                 )
-                result["receta_biblioteca"] = str(library_path)
+                result["instancia_concreta"] = str(library_path)
+
+                if active_knowledge is not None:
+                    registrar_uso_conocimiento(
+                        active_knowledge.path,
+                        exitoso=True,
+                        caso_exitoso=caso,
+                    )
+                    result["conocimiento_reutilizado"] = str(
+                        active_knowledge.path
+                    )
+                else:
+                    try:
+                        correction_info = (
+                            result.get("correccion_aplicada") or {}
+                        )
+                        backup = correction_info.get("backup")
+                        archivo = correction_info.get(
+                            "archivo",
+                            source_rel,
+                        )
+                        if not backup:
+                            raise RuntimeError(
+                                "La evidencia no contiene el backup "
+                                "necesario para generalizar la corrección."
+                            )
+
+                        codigo_antes = Path(backup).read_text(
+                            encoding="utf-8"
+                        )
+                        codigo_despues = (
+                            self.target_root / archivo
+                        ).read_text(encoding="utf-8")
+                        diff = correction_info.get("diff") or ""
+
+                        knowledge, knowledge_context, _ = (
+                            generalizar_correccion_exitosa(
+                                self.cfg,
+                                control_id=selected_control,
+                                descripcion=descripcion,
+                                detalle=detalle,
+                                metadata_hallazgo=metadata,
+                                matriz_pruebas=matriz,
+                                source_relative=archivo,
+                                codigo_antes=codigo_antes,
+                                codigo_despues=codigo_despues,
+                                diff=diff,
+                                propuesta=selected_proposal,
+                                provider=provider,
+                            )
+                        )
+                        if (
+                            extension
+                            and extension
+                            not in knowledge.lenguajes_observados
+                        ):
+                            knowledge.lenguajes_observados.append(
+                                extension
+                            )
+                        knowledge_path = guardar_conocimiento(
+                            knowledge,
+                            caso_exitoso=caso,
+                        )
+                        result["conocimiento_aprendido"] = str(
+                            knowledge_path
+                        )
+
+                        if self.ai_session_dir:
+                            (
+                                self.ai_session_dir
+                                / "conocimiento_aprendido.json"
+                            ).write_text(
+                                json.dumps(
+                                    {
+                                        "path": str(knowledge_path),
+                                        "knowledge": asdict(knowledge),
+                                        "contexto_redactado": (
+                                            knowledge_context
+                                        ),
+                                    },
+                                    ensure_ascii=False,
+                                    indent=2,
+                                )
+                                + "\n",
+                                encoding="utf-8",
+                            )
+                    except Exception as exc:
+                        result["conocimiento_error"] = str(exc)
+            elif active_knowledge is not None:
+                try:
+                    registrar_uso_conocimiento(
+                        active_knowledge.path,
+                        exitoso=False,
+                    )
+                except Exception:
+                    pass
 
             return result
 
         def done(result):
             estado = result.get("estado_final")
-            library_path = result.get("receta_biblioteca")
+            instance_path = result.get("instancia_concreta")
+            knowledge_path = result.get("conocimiento_aprendido")
+            reused_path = result.get("conocimiento_reutilizado")
+            knowledge_error = result.get("conocimiento_error")
+
             self._log(
                 f"Receta Gemma {proposal.id} aplicada a {control}: {estado}"
             )
-            if library_path:
+            if instance_path:
                 self._log(
-                    f"Receta verificada guardada en biblioteca: {library_path}"
+                    "Instancia concreta verificada guardada: "
+                    f"{instance_path}"
+                )
+            if knowledge_path:
+                self._log(
+                    "Nueva medicina semántica aprendida: "
+                    f"{knowledge_path}"
+                )
+            if reused_path:
+                self._log(
+                    "Medicina conocida validada también en este sistema: "
+                    f"{reused_path}"
+                )
+            if knowledge_error:
+                self._log(
+                    "La corrección funcionó, pero no se pudo "
+                    f"generalizar la medicina: {knowledge_error}"
                 )
 
             mensaje = f"{control}: {estado}"
-            if library_path:
+            if knowledge_path:
                 mensaje += (
-                    "\n\nLa receta validada quedó guardada también en:\n"
-                    f"{library_path}"
+                    "\n\nSe aprendió una medicina reutilizable en:\n"
+                    f"{knowledge_path}"
+                )
+            elif reused_path:
+                mensaje += (
+                    "\n\nLa medicina conocida funcionó también en este "
+                    "aplicativo y se actualizó su historial."
+                )
+            if knowledge_error:
+                mensaje += (
+                    "\n\nLa corrección sí fue válida, pero la extracción "
+                    "del conocimiento reusable falló. El parche y la "
+                    "evidencia se conservaron."
                 )
             if estado == "NO_CORREGIDO":
                 motivo = result.get("motivo") or (
@@ -1471,17 +1940,19 @@ class AIAssistantMixin:
                 if messagebox.askyesno(
                     "Reformular recetas",
                     (
-                        "La receta no solucionó la prueba objetivo y el "
-                        "auditor ya hizo rollback.\n\n"
-                        "¿Deseas que Gemma genere 3 recetas nuevas usando "
-                        "el resultado fallido como retroalimentación?"
+                        "La implementación no solucionó el hallazgo y el "
+                        "auditor hizo rollback.\n\n"
+                        "¿Deseas generar 3 implementaciones nuevas usando "
+                        "el fallo como retroalimentación?"
                     ),
                 ):
                     self._generate_ai_recipes(
-                        intento_anterior=feedback
+                        intento_anterior=feedback,
+                        conocimiento=active_knowledge,
                     )
                     return
 
+            self._refresh_recipe_library()
             self._diagnose()
 
         self._run_background(
@@ -1503,20 +1974,15 @@ class AIAssistantMixin:
         if not proposal or not control:
             return
 
-        row = (
-            self._selected_row_data()
-            if hasattr(self, "_selected_row_data")
-            else None
-        ) or {}
-
         if not messagebox.askyesno(
-            "Guardar receta",
+            "Guardar propuesta en perfil",
             (
                 f"Se guardará la propuesta {proposal.id} como receta "
-                f"persistente de {control} en el perfil actual y también "
-                "en la biblioteca reutilizable del auditor.\n\n"
-                f"Perfil: {self.config_path}\n"
-                f"Biblioteca: {biblioteca_por_defecto()}\n\n"
+                f"concreta de {control} únicamente en el perfil actual.\n\n"
+                "La biblioteca de conocimiento reusable solo aprende una "
+                "medicina después de que una implementación termina en "
+                "CORREGIDO.\n\n"
+                f"Perfil: {self.config_path}\n\n"
                 "¿Continuar?"
             ),
         ):
@@ -1535,36 +2001,16 @@ class AIAssistantMixin:
                 encoding="utf-8",
             )
 
-        provider = self.ai_provider
-        library_path = guardar_receta_biblioteca(
-            self.ai_current_recipe,
-            sistema=self.cfg.sistema,
-            version_objetivo=self.cfg.version_objetivo,
-            metodo=row.get("metodo"),
-            ruta=row.get("ruta"),
-            tipo_control=row.get("tipo_control"),
-            titulo=proposal.titulo,
-            fuente="gemma",
-            proveedor=provider.provider_name if provider else None,
-            modelo=provider.model_id if provider else None,
-            verificada=False,
-        )
-
         self._log(
-            f"Receta Gemma {proposal.id} guardada en perfil para {control}."
-        )
-        self._log(
-            f"Receta reutilizable guardada en biblioteca: {library_path}"
+            f"Propuesta Gemma {proposal.id} guardada en perfil para {control}."
         )
         messagebox.showinfo(
-            "Receta guardada",
+            "Perfil actualizado",
             (
-                f"La receta de {control} quedó guardada en el perfil y en "
-                f"la biblioteca del auditor:\n\n{library_path}\n\n"
-                "Se marcará como verificada cuando una aplicación del ciclo "
-                "correctivo finalice en CORREGIDO."
+                f"La propuesta de {control} quedó guardada en el perfil.\n\n"
+                "Todavía no se considera conocimiento reusable: primero "
+                "debe superar el ciclo correctivo y terminar en CORREGIDO."
             ),
         )
-        self._refresh_recipe_library()
         self._refresh_ai_state()
 

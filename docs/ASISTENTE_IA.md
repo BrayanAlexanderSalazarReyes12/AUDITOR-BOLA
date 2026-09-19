@@ -120,7 +120,7 @@ selección automática.
    - **código resultante completo**;
    - diff antes/después con scroll horizontal y vertical.
 10. Cambiar de pestaña selecciona esa receta también en la ventana principal.
-11. Desde la ventana independiente puede pulsar **Aplicar receta seleccionada** o **Guardar receta en perfil + biblioteca**.
+11. Desde la ventana independiente puede pulsar **Aplicar receta seleccionada** o **Guardar propuesta en perfil**. La medicina reusable solo se aprende después de una verificación `CORREGIDO`.
 12. Si cierra la ventana, puede volver a abrirla con **Ver propuestas en ventana**.
 13. El auditor ejecutará su ciclo normal de respaldo, corrección, verificación y rollback.
 
@@ -164,33 +164,73 @@ una variante superficial.
 El feedback enviado a Gemma pasa por la misma redacción de secretos utilizada
 para el código fuente.
 
-## Biblioteca de recetas reutilizables
+## Aprendizaje de una medicina reutilizable
 
-La receta que el usuario selecciona puede reutilizarse fuera del sistema en
-el que fue creada. El auditor almacena estas recetas en:
+Una propuesta guardada en el perfil todavía no se considera conocimiento
+reutilizable.
+
+El aprendizaje ocurre únicamente cuando el ciclo termina en `CORREGIDO`.
+En ese momento el auditor toma:
+
+- hallazgo original;
+- matriz de pruebas;
+- código antes;
+- código después;
+- diff;
+- propuesta que funcionó;
+- resultado de verificación.
+
+Gemma transforma ese caso concreto en una medicina semántica que evita nombres
+propios del sistema origen.
+
+Se guarda en:
 
 ```text
-recetas/<control_id>/<recipe_id>.json
+recetas/conocimiento/<familia_control>/<knowledge_id>.json
 ```
 
-Solo se guarda la receta elegida. Las otras dos propuestas de Gemma permanecen
-en la evidencia de la sesión, pero no ingresan al catálogo reusable.
+La medicina contiene causa raíz, invariante de seguridad, estrategia general,
+señales de aplicabilidad, requisitos, anti-patrones y contrato de
+verificación.
 
-Existen dos estados:
+### Uso en otro aplicativo
 
-- **no verificada**: el usuario la guardó en el perfil/biblioteca, pero todavía
-  no ha concluido un ciclo con `CORREGIDO`;
-- **verificada**: al menos una aplicación terminó el ciclo correctivo con
-  `CORREGIDO` usando esa receta.
+Al seleccionar un hallazgo y resolver su archivo, la GUI muestra:
 
-Cuando se selecciona un hallazgo y ya existe un archivo fuente resuelto, la
-GUI busca automáticamente recetas compatibles. El botón **Ver recetas
-guardadas** muestra únicamente aquellas que pasan un preview contra el archivo
-actual. Desde esa ventana es posible revisar el código resultante y el diff,
-aplicarla o añadirla al perfil de la nueva aplicación.
+```text
+Medicinas conocidas: N
+[ Ver medicinas ]
+```
 
-Una receta nunca se reutiliza únicamente por compartir el mismo
-`control_id`; el patrón de corrección debe ser aplicable al código actual.
+Una medicina puede encontrarse por ID exacto, por familia de control
+(`P1-BOLA-001` y `P1-BOLA-017`, por ejemplo) o por `tipo_control`.
+
+Al pulsar **Adaptar esta medicina al aplicativo**, Gemma no copia el parche
+original. Recibe la medicina verificada y el código actual y produce tres
+implementaciones específicas para ese sistema.
+
+Luego se mantiene el mismo flujo:
+
+```text
+medicina conocida
+    ↓
+adaptar al código actual
+    ↓
+3 implementaciones
+    ↓
+preview
+    ↓
+selección humana
+    ↓
+aplicar
+    ↓
+verificar
+    ↓
+CORREGIDO / ROLLBACK
+```
+
+Los parches exactos ya verificados se siguen conservando como instancias
+concretas, pero son secundarios frente al conocimiento semántico.
 
 ## Protección de información
 
