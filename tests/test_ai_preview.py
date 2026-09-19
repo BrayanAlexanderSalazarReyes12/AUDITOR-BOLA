@@ -23,6 +23,8 @@ def test_preview_no_modifica_archivo(tmp_path):
     result = preview_recipe(recipe, target)
 
     assert result["cambia_archivo"] is True
+    assert result["codigo_antes"] == "return true;\n"
+    assert result["codigo_despues"] == "return autorizado;\n"
     assert "-return true;" in result["diff"]
     assert "+return autorizado;" in result["diff"]
     assert source.read_text(encoding="utf-8") == "return true;\n"
