@@ -16,6 +16,11 @@ from typing import BinaryIO
 from .config import RuntimeConfig
 
 
+def _is_windows() -> bool:
+    """Aísla la detección de Windows para permitir pruebas portables."""
+    return _is_windows()
+
+
 class LocalTargetProcess:
     """Arranca objetivos heterogéneos sin acoplar el Auditor a un framework.
 
@@ -49,7 +54,7 @@ class LocalTargetProcess:
 
     @staticmethod
     def _platform_key() -> str:
-        if os.name == "nt":
+        if _is_windows():
             return "windows"
         if sys.platform == "darwin":
             return "macos"
@@ -113,7 +118,7 @@ class LocalTargetProcess:
         if candidate.exists() and candidate.is_file():
             return candidate
 
-        if os.name == "nt" and not candidate.suffix:
+        if _is_windows() and not candidate.suffix:
             pathext = env.get(
                 "PATHEXT",
                 ".COM;.EXE;.BAT;.CMD;.PS1;.PY",
@@ -175,7 +180,7 @@ class LocalTargetProcess:
     ) -> list[str]:
         suffix = Path(resolved).suffix.lower()
 
-        if os.name == "nt" and suffix in {".cmd", ".bat"}:
+        if _is_windows() and suffix in {".cmd", ".bat"}:
             comspec = env.get("COMSPEC") or self._which("cmd.exe", env)
             if not comspec:
                 raise FileNotFoundError(
@@ -200,7 +205,7 @@ class LocalTargetProcess:
 
         if suffix == ".ps1":
             powershell = self._which("pwsh", env) or self._which(
-                "powershell.exe" if os.name == "nt" else "powershell",
+                "powershell.exe" if _is_windows() else "powershell",
                 env,
             )
             if not powershell:
@@ -210,7 +215,7 @@ class LocalTargetProcess:
                     "pwsh",
                 )
             command = [powershell, "-NoProfile"]
-            if os.name == "nt":
+            if _is_windows():
                 command.extend(["-ExecutionPolicy", "Bypass"])
             command.extend(["-File", resolved, *args])
             return command
@@ -270,7 +275,7 @@ class LocalTargetProcess:
 
         if Path(requested).suffix == "" and self._which(requested, env):
             suffix = Path(resolved).suffix.lower()
-            if not (os.name == "nt" and suffix in {".cmd", ".bat"}):
+            if not (_is_windows() and suffix in {".cmd", ".bat"}):
                 return [resolved, *raw[1:]]
 
         return self._resolver_interprete(resolved, raw[1:], env)
@@ -411,7 +416,7 @@ class LocalTargetProcess:
             # Crear un grupo/sesión independiente permite detener también los
             # procesos hijo que lance el runtime (npm -> node, mvn -> java,
             # scripts -> servidores, etc.).
-            if os.name == "nt":
+            if _is_windows():
                 popen_kwargs["creationflags"] = getattr(
                     subprocess,
                     "CREATE_NEW_PROCESS_GROUP",
@@ -474,7 +479,7 @@ class LocalTargetProcess:
 
         pid = process.pid
 
-        if os.name == "nt":
+        if _is_windows():
             # taskkill /T elimina el árbol completo; /F evita que un hijo que
             # ignora la terminación mantenga vivo el servidor anterior.
             try:
