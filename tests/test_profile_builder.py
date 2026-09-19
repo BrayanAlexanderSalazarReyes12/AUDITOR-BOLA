@@ -517,3 +517,22 @@ def test_archivo_binario_desconocido_no_se_interpreta_como_texto(tmp_path):
         item["username"] == "hacker"
         for item in profile["cuentas"]
     )
+
+
+def test_markdown_bold_labels_detectan_cuenta(tmp_path):
+    manual = tmp_path / "MANUAL_ACCESO.md"
+    manual.write_text(
+        "- **Usuario:** soporte.demo\n"
+        "- **Contraseña:** soporte-123\n"
+        "- **Rol:** SOPORTE\n",
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+    by_user = {
+        item["username"]: item
+        for item in detection.accounts
+    }
+
+    assert by_user["soporte.demo"]["password"] == "soporte-123"
+    assert by_user["soporte.demo"]["role"] == "SOPORTE"
