@@ -332,6 +332,657 @@ class ModernAuditorGUI(AuditorGUI):
             corner_radius=0,
         )
 
+    def _build_detail_tab(self):
+        card = ctk.CTkFrame(
+            self.tab_detail,
+            fg_color=COLORS["surface"],
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["border_soft"],
+        )
+        card.pack(fill="both", expand=True, pady=(0, 2))
+        card.grid_rowconfigure(0, weight=1)
+        card.grid_columnconfigure(0, weight=1)
+
+        self.detail_text = tk.Text(
+            card,
+            wrap="none",
+            font=("Consolas", 10),
+            undo=False,
+            background="#04101A",
+            foreground="#CBE0EC",
+            insertbackground="#FFFFFF",
+            selectbackground="#124E75",
+            selectforeground="#FFFFFF",
+            relief="flat",
+            borderwidth=0,
+        )
+        scroll_y = ttk.Scrollbar(
+            card,
+            orient="vertical",
+            command=self.detail_text.yview,
+        )
+        scroll_x = ttk.Scrollbar(
+            card,
+            orient="horizontal",
+            command=self.detail_text.xview,
+        )
+        self.detail_text.configure(
+            yscrollcommand=scroll_y.set,
+            xscrollcommand=scroll_x.set,
+        )
+        self.detail_text.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=(12, 0),
+            pady=(12, 0),
+        )
+        scroll_y.grid(
+            row=0,
+            column=1,
+            sticky="ns",
+            pady=(12, 0),
+        )
+        scroll_x.grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=(12, 0),
+            pady=(0, 12),
+        )
+
+    def _build_ai_tab(self):
+        self.ai_source_relative = None
+        self.ai_proposals = []
+        self.ai_session_dir = None
+        self.ai_current_recipe = None
+        self.ai_provider = None
+        self.ai_proposals_window = None
+        self.ai_proposals_notebook = None
+        self.ai_library_candidates = []
+        self.ai_library_window = None
+        self.ai_selected_library_candidate = None
+        self.ai_knowledge_candidates = []
+        self.ai_active_knowledge_candidate = None
+        self.ai_knowledge_window = None
+
+        header = ctk.CTkFrame(
+            self.tab_ai,
+            fg_color=COLORS["surface"],
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["border_soft"],
+        )
+        header.pack(fill="x", pady=(0, 8))
+        header.grid_columnconfigure(1, weight=1)
+
+        rows = (
+            ("Control seleccionado", "lbl_ai_control", "Ninguno"),
+            ("Archivo a analizar", "lbl_ai_source", "No seleccionado"),
+            ("Proveedor", "lbl_ai_provider", "Buscando configuración…"),
+            ("Modelo", "lbl_ai_model", "lab-coder"),
+            ("OpenCode", "lbl_ai_config", "No cargado"),
+            ("Medicinas conocidas", "lbl_ai_knowledge", f"0 conocidas — {knowledge_root()}"),
+            ("Parches concretos", "lbl_ai_library", f"0 compatibles — {biblioteca_por_defecto()}"),
+        )
+
+        for row, (label, attr, value) in enumerate(rows):
+            ctk.CTkLabel(
+                header,
+                text=label,
+                text_color=COLORS["muted"],
+                font=(FONT_FAMILY, 9),
+                anchor="w",
+            ).grid(
+                row=row,
+                column=0,
+                sticky="w",
+                padx=(16, 10),
+                pady=5,
+            )
+            widget = ctk.CTkLabel(
+                header,
+                text=value,
+                text_color=COLORS["text"],
+                font=(FONT_FAMILY, 9),
+                anchor="w",
+                justify="left",
+                wraplength=650,
+            )
+            widget.grid(
+                row=row,
+                column=1,
+                sticky="ew",
+                padx=(0, 8),
+                pady=5,
+            )
+            setattr(self, attr, widget)
+
+        source_actions = ctk.CTkFrame(header, fg_color="transparent")
+        source_actions.grid(
+            row=0,
+            column=2,
+            rowspan=7,
+            sticky="ns",
+            padx=(6, 14),
+            pady=10,
+        )
+
+        ctk.CTkButton(
+            source_actions,
+            text="Elegir archivo",
+            command=self._choose_ai_source,
+            width=145,
+            fg_color=COLORS["surface_3"],
+            hover_color="#16405E",
+        ).pack(fill="x", pady=3)
+
+        self.btn_ai_reload = ctk.CTkButton(
+            source_actions,
+            text="Recargar IA",
+            command=self._reload_ai_provider,
+            width=145,
+            fg_color=COLORS["surface_3"],
+            hover_color="#16405E",
+        )
+        self.btn_ai_reload.pack(fill="x", pady=3)
+
+        self.btn_ai_knowledge = ctk.CTkButton(
+            source_actions,
+            text="Ver medicinas",
+            command=self._open_knowledge_window,
+            width=145,
+            fg_color=COLORS["surface_3"],
+            hover_color="#16405E",
+        )
+        self.btn_ai_knowledge.pack(fill="x", pady=3)
+
+        self.btn_ai_library = ctk.CTkButton(
+            source_actions,
+            text="Ver parches exactos",
+            command=self._open_recipe_library_window,
+            width=145,
+            fg_color=COLORS["surface_3"],
+            hover_color="#16405E",
+        )
+        self.btn_ai_library.pack(fill="x", pady=3)
+
+        actions = ctk.CTkFrame(
+            self.tab_ai,
+            fg_color="transparent",
+        )
+        actions.pack(fill="x", pady=(0, 8))
+        for col in range(4):
+            actions.grid_columnconfigure(col, weight=1)
+
+        self.btn_ai_generate = ctk.CTkButton(
+            actions,
+            text="Generar 3 recetas con Gemma",
+            command=self._generate_ai_recipes,
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"],
+            font=(FONT_FAMILY, 10, "bold"),
+        )
+        self.btn_ai_generate.grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=(0, 4),
+        )
+
+        self.btn_ai_apply = ctk.CTkButton(
+            actions,
+            text="Aplicar y verificar",
+            command=self._apply_ai_recipe,
+            fg_color=COLORS["success"],
+            hover_color="#27B989",
+            text_color="#06111D",
+            font=(FONT_FAMILY, 10, "bold"),
+        )
+        self.btn_ai_apply.grid(
+            row=0,
+            column=1,
+            sticky="ew",
+            padx=4,
+        )
+
+        self.btn_ai_save = ctk.CTkButton(
+            actions,
+            text="Guardar en perfil",
+            command=self._save_ai_recipe_to_profile,
+            fg_color=COLORS["surface_3"],
+            hover_color="#16405E",
+        )
+        self.btn_ai_save.grid(
+            row=0,
+            column=2,
+            sticky="ew",
+            padx=4,
+        )
+
+        self.btn_ai_window = ctk.CTkButton(
+            actions,
+            text="Abrir propuestas",
+            command=self._open_ai_proposals_window,
+            fg_color=COLORS["surface_3"],
+            hover_color="#16405E",
+        )
+        self.btn_ai_window.grid(
+            row=0,
+            column=3,
+            sticky="ew",
+            padx=(4, 0),
+        )
+
+        body = ctk.CTkFrame(
+            self.tab_ai,
+            fg_color="transparent",
+        )
+        body.pack(fill="both", expand=True)
+        body.grid_columnconfigure(0, weight=2)
+        body.grid_columnconfigure(1, weight=3)
+        body.grid_rowconfigure(0, weight=1)
+
+        left = ctk.CTkFrame(
+            body,
+            fg_color=COLORS["surface"],
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["border_soft"],
+        )
+        left.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=(0, 5),
+        )
+        left.grid_rowconfigure(1, weight=1)
+        left.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            left,
+            text="Alternativas",
+            text_color=COLORS["text"],
+            font=(FONT_FAMILY, 13, "bold"),
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=12,
+            pady=(12, 6),
+        )
+
+        columns = ("id", "enfoque", "riesgo", "titulo")
+        self.ai_table = ttk.Treeview(
+            left,
+            columns=columns,
+            show="headings",
+            height=10,
+        )
+        for col, title, width in (
+            ("id", "ID", 55),
+            ("enfoque", "Enfoque", 95),
+            ("riesgo", "Riesgo", 70),
+            ("titulo", "Título", 260),
+        ):
+            self.ai_table.heading(col, text=title)
+            self.ai_table.column(
+                col,
+                width=width,
+                anchor="w",
+            )
+        self.ai_table.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=(12, 0),
+            pady=(0, 12),
+        )
+        ai_scroll = ttk.Scrollbar(
+            left,
+            orient="vertical",
+            command=self.ai_table.yview,
+        )
+        self.ai_table.configure(
+            yscrollcommand=ai_scroll.set
+        )
+        ai_scroll.grid(
+            row=1,
+            column=1,
+            sticky="ns",
+            pady=(0, 12),
+        )
+        self.ai_table.bind(
+            "<<TreeviewSelect>>",
+            self._on_ai_proposal_selected,
+        )
+
+        right = ctk.CTkFrame(
+            body,
+            fg_color=COLORS["surface"],
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["border_soft"],
+        )
+        right.grid(
+            row=0,
+            column=1,
+            sticky="nsew",
+            padx=(5, 0),
+        )
+        right.grid_rowconfigure(1, weight=1)
+        right.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            right,
+            text="Detalle y vista previa del diff",
+            text_color=COLORS["text"],
+            font=(FONT_FAMILY, 13, "bold"),
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=12,
+            pady=(12, 6),
+        )
+
+        self.ai_detail_text = tk.Text(
+            right,
+            wrap="none",
+            font=("Consolas", 10),
+            background="#04101A",
+            foreground="#CBE0EC",
+            insertbackground="#FFFFFF",
+            selectbackground="#124E75",
+            selectforeground="#FFFFFF",
+            relief="flat",
+            borderwidth=0,
+        )
+        yscroll = ttk.Scrollbar(
+            right,
+            orient="vertical",
+            command=self.ai_detail_text.yview,
+        )
+        xscroll = ttk.Scrollbar(
+            right,
+            orient="horizontal",
+            command=self.ai_detail_text.xview,
+        )
+        self.ai_detail_text.configure(
+            yscrollcommand=yscroll.set,
+            xscrollcommand=xscroll.set,
+        )
+        self.ai_detail_text.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=(12, 0),
+            pady=(0, 4),
+        )
+        yscroll.grid(
+            row=1,
+            column=1,
+            sticky="ns",
+            pady=(0, 4),
+        )
+        xscroll.grid(
+            row=2,
+            column=0,
+            sticky="ew",
+            padx=(12, 0),
+            pady=(0, 12),
+        )
+
+        self._reload_ai_provider(silent=True)
+        self._refresh_ai_state()
+
+    def _build_evidence_tab(self):
+        body = ctk.CTkFrame(
+            self.tab_evidence,
+            fg_color="transparent",
+        )
+        body.pack(fill="both", expand=True)
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_columnconfigure(1, weight=3)
+        body.grid_rowconfigure(0, weight=1)
+
+        left = ctk.CTkFrame(
+            body,
+            fg_color=COLORS["surface"],
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["border_soft"],
+        )
+        left.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=(0, 5),
+        )
+        left.grid_rowconfigure(1, weight=1)
+        left.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            left,
+            text="Sesiones",
+            text_color=COLORS["text"],
+            font=(FONT_FAMILY, 13, "bold"),
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=12,
+            pady=(12, 6),
+        )
+
+        self.evidence_list = tk.Listbox(
+            left,
+            exportselection=False,
+            background="#071724",
+            foreground="#CBE0EC",
+            selectbackground="#124E75",
+            selectforeground="#FFFFFF",
+            relief="flat",
+            borderwidth=0,
+            font=(FONT_FAMILY, 9),
+        )
+        list_scroll = ttk.Scrollbar(
+            left,
+            orient="vertical",
+            command=self.evidence_list.yview,
+        )
+        self.evidence_list.configure(
+            yscrollcommand=list_scroll.set
+        )
+        self.evidence_list.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=(12, 0),
+        )
+        list_scroll.grid(
+            row=1,
+            column=1,
+            sticky="ns",
+        )
+        self.evidence_list.bind(
+            "<<ListboxSelect>>",
+            lambda _event:
+            self._preview_selected_evidence(),
+        )
+
+        buttons = ctk.CTkFrame(
+            left,
+            fg_color="transparent",
+        )
+        buttons.grid(
+            row=2,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=12,
+            pady=12,
+        )
+        buttons.grid_columnconfigure(0, weight=1)
+        buttons.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkButton(
+            buttons,
+            text="Actualizar",
+            command=self._refresh_evidence_list,
+            fg_color=COLORS["surface_3"],
+            hover_color="#16405E",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=(0, 4),
+        )
+        ctk.CTkButton(
+            buttons,
+            text="Abrir carpeta",
+            command=self._open_selected_evidence,
+            fg_color=COLORS["surface_3"],
+            hover_color="#16405E",
+        ).grid(
+            row=0,
+            column=1,
+            sticky="ew",
+            padx=(4, 0),
+        )
+
+        self.btn_rollback = ctk.CTkButton(
+            buttons,
+            text="Revertir esta corrección",
+            command=self._rollback_selected_evidence,
+            fg_color=COLORS["warning"],
+            hover_color="#D39B42",
+            text_color="#201704",
+        )
+        self.btn_rollback.grid(
+            row=1,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            pady=(7, 0),
+        )
+
+        self.btn_rollback_all = ctk.CTkButton(
+            buttons,
+            text="Revertir todas las correcciones",
+            command=self._rollback_all_evidence,
+            fg_color=COLORS["danger"],
+            hover_color="#D94F61",
+        )
+        self.btn_rollback_all.grid(
+            row=2,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            pady=(7, 0),
+        )
+
+        right = ctk.CTkFrame(
+            body,
+            fg_color=COLORS["surface"],
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["border_soft"],
+        )
+        right.grid(
+            row=0,
+            column=1,
+            sticky="nsew",
+            padx=(5, 0),
+        )
+        right.grid_rowconfigure(1, weight=1)
+        right.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            right,
+            text="Vista previa verificable",
+            text_color=COLORS["text"],
+            font=(FONT_FAMILY, 13, "bold"),
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=12,
+            pady=(12, 6),
+        )
+
+        self.evidence_text = tk.Text(
+            right,
+            wrap="none",
+            font=("Consolas", 10),
+            background="#04101A",
+            foreground="#CBE0EC",
+            insertbackground="#FFFFFF",
+            selectbackground="#124E75",
+            selectforeground="#FFFFFF",
+            relief="flat",
+            borderwidth=0,
+        )
+        scroll_y = ttk.Scrollbar(
+            right,
+            orient="vertical",
+            command=self.evidence_text.yview,
+        )
+        scroll_x = ttk.Scrollbar(
+            right,
+            orient="horizontal",
+            command=self.evidence_text.xview,
+        )
+        self.evidence_text.configure(
+            yscrollcommand=scroll_y.set,
+            xscrollcommand=scroll_x.set,
+        )
+        self.evidence_text.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=(12, 0),
+            pady=(0, 4),
+        )
+        scroll_y.grid(
+            row=1,
+            column=1,
+            sticky="ns",
+            pady=(0, 4),
+        )
+        scroll_x.grid(
+            row=2,
+            column=0,
+            sticky="ew",
+            padx=(12, 0),
+            pady=(0, 12),
+        )
+
+    def _build_log_tab(self):
+        self.log_text = tk.Text(
+            self.tab_log,
+            wrap="none",
+            font=("Consolas", 10),
+            state="disabled",
+            background="#04101A",
+            foreground="#CBE0EC",
+            insertbackground="#FFFFFF",
+            selectbackground="#124E75",
+            selectforeground="#FFFFFF",
+            relief="flat",
+            borderwidth=0,
+        )
+        self.log_text.pack(
+            fill="both",
+            expand=True,
+            pady=(0, 2),
+        )
+
     def _build_notebook(self):
         self.page_container = ctk.CTkFrame(
             self.content,
@@ -372,7 +1023,7 @@ class ModernAuditorGUI(AuditorGUI):
             font=(FONT_FAMILY, 22, "bold"),
             anchor="w",
         ).pack(fill="x", pady=(2, 8))
-        super()._build_detail_tab()
+        self._build_detail_tab()
         self.notebook.register("detail", self.tab_detail)
 
         self.tab_ai = self._page()
@@ -401,7 +1052,7 @@ class ModernAuditorGUI(AuditorGUI):
             font=(FONT_FAMILY, 22, "bold"),
             anchor="w",
         ).pack(fill="x", pady=(2, 6))
-        super()._build_evidence_tab()
+        self._build_evidence_tab()
         self.notebook.register("evidence", self.tab_evidence)
 
         self.tab_reports = ReportsPage(
@@ -419,7 +1070,7 @@ class ModernAuditorGUI(AuditorGUI):
             font=(FONT_FAMILY, 22, "bold"),
             anchor="w",
         ).pack(fill="x", pady=(2, 6))
-        super()._build_log_tab()
+        self._build_log_tab()
         self.notebook.register("log", self.tab_log)
 
         self.tab_settings = SettingsPage(
