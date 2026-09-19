@@ -153,3 +153,84 @@ def test_stack_desconocido_no_se_rechaza_y_usa_external(tmp_path):
 
     assert profile["runtime"]["modo"] == "external"
     assert profile["sistema"]
+
+
+def test_detecta_cuentas_en_seed_json(tmp_path):
+    seed = tmp_path / "data" / "users.json"
+    seed.parent.mkdir()
+    seed.write_text(
+        json.dumps({
+            "users": [
+                {
+                    "username": "admin",
+                    "password": "admin123",
+                    "role": "ADMIN",
+                },
+                {
+                    "usuario": "operador",
+                    "clave": "demo456",
+                    "rol": "OPERADOR",
+                },
+            ]
+        }),
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+    profile = build_profile_draft(detection)
+
+    by_user = {
+        item["username"]: item
+        for item in profile["cuentas"]
+    }
+    assert by_user["admin"]["password"] == "admin123"
+    assert by_user["admin"]["role"] == "ADMIN"
+    assert by_user["operador"]["role"] == "OPERADOR"
+    assert "ADMIN" in profile["roles_privilegiados"]
+    assert len(
+        profile["metadata_detectada"]["cuentas_candidatas"]
+    ) >= 2
+
+
+def test_detecta_cuenta_en_insert_sql(tmp_path):
+    sql = tmp_path / "db" / "seed.sql"
+    sql.parent.mkdir()
+    sql.write_text(
+        "INSERT INTO usuarios "
+        "(username, password, role) "
+        "VALUES ('auditor', 'clave123', 'ADMIN');\n",
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+
+    assert any(
+        item["username"] == "auditor"
+        and item["password"] == "clave123"
+        for item in detection.accounts
+    )
+
+
+def test_detecta_cuenta_en_env_y_ignora_dependencias(tmp_path):
+    (tmp_path / ".env.local").write_text(
+        'USERNAME="localuser"\n'
+        'PASSWORD="localpass"\n'
+        'ROLE="USER"\n',
+        encoding="utf-8",
+    )
+    ignored = tmp_path / "node_modules" / "demo"
+    ignored.mkdir(parents=True)
+    (ignored / "users.json").write_text(
+        json.dumps({
+            "username": "dependency-user",
+            "password": "should-not-appear",
+            "role": "ADMIN",
+        }),
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+    usernames = {item["username"] for item in detection.accounts}
+
+    assert "localuser" in usernames
+    assert "dependency-user" not in usernames
