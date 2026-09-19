@@ -162,7 +162,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.0.0' \
+            'Version: 1.1.0' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -191,13 +191,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1:
-    name: Publicar Release v1.0.0
+  release-v1-1:
+    name: Publicar Release v1.1.0
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.0.0]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.0]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -215,9 +215,16 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.0.0
+          # Aegis Auditor v1.1.0
 
-          Primera versión distribuible de **Aegis Auditor — Security Remediation Studio**.
+          Nueva versión de **Aegis Auditor — Security Remediation Studio**.
+
+          ## Novedades de v1.1.0
+          - Pantalla de arranque fullscreen con porcentaje de carga.
+          - La ventana principal abre siempre en pantalla completa.
+          - Las tareas asíncronas muestran progreso visible con porcentaje.
+          - El análisis de nuevos proyectos muestra progreso por etapas.
+          - Interfaz responsive en Windows, macOS y Linux.
 
           ## Descargas
 
@@ -260,16 +267,16 @@ jobs:
             exit 1
           fi
 
-          if gh release view "v1.0.0" >/dev/null 2>&1; then
-            gh release upload "v1.0.0" "${files[@]}" --clobber
-            gh release edit "v1.0.0" \
-              --title "Aegis Auditor v1.0.0" \
+          if gh release view "v1.1.0" >/dev/null 2>&1; then
+            gh release upload "v1.1.0" "${files[@]}" --clobber
+            gh release edit "v1.1.0" \
+              --title "Aegis Auditor v1.1.0" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.0.0" "${files[@]}" \
+            gh release create "v1.1.0" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.0.0" \
+              --title "Aegis Auditor v1.1.0" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
