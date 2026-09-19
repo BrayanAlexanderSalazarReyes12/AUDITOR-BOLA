@@ -1771,17 +1771,20 @@ def _extract_accounts_from_text(
     loose_user_pattern = re.compile(
         r"(?im)^\s*(?:[-*+]\s*)?(?:\*\*)?"
         r"(?:username|user|usuario|login|email|correo|nombre_usuario|user_name)"
-        r"(?:\*\*)?\s*[:=]\s*(.+?)\s*$"
+        r"(?:\s*[:=]\s*\*\*|\*\*\s*[:=]\s*|[:=]\s*)"
+        r"(.+?)\s*$"
     )
     loose_password_pattern = re.compile(
         r"(?im)^\s*(?:[-*+]\s*)?(?:\*\*)?"
         r"(?:password|pass|passwd|clave|contrasena|contraseña|pwd)"
-        r"(?:\*\*)?\s*[:=]\s*(.+?)\s*$"
+        r"(?:\s*[:=]\s*\*\*|\*\*\s*[:=]\s*|[:=]\s*)"
+        r"(.+?)\s*$"
     )
     loose_role_pattern = re.compile(
         r"(?im)^\s*(?:[-*+]\s*)?(?:\*\*)?"
         r"(?:role|rol|perfil|authority|authorities|tipo_usuario|user_role)"
-        r"(?:\*\*)?\s*[:=]\s*(.+?)\s*$"
+        r"(?:\s*[:=]\s*\*\*|\*\*\s*[:=]\s*|[:=]\s*)"
+        r"(.+?)\s*$"
     )
 
     for user_match in loose_user_pattern.finditer(text):
