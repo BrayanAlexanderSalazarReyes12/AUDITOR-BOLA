@@ -21,8 +21,9 @@ class Topbar(ctk.CTkFrame):
         self.pack_propagate(False)
         self.grid_columnconfigure(0, weight=1)
 
-        left = ctk.CTkFrame(self, fg_color="transparent")
-        left.grid(row=0, column=0, sticky="nsew", padx=18, pady=12)
+        self.left = ctk.CTkFrame(self, fg_color="transparent")
+        self.left.grid(row=0, column=0, sticky="nsew", padx=18, pady=12)
+        left = self.left
 
         self.title_label = ctk.CTkLabel(
             left,
@@ -45,8 +46,9 @@ class Topbar(ctk.CTkFrame):
         )
         self.subtitle_label.pack(anchor="w", pady=(3, 0))
 
-        right = ctk.CTkFrame(self, fg_color="transparent")
-        right.grid(row=0, column=1, sticky="e", padx=14, pady=10)
+        self.right = ctk.CTkFrame(self, fg_color="transparent")
+        self.right.grid(row=0, column=1, sticky="e", padx=14, pady=10)
+        right = self.right
 
         self.project_label = ctk.CTkLabel(
             right,
@@ -103,9 +105,14 @@ class Topbar(ctk.CTkFrame):
     def set_compact(self, compact: bool, ultra: bool = False):
         self.configure(height=66 if compact else 86)
         if ultra:
-            self.subtitle_label.grid_remove() if self.subtitle_label.winfo_manager() == "grid" else None
+            if self.subtitle_label.winfo_manager():
+                self.subtitle_label.pack_forget()
+            self.project_label.grid_remove()
             self.load_button.configure(text="Cargar ▾", width=95)
         else:
+            if not self.subtitle_label.winfo_manager():
+                self.subtitle_label.pack(anchor="w", pady=(3, 0))
+            self.project_label.grid()
             self.load_button.configure(
                 text="Cargar / Importar ▾",
                 width=125 if compact else 150,
