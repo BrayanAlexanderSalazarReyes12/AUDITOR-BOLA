@@ -35,22 +35,18 @@ class LocalTargetProcess:
 
     def __init__(self, target_root: str | Path, runtime: RuntimeConfig):
         self.root = Path(target_root).resolve()
+        self._configured_runtime = runtime
         self.runtime = runtime
         self.process: subprocess.Popen | None = None
         self._service_running = False
         self._prepared = False
         self._output: BinaryIO | None = None
+        self._runtime_selected = False
+        self._started_successfully = False
+        self._selection_notes: list[str] = []
 
     def _modo(self) -> str:
-        mode = (self.runtime.modo or "process").strip().lower()
-        if mode == "command":
-            return "process"
-        if mode not in {"process", "service", "external"}:
-            raise ValueError(
-                f"runtime.modo no soportado: {self.runtime.modo!r}; "
-                "use process, service o external"
-            )
-        return mode
+        return self._runtime_mode(self.runtime)
 
     @staticmethod
     def _platform_key() -> str:
@@ -60,14 +56,21 @@ class LocalTargetProcess:
             return "macos"
         return "linux"
 
-    def _command_for(self, action: str) -> list[str]:
-        """Selecciona comando común o override específico del SO."""
+    def _command_for_runtime(
+        self,
+        runtime: RuntimeConfig,
+        action: str,
+    ) -> list[str]:
         if action not in {"inicio", "detener", "reinicio"}:
-            raise ValueError(f"acción de runtime no soportada: {action}")
+            raise ValueError(
+                f"acción de runtime no soportada: {action}"
+            )
 
-        base = list(getattr(self.runtime, f"comando_{action}") or [])
+        base = list(
+            getattr(runtime, f"comando_{action}") or []
+        )
         per_os = dict(
-            getattr(self.runtime, f"comando_{action}_por_so") or {}
+            getattr(runtime, f"comando_{action}_por_so") or {}
         )
         platform_key = self._platform_key()
 
@@ -79,9 +82,20 @@ class LocalTargetProcess:
 
         return [str(item) for item in chosen]
 
-    def _preparation_commands(self) -> list[list[str]]:
-        base = list(self.runtime.comandos_preparacion or [])
-        per_os = dict(self.runtime.comandos_preparacion_por_so or {})
+    def _command_for(self, action: str) -> list[str]:
+        return self._command_for_runtime(
+            self.runtime,
+            action,
+        )
+
+    def _preparation_commands_for_runtime(
+        self,
+        runtime: RuntimeConfig,
+    ) -> list[list[str]]:
+        base = list(runtime.comandos_preparacion or [])
+        per_os = dict(
+            runtime.comandos_preparacion_por_so or {}
+        )
         platform_key = self._platform_key()
 
         chosen = per_os.get(platform_key)
@@ -95,6 +109,202 @@ class LocalTargetProcess:
             for command in chosen
             if command
         ]
+
+    def _preparation_commands(self) -> list[list[str]]:
+        return self._preparation_commands_for_runtime(
+            self.runtime
+        )
+
+    @staticmethod
+    def _runtime_mode(runtime: RuntimeConfig) -> str:
+        mode = (runtime.modo or "process").strip().lower()
+        if mode == "command":
+            return "process"
+        if mode not in {"process", "service", "external"}:
+            raise ValueError(
+                f"runtime.modo no soportado: {runtime.modo!r}; "
+                "use process, service o external"
+            )
+        return mode
+
+    def _runtime_options(self) -> list[RuntimeConfig]:
+        options = [self._configured_runtime]
+
+        for raw in self._configured_runtime.alternativas or []:
+            if not isinstance(raw, dict):
+                continue
+            data = dict(raw)
+            data["alternativas"] = []
+            try:
+                options.append(RuntimeConfig(**data))
+            except TypeError:
+                continue
+
+        return options
+
+    @staticmethod
+    def _runtime_label(runtime: RuntimeConfig) -> str:
+        if runtime.nombre:
+            return runtime.nombre
+        command = list(runtime.comando_inicio or [])
+        return command[0] if command else runtime.modo
+
+    def _context_for_runtime(
+        self,
+        runtime: RuntimeConfig,
+    ) -> tuple[Path, dict[str, str]]:
+        cwd = (
+            self.root / runtime.directorio_trabajo
+        ).resolve()
+
+        if cwd != self.root and self.root not in cwd.parents:
+            raise ValueError(
+                "directorio_trabajo fuera del target_root"
+            )
+
+        if not cwd.exists() or not cwd.is_dir():
+            raise FileNotFoundError(
+                errno.ENOENT,
+                (
+                    "No existe el directorio de trabajo "
+                    f"del objetivo: {cwd}"
+                ),
+                str(cwd),
+            )
+
+        env = os.environ.copy()
+        env.update(runtime.variables)
+        return cwd, env
+
+    def _validate_runtime_candidate(
+        self,
+        runtime: RuntimeConfig,
+    ) -> None:
+        mode = self._runtime_mode(runtime)
+        if mode == "external":
+            raise RuntimeError(
+                "requiere inicio externo"
+            )
+
+        cwd, env = self._context_for_runtime(runtime)
+        start_command = self._command_for_runtime(
+            runtime,
+            "inicio",
+        )
+        if not start_command:
+            raise RuntimeError(
+                "no declara comando de inicio"
+            )
+
+        self._resolver_comando(
+            cwd,
+            env,
+            raw=start_command,
+        )
+
+        if runtime.preparar_automaticamente:
+            for preparation in (
+                self._preparation_commands_for_runtime(runtime)
+            ):
+                self._resolver_comando(
+                    cwd,
+                    env,
+                    raw=preparation,
+                )
+
+    def _select_runtime_if_needed(self) -> None:
+        if self._runtime_selected:
+            return
+
+        problems: list[str] = []
+        external: list[str] = []
+
+        for index, candidate in enumerate(
+            self._runtime_options()
+        ):
+            label = self._runtime_label(candidate)
+            mode = self._runtime_mode(candidate)
+
+            if mode == "external":
+                external.append(label)
+                continue
+
+            try:
+                self._validate_runtime_candidate(candidate)
+            except Exception as exc:
+                command = self._command_for_runtime(
+                    candidate,
+                    "inicio",
+                )
+                executable = (
+                    command[0]
+                    if command
+                    else "sin comando"
+                )
+                problems.append(
+                    f"{label}: no disponible "
+                    f"({executable}) — {exc}"
+                )
+                continue
+
+            self.runtime = candidate
+            self._runtime_selected = True
+            self._selection_notes = problems
+            return
+
+        self.runtime = self._configured_runtime
+        self._selection_notes = problems
+
+        lines = [
+            "Aegis no encontró una estrategia de arranque "
+            "ejecutable para esta aplicación.",
+        ]
+        if problems:
+            lines.append("")
+            lines.append("Estrategias evaluadas:")
+            lines.extend(
+                f"- {problem}"
+                for problem in problems
+            )
+        if external:
+            lines.append("")
+            lines.append(
+                "También se detectaron opciones que requieren "
+                "iniciar el objetivo fuera de Aegis: "
+                + ", ".join(external)
+                + "."
+            )
+        lines.extend(
+            [
+                "",
+                "Instala uno de los runtimes requeridos o "
+                "ajusta runtime en el perfil JSON.",
+            ]
+        )
+        raise RuntimeError("\n".join(lines))
+
+    def runtime_status(self) -> dict[str, object]:
+        return {
+            "seleccionado": self._runtime_selected,
+            "nombre": self._runtime_label(self.runtime),
+            "origen": self.runtime.origen,
+            "modo": self._runtime_mode(self.runtime),
+            "base_url": self.runtime.base_url,
+            "comando_inicio": self._command_for("inicio"),
+            "alternativas_descartadas": list(
+                self._selection_notes
+            ),
+        }
+
+    def has_started(self) -> bool:
+        return bool(
+            self._started_successfully
+            or self._service_running
+            or (
+                self.process
+                and self.process.poll() is None
+            )
+        )
 
     def is_running(self) -> bool:
         mode = self._modo()
@@ -281,21 +491,7 @@ class LocalTargetProcess:
         return self._resolver_interprete(resolved, raw[1:], env)
 
     def _context(self) -> tuple[Path, dict[str, str]]:
-        cwd = (self.root / self.runtime.directorio_trabajo).resolve()
-
-        if cwd != self.root and self.root not in cwd.parents:
-            raise ValueError("directorio_trabajo fuera del target_root")
-
-        if not cwd.exists() or not cwd.is_dir():
-            raise FileNotFoundError(
-                errno.ENOENT,
-                f"No existe el directorio de trabajo del objetivo: {cwd}",
-                str(cwd),
-            )
-
-        env = os.environ.copy()
-        env.update(self.runtime.variables)
-        return cwd, env
+        return self._context_for_runtime(self.runtime)
 
     def _run_control_command(
         self,
