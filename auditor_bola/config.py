@@ -106,9 +106,20 @@ class Correccion:
 
 @dataclass
 class RuntimeConfig:
-    """Cómo iniciar/reiniciar una copia local del objetivo."""
+    """Cómo iniciar/detener/reiniciar una copia local del objetivo.
 
+    Los campos *_por_so permiten adaptar el mismo perfil a Windows, Linux y
+    macOS sin duplicar el resto de la configuración. Las claves soportadas son
+    windows, linux, macos y default.
+    """
+
+    modo: str = "command"  # command | external
     comando_inicio: list[str] = field(default_factory=list)
+    comando_detener: list[str] = field(default_factory=list)
+    comando_reinicio: list[str] = field(default_factory=list)
+    comando_inicio_por_so: dict[str, list[str]] = field(default_factory=dict)
+    comando_detener_por_so: dict[str, list[str]] = field(default_factory=dict)
+    comando_reinicio_por_so: dict[str, list[str]] = field(default_factory=dict)
     directorio_trabajo: str = "."
     espera_inicio: float = 1.2
     variables: dict[str, str] = field(default_factory=dict)
