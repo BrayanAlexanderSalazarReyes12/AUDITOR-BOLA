@@ -134,43 +134,75 @@ Para mejorar una receta fallida, Gemma recibe en la siguiente ronda:
 La GUI pregunta si se desean generar **3 nuevas recetas reformuladas** usando
 esa retroalimentación, evitando repetir la misma solución fallida.
 
-## Biblioteca reutilizable de recetas
+## Conocimiento correctivo reutilizable
 
-Las recetas aceptadas no quedan únicamente dentro del perfil de una
-aplicación. El auditor mantiene una biblioteca propia:
+El auditor distingue entre **medicina semántica** y **parche concreto**.
+
+El parche concreto es la implementación que funcionó en una aplicación
+determinada. Puede contener nombres, estructuras y fragmentos propios de ese
+proyecto, por lo que no se considera universal.
+
+La medicina semántica describe:
+
+- causa raíz;
+- invariante de seguridad que debe restaurarse;
+- estrategia general;
+- señales de aplicabilidad;
+- requisitos de implementación;
+- anti-patrones;
+- contrato de verificación.
+
+Solo se aprende una medicina cuando una implementación termina en
+`CORREGIDO`.
+
+```text
+hallazgo nuevo
+    ↓
+buscar medicina por familia/tipo
+    ↓
+¿hay conocimiento verificado?
+    ├── sí → Gemma adapta la medicina al código actual
+    │          ↓
+    │       3 implementaciones concretas
+    │          ↓
+    │       preview + selección humana
+    │          ↓
+    │       aplicar + verificar + rollback
+    │
+    └── no → Gemma genera 3 propuestas desde cero
+               ↓
+            si una funciona
+               ↓
+        extraer medicina semántica
+               ↓
+        recetas/conocimiento/
+```
+
+La biblioteca queda separada:
 
 ```text
 recetas/
-├── P1-BOLA/
-├── P1-RBAC-004/
-├── P2-CORS-001/
-└── ...
+├── conocimiento/
+│   └── <familia_control>/
+│       └── <knowledge_id>.json
+│
+└── <control_id>/
+    └── <recipe_id>.json
 ```
 
-Cuando el usuario guarda una receta generada por Gemma, se conserva tanto en
-el perfil actual como en esta biblioteca. Si una receta se aplica y el control
-termina en `CORREGIDO`, se registra como **verificada**.
+Los archivos bajo `recetas/<control_id>/` son instancias concretas
+verificadas y sirven como evidencia o atajo cuando el código coincide. El
+conocimiento bajo `recetas/conocimiento/` es el componente diseñado para
+reutilizar la solución en otros aplicativos.
 
-Al seleccionar un hallazgo en otro sistema, el auditor busca recetas del mismo
-control, las adapta al archivo actual y ejecuta un preview en memoria. Solo
-muestra como compatibles aquellas cuyo patrón realmente puede aplicarse al
-nuevo código. Una coincidencia de `control_id` por sí sola nunca es
-suficiente.
+La búsqueda semántica no depende únicamente del ID literal. Agrupa variantes
+como `P1-BOLA-001`, `P1-BOLA-017` y `P1-BOLA` dentro de la misma familia,
+y también puede utilizar `tipo_control` cuando otro perfil emplea una
+nomenclatura diferente.
 
-El flujo es:
-
-```text
-HALLAZGO
-   ↓
-buscar en recetas/
-   ↓
-¿hay receta compatible?
-   ├── SÍ → revisar código + diff → aplicar → verificar
-   └── NO → generar 3 propuestas con Gemma
-```
-
-La biblioteca guarda operaciones y metadatos de reutilización, no archivos
-fuente completos ni credenciales.
+No existe un parche textual que pueda garantizarse para cualquier código. Lo
+reutilizable es la **estrategia de remediación verificada**, que debe
+instanciarse para el código actual y volver a superar las pruebas.
 
 ## Resolución automática del archivo fuente
 
@@ -369,7 +401,8 @@ auditor_bola/
   evidence.py          hashes y evidencia
   cycle.py             diagnóstico/corrección/verificación/rollback
   process_manager.py   proceso local configurable
-  recipe_library.py     biblioteca reutilizable de recetas
+  recipe_library.py     instancias concretas verificadas
+  remediation_knowledge.py conocimiento correctivo semántico
   cli.py
   gui.py
 
@@ -381,6 +414,9 @@ config/
 
 recetas/
   README.md
+  conocimiento/
+    <familia_control>/
+      <knowledge_id>.json
   <control_id>/
     <recipe_id>.json
 
