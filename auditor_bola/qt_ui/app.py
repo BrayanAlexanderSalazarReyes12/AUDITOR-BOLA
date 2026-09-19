@@ -53,7 +53,7 @@ from .pages import (
     SettingsPage,
 )
 from .theme import COLORS, QSS
-from .widgets import Card, NavButton, PrimaryButton, brand_icon, brand_logo_pixmap
+from .widgets import Card, NavButton, PrimaryButton, brand_icon
 
 
 class Sidebar(QFrame):
@@ -65,14 +65,25 @@ class Sidebar(QFrame):
         self.buttons: dict[str, NavButton] = {}
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 16, 14, 12)
+        layout.setContentsMargins(14, 14, 14, 12)
         layout.setSpacing(6)
 
+        # --------------------------------------------------------------
+        # Identidad de marca
+        #
+        # No usamos aquí el PNG horizontal completo porque ese recurso
+        # ya contiene texto dentro de la propia imagen. Combinarlo con
+        # etiquetas del sidebar provocaba solapamientos en determinados
+        # factores de escala de Windows. El escudo y cada bloque textual
+        # se renderizan por separado para que Qt pueda distribuirlos.
+        # --------------------------------------------------------------
         self.brand_box = QWidget()
         self.brand_box.setObjectName("BrandBox")
+        self.brand_box.setFixedHeight(250)
+
         self.brand_layout = QVBoxLayout(self.brand_box)
-        self.brand_layout.setContentsMargins(8, 10, 8, 14)
-        self.brand_layout.setSpacing(10)
+        self.brand_layout.setContentsMargins(8, 8, 8, 10)
+        self.brand_layout.setSpacing(5)
         self.brand_layout.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
         )
@@ -91,6 +102,24 @@ class Sidebar(QFrame):
             Qt.AlignmentFlag.AlignHCenter,
         )
 
+        self.brand_name = QLabel(
+            "<span style='color:#F4F8FB'>AEGIS</span> "
+            "<span style='color:#39C7FF'>AUDITOR</span>"
+        )
+        self.brand_name.setObjectName("BrandName")
+        self.brand_name.setTextFormat(Qt.TextFormat.RichText)
+        self.brand_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.brand_name.setFixedHeight(31)
+        self.brand_layout.addWidget(self.brand_name)
+
+        self.brand_tagline = QLabel(
+            "AUDITORÍA · CORRECCIÓN · APRENDIZAJE"
+        )
+        self.brand_tagline.setObjectName("BrandTagline")
+        self.brand_tagline.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.brand_tagline.setFixedHeight(18)
+        self.brand_layout.addWidget(self.brand_tagline)
+
         self.pillars = QLabel(
             "<span style='color:#39C7FF;font-weight:700'>Pilar 1:</span> "
             "Identidad y Control de Acceso<br>"
@@ -100,7 +129,7 @@ class Sidebar(QFrame):
         self.pillars.setObjectName("BrandPillars")
         self.pillars.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.pillars.setWordWrap(True)
-        self.pillars.setContentsMargins(4, 4, 4, 0)
+        self.pillars.setFixedHeight(43)
         self.brand_layout.addWidget(self.pillars)
 
         self.brand_divider = QFrame()
@@ -108,7 +137,11 @@ class Sidebar(QFrame):
         self.brand_divider.setFixedHeight(1)
         self.brand_layout.addWidget(self.brand_divider)
 
-        layout.addWidget(self.brand_box)
+        layout.addWidget(
+            self.brand_box,
+            0,
+            Qt.AlignmentFlag.AlignTop,
+        )
 
         nav_items = [
             ("home", "⌂", "Inicio", lambda: navigate("home")),
@@ -165,16 +198,14 @@ class Sidebar(QFrame):
             self.ai_status.setStyleSheet(f"color:{COLORS['muted']};")
 
     def _apply_full_brand_logo(self) -> None:
-        pixmap = brand_logo_pixmap(190)
-        if pixmap.isNull():
-            pixmap = brand_icon().pixmap(86, 86)
+        pixmap = brand_icon().pixmap(112, 112)
         self.brand_logo.setPixmap(pixmap)
-        self.brand_logo.setFixedSize(pixmap.size())
+        self.brand_logo.setFixedSize(112, 112)
 
     def _apply_compact_brand_logo(self) -> None:
         pixmap = brand_icon().pixmap(42, 42)
         self.brand_logo.setPixmap(pixmap)
-        self.brand_logo.setFixedSize(52, 52)
+        self.brand_logo.setFixedSize(48, 48)
 
     def set_compact(self, compact: bool) -> None:
         if compact == self._compact:
@@ -184,15 +215,23 @@ class Sidebar(QFrame):
         self.setFixedWidth(76 if compact else 292)
 
         if compact:
+            self.brand_box.setFixedHeight(68)
             self.brand_layout.setContentsMargins(0, 8, 0, 8)
             self.brand_layout.setSpacing(0)
             self._apply_compact_brand_logo()
+
+            self.brand_name.setVisible(False)
+            self.brand_tagline.setVisible(False)
             self.pillars.setVisible(False)
             self.brand_divider.setVisible(False)
         else:
-            self.brand_layout.setContentsMargins(8, 10, 8, 14)
-            self.brand_layout.setSpacing(10)
+            self.brand_box.setFixedHeight(250)
+            self.brand_layout.setContentsMargins(8, 8, 8, 10)
+            self.brand_layout.setSpacing(5)
             self._apply_full_brand_logo()
+
+            self.brand_name.setVisible(True)
+            self.brand_tagline.setVisible(True)
             self.pillars.setVisible(True)
             self.brand_divider.setVisible(True)
 
