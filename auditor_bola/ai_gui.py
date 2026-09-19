@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import asdict
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -11,8 +10,9 @@ import tkinter as tk
 
 from .ai_preview import preview_recipe
 from .ai_recipes import (
+    AIProviderConfig,
     AIRecipeProposal,
-    DEFAULT_MODEL,
+    cargar_configuracion_opencode,
     generar_tres_recetas,
     guardar_seleccion_ia,
     guardar_sesion_ia,
@@ -30,10 +30,7 @@ class AIAssistantMixin:
         self.ai_proposals: list[AIRecipeProposal] = []
         self.ai_session_dir: Path | None = None
         self.ai_current_recipe = None
-        self.ai_model_var = tk.StringVar(
-            value=os.getenv("AUDITOR_AI_MODEL", DEFAULT_MODEL)
-        )
-        self.ai_api_key_var = tk.StringVar(value="")
+        self.ai_provider: AIProviderConfig | None = None
 
         outer = ttk.Frame(self.tab_ai, padding=8)
         outer.pack(fill="both", expand=True)
@@ -42,7 +39,7 @@ class AIAssistantMixin:
 
         header = ttk.LabelFrame(
             outer,
-            text="Hallazgo y contexto para IA",
+            text="Gemma — Laboratorio UTB",
             padding=8,
         )
         header.grid(row=0, column=0, sticky="ew", pady=(0, 6))
@@ -71,44 +68,45 @@ class AIAssistantMixin:
             command=self._choose_ai_source,
         ).grid(row=1, column=2, padx=(8, 0), pady=(4, 0))
 
-        ttk.Label(header, text="Modelo:").grid(
+        ttk.Label(header, text="Proveedor:").grid(
             row=2, column=0, sticky="w", padx=(0, 6), pady=(4, 0)
         )
-        ttk.Entry(
-            header, textvariable=self.ai_model_var, width=28
-        ).grid(row=2, column=1, sticky="w", pady=(4, 0))
-
-        self.lbl_ai_key = ttk.Label(
+        self.lbl_ai_provider = ttk.Label(
             header,
-            text=(
-                "Entorno: API key configurada"
-                if os.getenv("OPENAI_API_KEY")
-                else "Entorno: sin API key"
-            ),
+            text="Buscando configuración de OpenCode...",
+            anchor="w",
         )
-        self.lbl_ai_key.grid(
+        self.lbl_ai_provider.grid(
+            row=2, column=1, sticky="ew", pady=(4, 0)
+        )
+        self.btn_ai_reload = ttk.Button(
+            header,
+            text="Recargar configuración",
+            command=self._reload_ai_provider,
+        )
+        self.btn_ai_reload.grid(
             row=2, column=2, sticky="e", padx=(8, 0), pady=(4, 0)
         )
 
-        ttk.Label(header, text="API key temporal:").grid(
+        ttk.Label(header, text="Modelo:").grid(
             row=3, column=0, sticky="w", padx=(0, 6), pady=(4, 0)
         )
-        self.ai_key_entry = ttk.Entry(
-            header,
-            textvariable=self.ai_api_key_var,
-            show="*",
-            width=38,
+        self.lbl_ai_model = ttk.Label(
+            header, text="lab-coder", anchor="w"
         )
-        self.ai_key_entry.grid(
+        self.lbl_ai_model.grid(
             row=3, column=1, sticky="ew", pady=(4, 0)
         )
-        self.ai_key_entry.bind(
-            "<KeyRelease>", lambda _e: self._refresh_ai_state()
+
+        ttk.Label(header, text="OpenCode:").grid(
+            row=4, column=0, sticky="w", padx=(0, 6), pady=(4, 0)
         )
-        ttk.Label(
-            header,
-            text="Solo memoria; no se guarda",
-        ).grid(row=3, column=2, sticky="e", padx=(8, 0), pady=(4, 0))
+        self.lbl_ai_config = ttk.Label(
+            header, text="No cargado", anchor="w"
+        )
+        self.lbl_ai_config.grid(
+            row=4, column=1, columnspan=2, sticky="ew", pady=(4, 0)
+        )
 
         buttons = ttk.Frame(outer)
         buttons.grid(row=1, column=0, sticky="ew", pady=(0, 6))
@@ -118,7 +116,7 @@ class AIAssistantMixin:
 
         self.btn_ai_generate = ttk.Button(
             buttons,
-            text="Generar 3 recetas con IA",
+            text="Generar 3 recetas con Gemma",
             command=self._generate_ai_recipes,
         )
         self.btn_ai_generate.grid(row=0, column=0, sticky="ew", padx=3)
@@ -207,7 +205,50 @@ class AIAssistantMixin:
         yscroll.grid(row=1, column=1, sticky="ns")
         xscroll.grid(row=2, column=0, sticky="ew")
 
+        self._reload_ai_provider(silent=True)
         self._refresh_ai_state()
+
+    def _reload_ai_provider(self, silent: bool = False):
+        try:
+            self.ai_provider = cargar_configuracion_opencode()
+            self.lbl_ai_provider.configure(
+                text=(
+                    f"{self.ai_provider.provider_name} "
+                    f"({self.ai_provider.provider_id})"
+                )
+            )
+            self.lbl_ai_model.configure(
+                text=(
+                    f"{self.ai_provider.model_name} "
+                    f"[{self.ai_provider.model_id}]"
+                )
+            )
+            self.lbl_ai_config.configure(
+                text=self.ai_provider.config_path
+            )
+            if not silent:
+                messagebox.showinfo(
+                    "Gemma configurada",
+                    (
+                        f"Proveedor: {self.ai_provider.provider_name}\n"
+                        f"Modelo: {self.ai_provider.model_name}\n"
+                        f"ID: {self.ai_provider.model_id}"
+                    ),
+                )
+        except Exception as exc:
+            self.ai_provider = None
+            self.lbl_ai_provider.configure(
+                text="Configuración no disponible"
+            )
+            self.lbl_ai_model.configure(text="lab-coder")
+            self.lbl_ai_config.configure(text=str(exc))
+            if not silent:
+                messagebox.showerror(
+                    "Configuración de Gemma",
+                    str(exc),
+                )
+        self._refresh_ai_state()
+
 
     def _refresh_ai_state(self):
         if not hasattr(self, "btn_ai_generate"):
@@ -217,14 +258,13 @@ class AIAssistantMixin:
         has_target = self.target_root is not None
         has_source = bool(self.ai_source_relative)
         has_proposal = self.ai_current_recipe is not None
-        api_key = bool(
-            os.getenv("OPENAI_API_KEY")
-            or self.ai_api_key_var.get().strip()
-        )
+        has_provider = self.ai_provider is not None
         enabled = lambda ok: "normal" if ok and not self.busy else "disabled"
 
         self.btn_ai_generate.configure(
-            state=enabled(has_control and has_target and has_source and api_key)
+            state=enabled(
+                has_control and has_target and has_source and has_provider
+            )
         )
         self.btn_ai_apply.configure(
             state=enabled(has_proposal and has_target)
@@ -236,14 +276,11 @@ class AIAssistantMixin:
             self.btn_ai_open.configure(
                 state=enabled(has_control and has_target)
             )
-
-        self.lbl_ai_key.configure(
-            text=(
-                "API key disponible"
-                if api_key
-                else "API key no configurada"
+        if hasattr(self, "btn_ai_reload"):
+            self.btn_ai_reload.configure(
+                state=enabled(True)
             )
-        )
+
 
     def _ai_sync_selected_control(self):
         if not hasattr(self, "lbl_ai_control"):
@@ -327,30 +364,38 @@ class AIAssistantMixin:
         return str(values[1]), str(values[2]), str(values[6])
 
     def _generate_ai_recipes(self):
-        if not self.cfg or not self.target_root or not self.ai_source_relative:
+        if (
+            not self.cfg
+            or not self.target_root
+            or not self.ai_source_relative
+        ):
             return
+
+        if not self.ai_provider:
+            self._reload_ai_provider()
+            if not self.ai_provider:
+                return
 
         control, descripcion, detalle = self._current_finding_data()
         source_path = self.target_root / self.ai_source_relative
-        model = self.ai_model_var.get().strip() or DEFAULT_MODEL
+        provider = self.ai_provider
 
         def task():
             source_text = source_path.read_text(encoding="utf-8")
-            proposals, context = generar_tres_recetas(
+            proposals, context, used_provider = generar_tres_recetas(
                 self.cfg,
                 control_id=control,
                 descripcion=descripcion,
                 detalle=detalle,
                 source_relative=self.ai_source_relative,
                 source_text=source_text,
-                api_key=self.ai_api_key_var.get().strip() or None,
-                model=model,
+                provider=provider,
             )
             session = guardar_sesion_ia(
                 self.evidence_base,
                 contexto=context,
                 propuestas=proposals,
-                model=model,
+                provider=used_provider,
             )
             return proposals, session
 
@@ -377,7 +422,7 @@ class AIAssistantMixin:
                 )
 
             self._log(
-                f"IA: 3 propuestas generadas para {control}. "
+                f"Gemma: 3 propuestas generadas para {control}. "
                 f"Evidencia: {session}"
             )
             self.notebook.select(self.tab_ai)
@@ -389,7 +434,7 @@ class AIAssistantMixin:
         self._run_background(
             task,
             done,
-            f"Generando 3 recetas IA para {control}…",
+            f"Generando 3 recetas con Gemma para {control}…",
         )
 
     def _selected_ai_proposal(self) -> AIRecipeProposal | None:
@@ -476,13 +521,13 @@ class AIAssistantMixin:
             return
 
         if not messagebox.askyesno(
-            "Aplicar receta generada por IA",
+            "Aplicar receta generada por Gemma",
             (
                 f"Control: {control}\n"
                 f"Propuesta: {proposal.titulo}\n"
                 f"Enfoque: {proposal.enfoque}\n"
                 f"Riesgo declarado: {proposal.riesgo}\n\n"
-                "La IA solo propuso la receta. El auditor hará backup, "
+                "Gemma solo propuso la receta. El auditor hará backup, "
                 "aplicación, verificación y rollback si corresponde.\n\n"
                 "¿Deseas continuar?"
             ),
@@ -520,10 +565,10 @@ class AIAssistantMixin:
         def done(result):
             estado = result.get("estado_final")
             self._log(
-                f"Receta IA {proposal.id} aplicada a {control}: {estado}"
+                f"Receta Gemma {proposal.id} aplicada a {control}: {estado}"
             )
             messagebox.showinfo(
-                "Resultado de receta IA",
+                "Resultado de receta Gemma",
                 f"{control}: {estado}",
             )
             self._diagnose()
@@ -531,7 +576,7 @@ class AIAssistantMixin:
         self._run_background(
             task,
             done,
-            f"Aplicando receta IA {proposal.id}…",
+            f"Aplicando receta Gemma {proposal.id}…",
         )
 
     def _save_ai_recipe_to_profile(self):
@@ -586,7 +631,7 @@ class AIAssistantMixin:
             )
 
         self._log(
-            f"Receta IA {proposal.id} guardada en perfil para {control}."
+            f"Receta Gemma {proposal.id} guardada en perfil para {control}."
         )
         messagebox.showinfo(
             "Perfil actualizado",
