@@ -99,6 +99,7 @@ class TaskProgressOverlay(QFrame):
         self._value = 0
         self._active = False
         self._run_id = 0
+        self._external_progress = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 24, 24, 24)
@@ -155,6 +156,7 @@ class TaskProgressOverlay(QFrame):
     def start(self, text: str) -> None:
         self._run_id += 1
         self._active = True
+        self._external_progress = False
         self._value = 4
         self.status.setText(text or "Procesando…")
         self._render()
@@ -166,7 +168,7 @@ class TaskProgressOverlay(QFrame):
         self.timer.start()
 
     def _tick(self) -> None:
-        if not self._active:
+        if not self._active or self._external_progress:
             return
         if self._value < 38:
             self._value += 4
@@ -175,6 +177,16 @@ class TaskProgressOverlay(QFrame):
         elif self._value < 92:
             self._value += 1
         self._value = min(self._value, 92)
+        self._render()
+
+    def set_progress(self, value: int, text: str | None = None) -> None:
+        """Actualiza el avance real informado por la tarea en segundo plano."""
+        if not self._active:
+            return
+        self._external_progress = True
+        self._value = max(0, min(99, int(value)))
+        if text:
+            self.status.setText(text)
         self._render()
 
     def finish(self, text: str = "Tarea completada") -> None:
