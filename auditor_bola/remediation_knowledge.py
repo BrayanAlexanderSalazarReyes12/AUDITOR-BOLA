@@ -116,6 +116,86 @@ class RemediationKnowledge:
         return self.knowledge_id
 
 
+def crear_conocimiento_respaldo_verificado(
+    *,
+    control_id: str,
+    descripcion: str | None = None,
+    tipo_control: str | None = None,
+    extension: str | None = None,
+) -> RemediationKnowledge:
+    """Crea una medicina semántica mínima a partir de una corrección verificada.
+
+    Se usa únicamente como respaldo cuando la extracción enriquecida con IA
+    falla después de que el ciclo correctivo ya demostró que el hallazgo fue
+    eliminado sin regresiones. No almacena el parche literal.
+    """
+    familia = normalizar_familia_control(control_id)
+    categoria = (tipo_control or familia or "control de seguridad").strip()
+    descripcion_limpia = (descripcion or "").strip()
+
+    titulo = f"Remediación verificada para {categoria}"
+    causa = (
+        "La aplicación no hacía cumplir de forma suficiente la condición de "
+        "seguridad asociada al control antes de completar la operación."
+    )
+    if descripcion_limpia:
+        causa += (
+            " El comportamiento vulnerable fue confirmado dinámicamente y "
+            "después eliminado por una corrección verificada."
+        )
+
+    invariante = (
+        "Toda solicitud equivalente debe satisfacer la condición de seguridad "
+        "del control antes de producir el efecto sensible; los casos que ya "
+        "eran seguros deben permanecer seguros."
+    )
+
+    knowledge = RemediationKnowledge(
+        control_id=control_id,
+        titulo=titulo,
+        causa_raiz=causa,
+        invariante_seguridad=invariante,
+        estrategia_general=[
+            "Identificar el punto donde se toma la decisión de seguridad.",
+            "Aplicar la validación o autorización antes del efecto sensible.",
+            "Rechazar de forma segura cuando la condición no se cumpla.",
+            "Preservar el comportamiento de los casos previamente seguros.",
+        ],
+        señales_aplicabilidad=[
+            f"Hallazgo de la familia {familia}.",
+            f"Control semántico: {categoria}.",
+            "La prueba dinámica reproduce el comportamiento inseguro antes del parche.",
+        ],
+        requisitos_implementacion=[
+            "La decisión de seguridad debe ejecutarse del lado del servidor.",
+            "La corrección debe operar sobre el mismo recurso o acción que se protege.",
+            "La implementación debe fallar de forma cerrada cuando no pueda validar.",
+        ],
+        anti_patrones=[
+            "Corregir únicamente texto, interfaz o mensajes sin cambiar la decisión de seguridad.",
+            "Depender de nombres concretos de archivos, variables, rutas o usuarios.",
+            "Dar por corregido el hallazgo sin reejecutar la prueba dinámica.",
+        ],
+        contrato_verificacion=[
+            "La fila objetivo debe pasar a SIN_HALLAZGO.",
+            "Ninguna fila previamente segura puede convertirse en HALLAZGO o ERROR.",
+            "La aplicación debe seguir iniciando y respondiendo después de la corrección.",
+        ],
+        consideraciones=[
+            "Medicina de respaldo creada a partir de una corrección ya verificada; "
+            "puede enriquecerse posteriormente con más casos exitosos."
+        ],
+        lenguajes_observados=[extension] if extension else [],
+        frameworks_observados=[],
+        familia_control=familia,
+        tipo_control=tipo_control,
+        verificada=True,
+        casos_exitosos=1,
+    )
+    knowledge.ensure_id()
+    return knowledge
+
+
 @dataclass
 class KnowledgeCandidate:
     path: Path
