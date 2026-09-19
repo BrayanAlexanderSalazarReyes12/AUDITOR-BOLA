@@ -2334,6 +2334,50 @@ def _detect_project_version(
             "alta",
         )
 
+    # Configuración/código con constantes explícitas de versión.
+    for path, relative in _iter_source_files(root, max_files=None):
+        text = _read_text(path, limit=MAX_TEXT_SCAN_BYTES)
+        if not text:
+            continue
+
+        source = relative.as_posix()
+        patterns = (
+            (
+                r"(?im)^\s*(?:__version__|APP_VERSION|APPLICATION_VERSION|"
+                r"PROJECT_VERSION|VERSION_NAME|BUILD_VERSION)"
+                r"\s*[:=]\s*['\"]?([vV]?\d[0-9A-Za-z.+_-]*)",
+                "version-constant",
+                76,
+            ),
+            (
+                r"(?im)^\s*(?:app\.version|application\.version|"
+                r"project\.version|build\.version|info\.app\.version)"
+                r"\s*[:=]\s*['\"]?([vV]?\d[0-9A-Za-z.+_-]*)",
+                "version-config-key",
+                76,
+            ),
+            (
+                r"(?i)<meta\s+[^>]*name\s*=\s*['\"]"
+                r"(?:app-?version|application-?version|version)['\"]"
+                r"[^>]*content\s*=\s*['\"]([^'\"]+)['\"]",
+                "version-html-meta",
+                72,
+            ),
+        )
+
+        for pattern, detector, score in patterns:
+            match = re.search(pattern, text)
+            if not match:
+                continue
+            add(
+                match.group(1),
+                source,
+                detector,
+                score,
+                "media",
+            )
+            break
+
     for path, relative in _iter_source_files(root, max_files=None):
         name = path.name.lower()
         if not (
