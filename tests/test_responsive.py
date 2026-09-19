@@ -11,7 +11,7 @@ def test_layout_1024x600_activa_ultra_compacto():
     assert layout.compact is True
     assert layout.width <= 1024
     assert layout.height <= 600
-    assert layout.sidebar_width <= 154
+    assert layout.sidebar_width <= 76
 
 
 def test_layout_laptop_1366x768_es_compacto():
@@ -29,14 +29,14 @@ def test_layout_full_hd_no_desborda():
     assert layout.compact is False
     assert layout.width <= 1920
     assert layout.height <= 1080
-    assert layout.sidebar_width == 236
+    assert layout.sidebar_width == 268
 
 
 def test_layout_4k_no_crece_sin_limite():
     layout = calculate_responsive_layout(3840, 2160)
 
-    assert layout.width == 1360
-    assert layout.height == 820
+    assert layout.width == 1540
+    assert layout.height == 900
     assert layout.compact is False
 
 
@@ -53,4 +53,4 @@ def test_wizard_full_hd_usa_tamano_comodo():
 
     assert compact is False
     assert width == 1180
-    assert height == 820
+    assert height == 900
