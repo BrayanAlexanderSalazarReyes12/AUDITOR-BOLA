@@ -163,7 +163,7 @@ class AIAssistantMixin:
 
         self.btn_ai_save = ttk.Button(
             buttons,
-            text="Guardar receta en perfil",
+            text="Guardar receta en perfil + biblioteca",
             command=self._save_ai_recipe_to_profile,
         )
         self.btn_ai_save.grid(row=0, column=2, sticky="ew", padx=3)
@@ -1237,7 +1237,7 @@ class AIAssistantMixin:
         ).pack(side="left", padx=(0, 6))
         ttk.Button(
             footer,
-            text="Guardar receta seleccionada en perfil",
+            text="Guardar receta en perfil + biblioteca",
             command=self._save_ai_recipe_to_profile,
         ).pack(side="left", padx=(0, 6))
         ttk.Button(
