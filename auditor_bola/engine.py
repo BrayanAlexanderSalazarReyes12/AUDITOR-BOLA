@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from typing import Callable
 
 from .agent_scope import ResultadoAlcanceAgente, evaluar_alcance_agente
 from .config import ConfigObjetivo, Cuenta, Endpoint
@@ -88,7 +89,10 @@ def _disparar(base_url: str, endpoint: Endpoint, cuenta: Cuenta):
     )
 
 
-def auditar(cfg: ConfigObjetivo) -> list[Hallazgo]:
+def auditar(
+    cfg: ConfigObjetivo,
+    progress_callback: Callable[[str], None] | None = None,
+) -> list[Hallazgo]:
     """Prueba BOLA para cada combinación cuenta + endpoint declarada."""
     hallazgos: list[Hallazgo] = []
     for endpoint in cfg.endpoints:
@@ -113,10 +117,19 @@ def auditar(cfg: ConfigObjetivo) -> list[Hallazgo]:
                     descripcion=endpoint.descripcion,
                 )
             )
+            if progress_callback:
+                progress_callback(
+                    "Pilar 1 · BOLA · "
+                    f"{endpoint.metodo.upper()} {endpoint.ruta} · "
+                    f"cuenta {cuenta.username}"
+                )
     return hallazgos
 
 
-def auditar_controles_acceso(cfg: ConfigObjetivo) -> list[ResultadoAcceso]:
+def auditar_controles_acceso(
+    cfg: ConfigObjetivo,
+    progress_callback: Callable[[str], None] | None = None,
+) -> list[ResultadoAcceso]:
     """Ejecuta controles RBAC/ABAC puntuales declarados en la configuración."""
     resultados: list[ResultadoAcceso] = []
     for chequeo in cfg.chequeos_acceso:
@@ -148,10 +161,19 @@ def auditar_controles_acceso(cfg: ConfigObjetivo) -> list[ResultadoAcceso]:
                 ts=_ts(),
             )
         )
+        if progress_callback:
+            progress_callback(
+                "Pilar 1 · Acceso · "
+                f"{chequeo.metodo.upper()} {chequeo.ruta} · "
+                f"cuenta {cuenta.username}"
+            )
     return resultados
 
 
-def auditar_alcance_agente(cfg: ConfigObjetivo) -> list[HallazgoAgente]:
+def auditar_alcance_agente(
+    cfg: ConfigObjetivo,
+    progress_callback: Callable[[str], None] | None = None,
+) -> list[HallazgoAgente]:
     resultados: list[HallazgoAgente] = []
     for chequeo in cfg.chequeos_agente:
         cuenta = cfg.cuenta_por_username(chequeo.cuenta)
@@ -197,4 +219,9 @@ def auditar_alcance_agente(cfg: ConfigObjetivo) -> list[HallazgoAgente]:
                 ts=_ts(),
             )
         )
+        if progress_callback:
+            progress_callback(
+                "Pilar 1 · Alcance del agente · "
+                f"{chequeo.nombre} · cuenta {cuenta.username}"
+            )
     return resultados
