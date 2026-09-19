@@ -27,6 +27,8 @@ from .cycle import (
     verificar_control,
 )
 from .process_manager import LocalTargetProcess
+from .profile_wizard import ProfileWizard
+from .remediation_knowledge import knowledge_root
 from .runner import diagnosticar, filas_gui
 
 
@@ -50,7 +52,8 @@ def calcular_layout(screen_w: int, screen_h: int) -> tuple[int, int, bool]:
 class AuditorGUI(AIAssistantMixin, tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Auditor Correctivo de Seguridad — Dos Pilares")
+        self.title("Aegis Auditor — Security Remediation Studio")
+        self.configure(background="#f4f7fb")
 
         # Inicializar el modo responsivo ANTES de construir cualquier
         # sección que lo consulte.
@@ -73,6 +76,9 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
 
         self.auto_manage_var = tk.BooleanVar(value=False)
 
+        self._configure_theme()
+        self._build_menu()
+        self._build_brand_header()
         self._build_header()
         self._build_runtime_bar()
 
@@ -86,6 +92,286 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
     # ------------------------------------------------------------------
     # Construcción de interfaz
     # ------------------------------------------------------------------
+    def _configure_theme(self):
+        """Tema visual propio sin dependencias externas."""
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+
+        style.configure(".", font=("Segoe UI", 9))
+        style.configure(
+            "TFrame",
+            background="#f4f7fb",
+        )
+        style.configure(
+            "TLabelframe",
+            background="#ffffff",
+            bordercolor="#d8e1eb",
+            relief="solid",
+            borderwidth=1,
+        )
+        style.configure(
+            "TLabelframe.Label",
+            background="#f4f7fb",
+            foreground="#24364b",
+            font=("Segoe UI Semibold", 9),
+        )
+        style.configure(
+            "TLabel",
+            background="#f4f7fb",
+            foreground="#24364b",
+        )
+        style.configure(
+            "Aegis.H1.TLabel",
+            font=("Segoe UI Semibold", 17),
+            foreground="#0b1f33",
+            background="#f4f7fb",
+        )
+        style.configure(
+            "Aegis.Brand.TLabel",
+            font=("Segoe UI Semibold", 18),
+            foreground="#ffffff",
+            background="#0b1f33",
+        )
+        style.configure(
+            "Aegis.BrandSub.TLabel",
+            font=("Segoe UI", 9),
+            foreground="#b9c9d8",
+            background="#0b1f33",
+        )
+        style.configure(
+            "Aegis.Muted.TLabel",
+            foreground="#6b7c8f",
+            background="#f4f7fb",
+        )
+        style.configure(
+            "Aegis.KpiTitle.TLabel",
+            font=("Segoe UI", 8),
+            foreground="#718096",
+            background="#ffffff",
+        )
+        style.configure(
+            "Aegis.KpiValue.TLabel",
+            font=("Segoe UI Semibold", 13),
+            foreground="#0b1f33",
+            background="#ffffff",
+        )
+        style.configure(
+            "Aegis.Primary.TButton",
+            font=("Segoe UI Semibold", 9),
+            foreground="#ffffff",
+            background="#147d73",
+            bordercolor="#147d73",
+            padding=(12, 7),
+        )
+        style.map(
+            "Aegis.Primary.TButton",
+            background=[
+                ("active", "#0f6b63"),
+                ("disabled", "#91aaa7"),
+            ],
+        )
+        style.configure(
+            "Aegis.Secondary.TButton",
+            padding=(10, 6),
+        )
+        style.configure(
+            "Aegis.Horizontal.TProgressbar",
+            troughcolor="#e5ebf1",
+            background="#24b6a6",
+            bordercolor="#e5ebf1",
+            lightcolor="#24b6a6",
+            darkcolor="#24b6a6",
+        )
+
+    def _build_menu(self):
+        menubar = tk.Menu(self)
+
+        archivo = tk.Menu(menubar, tearoff=False)
+        archivo.add_command(
+            label="Nuevo proyecto / Auto-configurar…",
+            command=self._new_project_wizard,
+            accelerator="Ctrl+N",
+        )
+        archivo.add_separator()
+        archivo.add_command(
+            label="Cargar perfil JSON…",
+            command=self._choose_config,
+            accelerator="Ctrl+O",
+        )
+        archivo.add_command(
+            label="Seleccionar carpeta de código…",
+            command=self._choose_target,
+        )
+        archivo.add_command(
+            label="Seleccionar carpeta de evidencias…",
+            command=self._choose_evidence_base,
+        )
+        archivo.add_separator()
+        archivo.add_command(
+            label="Guardar reporte actual…",
+            command=self._save_report,
+        )
+        archivo.add_separator()
+        archivo.add_command(label="Salir", command=self.destroy)
+        menubar.add_cascade(label="Archivo", menu=archivo)
+
+        proyecto = tk.Menu(menubar, tearoff=False)
+        proyecto.add_command(
+            label="Asistente de perfil…",
+            command=self._new_project_wizard,
+        )
+        proyecto.add_command(
+            label="Ver perfil actual",
+            command=self._show_profile,
+        )
+        proyecto.add_separator()
+        proyecto.add_command(label="Iniciar objetivo", command=self._start_target)
+        proyecto.add_command(label="Detener objetivo", command=self._stop_target)
+        proyecto.add_command(label="Reiniciar objetivo", command=self._restart_target)
+        menubar.add_cascade(label="Proyecto", menu=proyecto)
+
+        auditoria = tk.Menu(menubar, tearoff=False)
+        auditoria.add_command(
+            label="Diagnosticar P1 + P2",
+            command=self._diagnose,
+            accelerator="F5",
+        )
+        auditoria.add_command(
+            label="Verificar seleccionado",
+            command=self._verify_selected,
+        )
+        auditoria.add_separator()
+        auditoria.add_command(
+            label="Corregir seleccionado",
+            command=self._correct_selected,
+        )
+        auditoria.add_command(
+            label="Corregir todos los hallazgos",
+            command=self._correct_all,
+        )
+        menubar.add_cascade(label="Auditoría", menu=auditoria)
+
+        inteligencia = tk.Menu(menubar, tearoff=False)
+        inteligencia.add_command(
+            label="Generar recetas con IA",
+            command=self._open_ai_for_selected,
+        )
+        inteligencia.add_command(
+            label="Medicinas conocidas",
+            command=self._open_knowledge_window,
+        )
+        inteligencia.add_command(
+            label="Parches exactos",
+            command=self._open_recipe_library_window,
+        )
+        menubar.add_cascade(label="Conocimiento", menu=inteligencia)
+
+        ayuda = tk.Menu(menubar, tearoff=False)
+        ayuda.add_command(label="Acerca de Aegis Auditor", command=self._show_about)
+        menubar.add_cascade(label="Ayuda", menu=ayuda)
+
+        self.config(menu=menubar)
+        self.bind_all("<Control-n>", lambda _event: self._new_project_wizard())
+        self.bind_all("<Control-o>", lambda _event: self._choose_config())
+        self.bind_all("<F5>", lambda _event: self._diagnose())
+
+    def _build_brand_header(self):
+        frame = tk.Frame(self, background="#0b1f33", height=72)
+        frame.pack(fill="x")
+        frame.pack_propagate(False)
+
+        logo = tk.Canvas(
+            frame,
+            width=48,
+            height=48,
+            highlightthickness=0,
+            background="#0b1f33",
+        )
+        logo.pack(side="left", padx=(18, 10), pady=12)
+        logo.create_polygon(
+            24, 3, 43, 11, 40, 33, 24, 46, 8, 33, 5, 11,
+            fill="#24b6a6",
+            outline="",
+        )
+        logo.create_line(
+            14, 24, 21, 31, 35, 16,
+            fill="#ffffff",
+            width=4,
+            capstyle=tk.ROUND,
+            joinstyle=tk.ROUND,
+        )
+
+        titles = tk.Frame(frame, background="#0b1f33")
+        titles.pack(side="left", fill="y", pady=11)
+        ttk.Label(
+            titles,
+            text="AEGIS AUDITOR",
+            style="Aegis.Brand.TLabel",
+        ).pack(anchor="w")
+        ttk.Label(
+            titles,
+            text="Security Remediation Studio · Diagnóstico, corrección y aprendizaje verificable",
+            style="Aegis.BrandSub.TLabel",
+        ).pack(anchor="w", pady=(2, 0))
+
+        ttk.Button(
+            frame,
+            text="＋ Nuevo proyecto",
+            command=self._new_project_wizard,
+            style="Aegis.Primary.TButton",
+        ).pack(side="right", padx=18, pady=18)
+
+    def _new_project_wizard(self):
+        initial = self.target_root if self.target_root else None
+        ProfileWizard(
+            self,
+            initial_project=initial,
+            on_saved=self._profile_wizard_saved,
+        )
+
+    def _profile_wizard_saved(self, profile_path: Path, project_root: Path):
+        try:
+            cfg = cargar_config(profile_path)
+        except Exception as exc:
+            messagebox.showerror("Perfil inválido", str(exc))
+            return
+
+        if self.proceso and self.proceso.is_running():
+            self.proceso.stop()
+
+        self.proceso = None
+        self.config_path = Path(profile_path).resolve()
+        self.cfg = cfg
+        self.target_root = Path(project_root).resolve()
+        self.auto_manage_var.set(bool(cfg.runtime.comando_inicio))
+        self.lbl_config.configure(
+            text=f"{cfg.sistema} {cfg.version_objetivo or ''}".strip()
+        )
+        self.lbl_target.configure(text=str(self.target_root))
+        self._log(
+            f"Aplicación incorporada: {cfg.sistema} | "
+            f"perfil={self.config_path} | código={self.target_root}"
+        )
+        self._refresh_state()
+        self._ai_sync_selected_control()
+        self.notebook.select(self.tab_dashboard)
+
+    def _show_about(self):
+        messagebox.showinfo(
+            "Aegis Auditor",
+            (
+                "AEGIS AUDITOR — Security Remediation Studio\n\n"
+                "Auditor correctivo de seguridad con diagnóstico de dos "
+                "pilares, remediación verificable, rollback, evidencias y "
+                "aprendizaje de medicinas semánticas reutilizables.\n\n"
+                "Una corrección sólo se considera válida cuando la prueba "
+                "dinámica confirma que el hallazgo desapareció sin regresiones."
+            ),
+        )
+
     def _build_header(self):
         frame = ttk.LabelFrame(self, text="Objetivo", padding=8)
         frame.pack(fill="x", padx=8, pady=(8, 4))
@@ -208,23 +494,153 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=5)
 
+        self.tab_dashboard = ttk.Frame(self.notebook)
         self.tab_results = ttk.Frame(self.notebook)
         self.tab_detail = ttk.Frame(self.notebook)
         self.tab_ai = ttk.Frame(self.notebook)
         self.tab_evidence = ttk.Frame(self.notebook)
         self.tab_log = ttk.Frame(self.notebook)
 
-        self.notebook.add(self.tab_results, text="Resultados")
+        self.notebook.add(self.tab_dashboard, text="Inicio")
+        self.notebook.add(self.tab_results, text="Hallazgos")
         self.notebook.add(self.tab_detail, text="Detalle / Corrección")
-        self.notebook.add(self.tab_ai, text="Asistente IA")
+        self.notebook.add(self.tab_ai, text="IA / Medicinas")
         self.notebook.add(self.tab_evidence, text="Evidencias")
         self.notebook.add(self.tab_log, text="Registro")
 
+        self._build_dashboard_tab()
         self._build_results_tab()
         self._build_detail_tab()
         self._build_ai_tab()
         self._build_evidence_tab()
         self._build_log_tab()
+
+    def _build_dashboard_tab(self):
+        outer = ttk.Frame(self.tab_dashboard, padding=18)
+        outer.pack(fill="both", expand=True)
+        outer.columnconfigure((0, 1, 2, 3), weight=1)
+        outer.rowconfigure(2, weight=1)
+
+        ttk.Label(
+            outer,
+            text="Centro de operación",
+            style="Aegis.H1.TLabel",
+        ).grid(row=0, column=0, columnspan=4, sticky="w")
+        ttk.Label(
+            outer,
+            text=(
+                "Carga una aplicación, genera o revisa su perfil, inicia el "
+                "objetivo y sigue el ciclo completo de auditoría."
+            ),
+            style="Aegis.Muted.TLabel",
+        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(3, 14))
+
+        cards = [
+            ("Proyecto", "dashboard_project_value"),
+            ("Perfil", "dashboard_profile_value"),
+            ("Proceso", "dashboard_process_value"),
+            ("Hallazgos", "dashboard_findings_value"),
+        ]
+        for index, (title, attr) in enumerate(cards):
+            card = tk.Frame(
+                outer,
+                background="#ffffff",
+                highlightbackground="#d8e1eb",
+                highlightthickness=1,
+                padx=14,
+                pady=12,
+            )
+            card.grid(
+                row=2,
+                column=index,
+                sticky="nsew",
+                padx=(0 if index == 0 else 5, 0 if index == 3 else 5),
+                pady=(0, 14),
+            )
+            ttk.Label(
+                card,
+                text=title.upper(),
+                style="Aegis.KpiTitle.TLabel",
+            ).pack(anchor="w")
+            value = ttk.Label(
+                card,
+                text="—",
+                style="Aegis.KpiValue.TLabel",
+                wraplength=230,
+            )
+            value.pack(anchor="w", pady=(5, 0))
+            setattr(self, attr, value)
+
+        flow = ttk.LabelFrame(
+            outer,
+            text="Flujo recomendado",
+            padding=14,
+        )
+        flow.grid(row=3, column=0, columnspan=4, sticky="nsew")
+        for col in range(5):
+            flow.columnconfigure(col, weight=1)
+
+        steps = [
+            ("1", "Incorporar", self._new_project_wizard),
+            ("2", "Iniciar", self._start_target),
+            ("3", "Diagnosticar", self._diagnose),
+            ("4", "Remediar", self._open_ai_for_selected),
+            ("5", "Evidencias", lambda: self.notebook.select(self.tab_evidence)),
+        ]
+        for col, (number, label, command) in enumerate(steps):
+            box = ttk.Frame(flow, padding=8)
+            box.grid(row=0, column=col, sticky="nsew", padx=4)
+            tk.Label(
+                box,
+                text=number,
+                width=3,
+                height=1,
+                background="#24b6a6",
+                foreground="#ffffff",
+                font=("Segoe UI Semibold", 11),
+            ).pack(anchor="center", pady=(0, 7))
+            ttk.Button(
+                box,
+                text=label,
+                command=command,
+                style=(
+                    "Aegis.Primary.TButton"
+                    if col == 0
+                    else "Aegis.Secondary.TButton"
+                ),
+            ).pack(fill="x")
+        ttk.Label(
+            flow,
+            text=(
+                "Aegis conserva línea base, backups, diff, re-verificación, "
+                "rollback y medicinas aprendidas durante el proceso."
+            ),
+            style="Aegis.Muted.TLabel",
+            wraplength=800,
+        ).grid(row=1, column=0, columnspan=5, sticky="w", pady=(14, 0))
+
+    def _refresh_dashboard(self):
+        if not hasattr(self, "dashboard_project_value"):
+            return
+
+        self.dashboard_project_value.configure(
+            text=(self.target_root.name if self.target_root else "Sin cargar")
+        )
+        self.dashboard_profile_value.configure(
+            text=(self.cfg.sistema if self.cfg else "Sin perfil")
+        )
+        self.dashboard_process_value.configure(
+            text=("En ejecución" if self._process_running() else "Detenido")
+        )
+
+        findings = 0
+        if self.resultado:
+            findings = sum(
+                1
+                for row in filas_gui(self.resultado)
+                if row.get("estado") == "HALLAZGO"
+            )
+        self.dashboard_findings_value.configure(text=str(findings))
 
     def _build_results_tab(self):
         columns = (
@@ -529,13 +945,25 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         )
         self.lbl_summary.grid(row=0, column=0, sticky="ew")
 
+        right = ttk.Frame(frame)
+        right.grid(row=0, column=1, sticky="ew")
+        right.columnconfigure(0, weight=1)
+
         self.lbl_status = ttk.Label(
-            frame,
+            right,
             text="Listo.",
             anchor="e",
             wraplength=420 if not self.compact_mode else 260,
         )
-        self.lbl_status.grid(row=0, column=1, sticky="ew")
+        self.lbl_status.grid(row=0, column=0, sticky="ew")
+
+        self.progress = ttk.Progressbar(
+            right,
+            mode="indeterminate",
+            length=180,
+            style="Aegis.Horizontal.TProgressbar",
+        )
+        self.progress.grid(row=1, column=0, sticky="e", pady=(3, 0))
 
     # ------------------------------------------------------------------
     # Utilidades
@@ -575,6 +1003,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
     def _background_success(self, result, callback):
         self._set_busy(False, "Listo.")
         self._refresh_process_state()
+        self._refresh_dashboard()
         self._refresh_ai_state()
         callback(result)
 
@@ -587,6 +1016,11 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
     def _set_busy(self, busy: bool, status: str):
         self.busy = busy
         self.lbl_status.configure(text=status)
+        if hasattr(self, "progress"):
+            if busy:
+                self.progress.start(12)
+            else:
+                self.progress.stop()
         self._refresh_state()
 
     def _selected_values(self):
@@ -997,6 +1431,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
             )
         )
         self.lbl_status.configure(text="Diagnóstico completo.")
+        self.notebook.select(self.tab_results)
         self._log(
             f"Diagnóstico: {total} hallazgo(s), "
             f"{r['errores']} error(es)."
