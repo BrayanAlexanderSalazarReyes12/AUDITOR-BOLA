@@ -37,8 +37,9 @@ class HomePage(ctk.CTkFrame):
             anchor="w",
         ).grid(row=1, column=0, columnspan=2, sticky="ew", padx=4, pady=(2, 12))
 
-        metrics = ctk.CTkFrame(self, fg_color="transparent")
-        metrics.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+        self.metrics = ctk.CTkFrame(self, fg_color="transparent")
+        self.metrics.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+        metrics = self.metrics
         for col in range(4):
             metrics.grid_columnconfigure(col, weight=1)
 
@@ -63,18 +64,19 @@ class HomePage(ctk.CTkFrame):
         self.progress_steps = ProgressSteps(progress_card)
         self.progress_steps.grid(row=2, column=0, sticky="ew", padx=16, pady=(8, 16))
 
-        console_card = SectionCard(
+        self.console_card = SectionCard(
             self,
             "Actividad en tiempo real",
             "Operaciones, runtime, diagnóstico y remediación.",
         )
-        console_card.grid(row=4, column=0, sticky="nsew", padx=(0, 6))
-        console_card.grid_rowconfigure(2, weight=1)
-        self.console = LiveConsole(console_card, height=240)
+        self.console_card.grid(row=4, column=0, sticky="nsew", padx=(0, 6))
+        self.console_card.grid_rowconfigure(2, weight=1)
+        self.console = LiveConsole(self.console_card, height=240)
         self.console.grid(row=2, column=0, sticky="nsew", padx=16, pady=(6, 16))
 
-        right = ctk.CTkFrame(self, fg_color="transparent")
-        right.grid(row=4, column=1, sticky="nsew", padx=(6, 0))
+        self.right_panel = ctk.CTkFrame(self, fg_color="transparent")
+        self.right_panel.grid(row=4, column=1, sticky="nsew", padx=(6, 0))
+        right = self.right_panel
         right.grid_columnconfigure(0, weight=1)
 
         project_card = SectionCard(
@@ -99,7 +101,8 @@ class HomePage(ctk.CTkFrame):
             "Control del proceso objetivo.",
         )
         runtime_card.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        runtime_card.grid_columnconfigure((0, 1), weight=1)
+        runtime_card.grid_columnconfigure(0, weight=1)
+        runtime_card.grid_columnconfigure(1, weight=1)
 
         app.btn_start = ActionButton(
             runtime_card, "▶ Iniciar", app._start_target, "success"
@@ -168,3 +171,95 @@ class HomePage(ctk.CTkFrame):
             "▧ Evidencias",
             lambda: app._route("evidence"),
         ).grid(row=4, column=0, sticky="ew", padx=16, pady=(5, 14))
+
+
+    def set_compact(self, compact: bool, ultra: bool = False):
+        """Reorganiza el dashboard sin perder información."""
+        if ultra:
+            self.grid_columnconfigure(0, weight=1)
+            self.grid_columnconfigure(1, weight=0)
+
+            self.project_card.grid(row=0, column=0, sticky="ew", padx=(0, 4), pady=(0, 6))
+            self.profile_card.grid(row=0, column=1, sticky="ew", padx=(4, 0), pady=(0, 6))
+            self.process_card.grid(row=1, column=0, sticky="ew", padx=(0, 4), pady=(6, 0))
+            self.findings_card.grid(row=1, column=1, sticky="ew", padx=(4, 0), pady=(6, 0))
+            self.metrics.grid_columnconfigure(0, weight=1)
+            self.metrics.grid_columnconfigure(1, weight=1)
+            self.metrics.grid_columnconfigure(2, weight=0)
+            self.metrics.grid_columnconfigure(3, weight=0)
+
+            self.console_card.grid(
+                row=4,
+                column=0,
+                columnspan=2,
+                sticky="nsew",
+                padx=0,
+                pady=(0, 8),
+            )
+            self.right_panel.grid(
+                row=5,
+                column=0,
+                columnspan=2,
+                sticky="ew",
+                padx=0,
+            )
+        elif compact:
+            self.grid_columnconfigure(0, weight=2)
+            self.grid_columnconfigure(1, weight=1)
+
+            self.project_card.grid(row=0, column=0, sticky="ew", padx=(0, 4), pady=0)
+            self.profile_card.grid(row=0, column=1, sticky="ew", padx=4, pady=0)
+            self.process_card.grid(row=1, column=0, sticky="ew", padx=(0, 4), pady=(8, 0))
+            self.findings_card.grid(row=1, column=1, sticky="ew", padx=4, pady=(8, 0))
+            self.metrics.grid_columnconfigure(0, weight=1)
+            self.metrics.grid_columnconfigure(1, weight=1)
+            self.metrics.grid_columnconfigure(2, weight=0)
+            self.metrics.grid_columnconfigure(3, weight=0)
+
+            self.console_card.grid(
+                row=4,
+                column=0,
+                sticky="nsew",
+                padx=(0, 5),
+            )
+            self.right_panel.grid(
+                row=4,
+                column=1,
+                sticky="nsew",
+                padx=(5, 0),
+            )
+        else:
+            self.grid_columnconfigure(0, weight=3)
+            self.grid_columnconfigure(1, weight=2)
+
+            cards = [
+                self.project_card,
+                self.profile_card,
+                self.process_card,
+                self.findings_card,
+            ]
+            for index, card in enumerate(cards):
+                card.grid(
+                    row=0,
+                    column=index,
+                    sticky="ew",
+                    padx=(
+                        0 if index == 0 else 5,
+                        0 if index == 3 else 5,
+                    ),
+                    pady=0,
+                )
+                self.metrics.grid_columnconfigure(index, weight=1)
+
+            self.console_card.grid(
+                row=4,
+                column=0,
+                sticky="nsew",
+                padx=(0, 6),
+            )
+            self.right_panel.grid(
+                row=4,
+                column=1,
+                sticky="nsew",
+                padx=(6, 0),
+            )
