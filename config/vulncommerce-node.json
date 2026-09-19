@@ -37,8 +37,17 @@
       "start"
     ],
     "directorio_trabajo": ".",
-    "espera_inicio": 2.0,
-    "variables": {}
+    "espera_inicio": 2,
+    "variables": {},
+    "preparar_automaticamente": true,
+    "comandos_preparacion": [
+      [
+        "npm",
+        "install",
+        "--no-audit",
+        "--no-fund"
+      ]
+    ]
   },
   "endpoints": [
     {
@@ -48,11 +57,17 @@
       "ruta": "/api/profile/{id}",
       "id_prueba": "1",
       "propietario_esperado": "admin",
-      "codigos_permitidos": [200],
+      "codigos_permitidos": [
+        200
+      ],
       "archivos_fuente": [
         "src/routes/userRoutes.js"
       ],
-      "pistas_codigo": ["profile", "id", "authorization"]
+      "pistas_codigo": [
+        "profile",
+        "id",
+        "authorization"
+      ]
     },
     {
       "id_control": "P1-BOLA-NODE-002",
@@ -61,11 +76,17 @@
       "ruta": "/api/profile/{id}",
       "id_prueba": "2",
       "propietario_esperado": "analyst",
-      "codigos_permitidos": [200],
+      "codigos_permitidos": [
+        200
+      ],
       "archivos_fuente": [
         "src/routes/userRoutes.js"
       ],
-      "pistas_codigo": ["profile", "id", "owner"]
+      "pistas_codigo": [
+        "profile",
+        "id",
+        "owner"
+      ]
     },
     {
       "id_control": "P1-BOLA-NODE-003",
@@ -74,11 +95,17 @@
       "ruta": "/api/profile/{id}",
       "id_prueba": "3",
       "propietario_esperado": "user",
-      "codigos_permitidos": [200],
+      "codigos_permitidos": [
+        200
+      ],
       "archivos_fuente": [
         "src/routes/userRoutes.js"
       ],
-      "pistas_codigo": ["profile", "id", "authorization"]
+      "pistas_codigo": [
+        "profile",
+        "id",
+        "authorization"
+      ]
     }
   ],
   "chequeos_agente": [],
@@ -91,11 +118,17 @@
       "ruta": "/api/admin",
       "cuerpo": null,
       "acceso_esperado": false,
-      "codigos_permitidos": [200],
+      "codigos_permitidos": [
+        200
+      ],
       "archivos_fuente": [
         "src/routes/adminRoutes.js"
       ],
-      "pistas_codigo": ["admin", "role", "req.user"]
+      "pistas_codigo": [
+        "admin",
+        "role",
+        "req.user"
+      ]
     }
   ],
   "chequeos_pilar2": [
@@ -105,8 +138,13 @@
       "tipo": "source_contains",
       "archivo": "src/app.js",
       "patron_inseguro": "Access-Control-Allow-Origin', '*'",
-      "archivos_fuente": ["src/app.js"],
-      "pistas_codigo": ["cors", "allow-origin"]
+      "archivos_fuente": [
+        "src/app.js"
+      ],
+      "pistas_codigo": [
+        "cors",
+        "allow-origin"
+      ]
     },
     {
       "id_control": "P2-NODE-EVAL-001",
@@ -114,8 +152,13 @@
       "tipo": "source_contains",
       "archivo": "src/routes/systemRoutes.js",
       "patron_inseguro": "eval(expression)",
-      "archivos_fuente": ["src/routes/systemRoutes.js"],
-      "pistas_codigo": ["eval", "expression"]
+      "archivos_fuente": [
+        "src/routes/systemRoutes.js"
+      ],
+      "pistas_codigo": [
+        "eval",
+        "expression"
+      ]
     },
     {
       "id_control": "P2-NODE-CMD-001",
@@ -123,8 +166,14 @@
       "tipo": "source_contains",
       "archivo": "src/routes/systemRoutes.js",
       "patron_inseguro": "exec(command",
-      "archivos_fuente": ["src/routes/systemRoutes.js"],
-      "pistas_codigo": ["exec", "command", "child_process"]
+      "archivos_fuente": [
+        "src/routes/systemRoutes.js"
+      ],
+      "pistas_codigo": [
+        "exec",
+        "command",
+        "child_process"
+      ]
     },
     {
       "id_control": "P2-NODE-JWT-001",
@@ -132,8 +181,15 @@
       "tipo": "source_contains",
       "archivo": "src/config.js",
       "patron_inseguro": "jwtSecret:",
-      "archivos_fuente": ["src/config.js", "src/auth.js"],
-      "pistas_codigo": ["jwt", "secret", "sign"]
+      "archivos_fuente": [
+        "src/config.js",
+        "src/auth.js"
+      ],
+      "pistas_codigo": [
+        "jwt",
+        "secret",
+        "sign"
+      ]
     },
     {
       "id_control": "P2-NODE-CRYPTO-001",
@@ -141,8 +197,13 @@
       "tipo": "source_contains",
       "archivo": "src/weakCrypto.js",
       "patron_inseguro": "createHash('md5')",
-      "archivos_fuente": ["src/weakCrypto.js"],
-      "pistas_codigo": ["md5", "createHash"]
+      "archivos_fuente": [
+        "src/weakCrypto.js"
+      ],
+      "pistas_codigo": [
+        "md5",
+        "createHash"
+      ]
     },
     {
       "id_control": "P2-NODE-SSRF-001",
@@ -150,8 +211,14 @@
       "tipo": "source_contains",
       "archivo": "src/routes/networkRoutes.js",
       "patron_inseguro": "fetch(target)",
-      "archivos_fuente": ["src/routes/networkRoutes.js"],
-      "pistas_codigo": ["fetch", "target", "url"]
+      "archivos_fuente": [
+        "src/routes/networkRoutes.js"
+      ],
+      "pistas_codigo": [
+        "fetch",
+        "target",
+        "url"
+      ]
     },
     {
       "id_control": "P2-NODE-MASS-001",
@@ -159,8 +226,14 @@
       "tipo": "source_contains",
       "archivo": "src/routes/userRoutes.js",
       "patron_inseguro": "req.body.role",
-      "archivos_fuente": ["src/routes/userRoutes.js"],
-      "pistas_codigo": ["role", "body", "update"]
+      "archivos_fuente": [
+        "src/routes/userRoutes.js"
+      ],
+      "pistas_codigo": [
+        "role",
+        "body",
+        "update"
+      ]
     }
   ],
   "correcciones": []
