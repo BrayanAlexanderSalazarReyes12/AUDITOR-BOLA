@@ -691,3 +691,36 @@ def test_detecta_version_en_constante_python(tmp_path):
     profile = build_profile_draft(detect_project(tmp_path))
 
     assert profile["version_objetivo"] == "8.0.1"
+
+
+def test_docker_compose_conserva_runtime_nativo_como_alternativa(tmp_path):
+    (tmp_path / "compose.yml").write_text(
+        "services:\n  app:\n    image: demo\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "package.json").write_text(
+        json.dumps({
+            "name": "demo",
+            "version": "1.2.3",
+            "scripts": {"start": "node server.js"},
+            "dependencies": {"express": "4.18.2"},
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / "server.js").write_text(
+        "console.log('demo');\n",
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+    runtime = detection.runtime
+
+    assert runtime["nombre"] == "Docker Compose"
+    assert runtime["comando_inicio"][0] == "docker"
+    assert runtime["base_url"] == "http://127.0.0.1:8080"
+    assert len(runtime["alternativas"]) == 1
+
+    native = runtime["alternativas"][0]
+    assert native["nombre"] == "Node.js (npm)"
+    assert native["comando_inicio"] == ["npm", "start"]
+    assert native["base_url"] == "http://127.0.0.1:3000"
