@@ -56,6 +56,41 @@ from .theme import COLORS, QSS
 from .widgets import Card, NavButton, PrimaryButton, brand_icon
 
 
+def responsive_modes(
+    logical_width: int,
+    logical_height: int,
+    dpr: float,
+) -> tuple[bool, bool, bool, bool]:
+    """Devuelve modos: sidebar compacto, condensado, página y topbar."""
+    scale = max(1.0, float(dpr))
+    physical_width = logical_width * scale
+    physical_height = logical_height * scale
+
+    sidebar_compact = (
+        physical_width < 1050
+        or physical_height < 620
+    )
+    sidebar_condensed = (
+        not sidebar_compact
+        and (
+            logical_height < 760
+            or scale > 1.25
+        )
+    )
+    page_compact = (
+        physical_width < 1380
+        or physical_height < 720
+    )
+    topbar_compact = physical_width < 1280
+
+    return (
+        sidebar_compact,
+        sidebar_condensed,
+        page_compact,
+        topbar_compact,
+    )
+
+
 class Sidebar(QFrame):
     """Navegación lateral con branding aislado del menú.
 
@@ -64,7 +99,7 @@ class Sidebar(QFrame):
     """
 
     EXPANDED_WIDTH = 300
-    CONDENSED_WIDTH = 236
+    CONDENSED_WIDTH = 190
     COMPACT_WIDTH = 76
     BRAND_MIN_HEIGHT = 252
     BRAND_CONDENSED_HEIGHT = 158
@@ -1036,30 +1071,16 @@ class AegisMainWindow(QMainWindow):
 
         # Qt trabaja con píxeles lógicos. Con escalado de Windows al
         # 150–175 %, una pantalla físicamente amplia puede parecer estrecha
-        # y activar por error el modo de iconos. Para la decisión de layout
-        # usamos también el tamaño físico efectivo.
-        dpr = max(1.0, float(self.devicePixelRatioF()))
-        physical_width = logical_width * dpr
-        physical_height = logical_height * dpr
-
-        sidebar_compact = (
-            physical_width < 1050
-            or physical_height < 620
-        )
-        sidebar_condensed = (
-            not sidebar_compact
-            and (
-                logical_height < 760
-                or dpr > 1.25
-            )
-        )
-
-        page_compact = (
-            physical_width < 1380
-            or physical_height < 720
-        )
-        topbar_compact = (
-            physical_width < 1280
+        # y activar por error el modo de iconos.
+        (
+            sidebar_compact,
+            sidebar_condensed,
+            page_compact,
+            topbar_compact,
+        ) = responsive_modes(
+            logical_width,
+            logical_height,
+            self.devicePixelRatioF(),
         )
 
         self.sidebar.set_layout_mode(
