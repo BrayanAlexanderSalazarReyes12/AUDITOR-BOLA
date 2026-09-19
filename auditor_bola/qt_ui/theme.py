@@ -41,7 +41,7 @@ QFrame#Sidebar {
     background: #071925;
     border-right: 1px solid #14384F;
 }
-QWidget#BrandBox {
+QWidget#BrandBox, QFrame#BrandBox {
     background: transparent;
     border: none;
 }
@@ -52,8 +52,9 @@ QLabel#BrandLogo {
 QLabel#BrandName {
     background: transparent;
     border: none;
-    font-size: 21px;
+    font-size: 18px;
     font-weight: 800;
+    color: #F4F8FB;
 }
 QLabel#BrandTagline {
     background: transparent;
@@ -64,10 +65,11 @@ QLabel#BrandTagline {
     letter-spacing: 1px;
 }
 QLabel#BrandPillars {
-    color: #93AFC1;
-    font-size: 9px;
     background: transparent;
     border: none;
+    color: #93AFC1;
+    font-size: 9px;
+    font-weight: 500;
 }
 QFrame#BrandDivider {
     background: #14384F;
