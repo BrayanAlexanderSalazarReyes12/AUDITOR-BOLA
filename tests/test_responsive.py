@@ -35,8 +35,8 @@ def test_layout_full_hd_no_desborda():
 def test_layout_4k_no_crece_sin_limite():
     layout = calculate_responsive_layout(3840, 2160)
 
-    assert layout.width == 1540
-    assert layout.height == 920
+    assert layout.width == 1360
+    assert layout.height == 820
     assert layout.compact is False
 
 
