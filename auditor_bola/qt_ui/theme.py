@@ -30,6 +30,146 @@ QSS = """
 QMainWindow, QWidget#Root {
     background: #06121D;
 }
+QDialog#AegisDialog {
+    background: #06121D;
+    color: #F4F8FB;
+}
+QWidget#DialogRoot {
+    background: #06121D;
+    border: none;
+}
+QWidget#DialogCanvas {
+    background: #06121D;
+    border: none;
+}
+QScrollArea#DialogScroll {
+    background: #06121D;
+    border: none;
+}
+QScrollArea#DialogScroll > QWidget > QWidget {
+    background: #06121D;
+}
+QFrame#DialogHero {
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:1,
+        stop:0 #0D2B40,
+        stop:1 #0A1D2B
+    );
+    border: 1px solid #1E638B;
+    border-radius: 14px;
+}
+QLabel#DialogBrandIcon {
+    background: transparent;
+    border: none;
+}
+QLabel#DialogTitle {
+    background: transparent;
+    border: none;
+    color: #FFFFFF;
+    font-size: 21px;
+    font-weight: 800;
+}
+QLabel#DialogSubtitle {
+    background: transparent;
+    border: none;
+    color: #8FA9BC;
+    font-size: 10px;
+}
+QLabel#DialogPill {
+    background: #0B3A56;
+    border: 1px solid #1A6D9C;
+    border-radius: 11px;
+    color: #8EDBFF;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 5px 10px;
+}
+QFrame#DialogStepperCard {
+    background: #0A1D2B;
+    border: 1px solid #173E58;
+    border-radius: 12px;
+}
+QFrame#DialogContentCard {
+    background: #0B2030;
+    border: 1px solid #173E58;
+    border-radius: 12px;
+}
+QFrame#DialogEmptyState {
+    background: #081824;
+    border: 1px dashed #245E82;
+    border-radius: 10px;
+}
+QLabel#DialogEmptyIcon {
+    background: transparent;
+    border: none;
+    color: #39C7FF;
+    font-size: 28px;
+    font-weight: 700;
+}
+QLabel#DialogBodyText {
+    background: transparent;
+    border: none;
+    color: #9BB4C5;
+    font-size: 10px;
+}
+QPlainTextEdit#DialogCodePreview {
+    background: #05121C;
+    border: 1px solid #173E58;
+    border-radius: 10px;
+    color: #CFE5F1;
+    selection-background-color: #16577F;
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 10px;
+}
+QFrame#DialogFooter {
+    background: #081824;
+    border: 1px solid #14384F;
+    border-radius: 10px;
+}
+QLabel#DialogHint {
+    background: transparent;
+    border: none;
+    color: #7896AA;
+    font-size: 9px;
+}
+QPushButton#DialogSecondaryButton {
+    background: #0F2D43;
+    border: 1px solid #1A5274;
+    border-radius: 8px;
+    color: #DDEBF3;
+    min-height: 34px;
+    padding: 0 14px;
+    font-size: 10px;
+}
+QPushButton#DialogSecondaryButton:hover {
+    background: #16405E;
+    border-color: #2B7FAE;
+}
+QPushButton#LoadCard {
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 #0D2A3D,
+        stop:1 #0C2435
+    );
+    border: 1px solid #1B587D;
+    border-radius: 12px;
+    text-align: left;
+    padding: 13px 16px;
+    color: #F4F8FB;
+    font-size: 10px;
+    font-weight: 700;
+}
+QPushButton#LoadCard:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 #123B55,
+        stop:1 #0F3046
+    );
+    border-color: #39C7FF;
+}
+QPushButton#LoadCard:pressed {
+    background: #0A2131;
+}
 QScrollArea {
     border: none;
     background: transparent;
