@@ -9,6 +9,8 @@ from pathlib import Path
 from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
+    QListView,
+    QAbstractItemView,
     QDialog,
     QFileDialog,
     QFrame,
@@ -432,7 +434,7 @@ class LoadCenterDialog(AegisDialog):
 
 
 class AccountManagerDialog(AegisDialog):
-    """Editor local de cuentas de prueba y roles para el perfil."""
+    """Editor de cuentas de prueba y roles del perfil."""
 
     AUTH_TYPES = ("basic", "bearer", "header", "none")
 
@@ -446,53 +448,137 @@ class AccountManagerDialog(AegisDialog):
         self.setWindowTitle("Aegis Auditor — Cuentas y roles")
         self.setWindowIcon(brand_icon())
         self.configure_dialog_size(
-            preferred=(900, 560),
-            minimum=(720, 460),
+            preferred=(1040, 620),
+            minimum=(780, 500),
         )
         self._privileged_roles = set(privileged_roles or [])
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 16, 18, 16)
-        root.setSpacing(10)
+        root.setContentsMargins(20, 18, 20, 18)
+        root.setSpacing(12)
 
-        root.addWidget(
-            SectionHeader(
-                "Cuentas de prueba",
-                "Aegis intenta detectarlas en código, seeds, SQL, JSON, "
-                "CSV y configuración. Aquí puedes completar o corregirlas.",
-            )
+        hero = Card(elevated=True)
+        hero.setObjectName("AccountsHero")
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(16, 12, 16, 12)
+        hero_layout.setSpacing(12)
+
+        icon = QLabel("♙")
+        icon.setObjectName("AccountsHeroIcon")
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setFixedSize(42, 42)
+        hero_layout.addWidget(icon)
+
+        titles = QVBoxLayout()
+        titles.setSpacing(2)
+        title = QLabel("Cuentas de prueba")
+        title.setObjectName("DialogTitle")
+        subtitle = QLabel(
+            "Revisa las cuentas encontradas automáticamente y agrega las "
+            "que sólo existan en BD, LDAP, SSO u otros servicios."
         )
+        subtitle.setObjectName("DialogSubtitle")
+        subtitle.setWordWrap(True)
+        titles.addWidget(title)
+        titles.addWidget(subtitle)
+        hero_layout.addLayout(titles, 1)
+
+        self.account_count = QLabel("0 cuentas")
+        self.account_count.setObjectName("DialogPill")
+        self.account_count.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.account_count.setMinimumWidth(92)
+        hero_layout.addWidget(self.account_count)
+
+        root.addWidget(hero)
+
+        toolbar = QFrame()
+        toolbar.setObjectName("AccountsToolbar")
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(12, 8, 12, 8)
+        toolbar_layout.setSpacing(8)
 
         hint = QLabel(
-            "Si las cuentas viven sólo en una base de datos, LDAP, SSO o "
-            "un entorno externo, agrégalas manualmente aquí."
+            "Autenticación: basic = usuario/clave · bearer = token · "
+            "header = cabecera personalizada · none = sin autenticación."
         )
         hint.setObjectName("DialogHint")
         hint.setWordWrap(True)
-        root.addWidget(hint)
+        toolbar_layout.addWidget(hint, 1)
+
+        self.show_passwords = QCheckBox("Mostrar contraseñas")
+        self.show_passwords.setObjectName("AccountsShowPasswords")
+        self.show_passwords.toggled.connect(
+            self._toggle_password_visibility
+        )
+        toolbar_layout.addWidget(self.show_passwords)
+
+        root.addWidget(toolbar)
 
         self.table = QTableWidget(0, 5)
         self.table.setObjectName("AccountsTable")
         self.table.setHorizontalHeaderLabels(
-            ["Usuario", "Contraseña", "Rol", "Autenticación", "Privilegiado"]
+            [
+                "Usuario",
+                "Contraseña",
+                "Rol",
+                "Autenticación",
+                "Privilegiado",
+            ]
         )
         self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(
+            0,
+            QHeaderView.ResizeMode.Stretch,
+        )
+        header.setSectionResizeMode(
+            1,
+            QHeaderView.ResizeMode.Stretch,
+        )
+        header.setSectionResizeMode(
+            2,
+            QHeaderView.ResizeMode.Stretch,
+        )
+        header.setSectionResizeMode(
+            3,
+            QHeaderView.ResizeMode.Fixed,
+        )
+        header.setSectionResizeMode(
+            4,
+            QHeaderView.ResizeMode.Fixed,
+        )
+        self.table.setColumnWidth(3, 154)
+        self.table.setColumnWidth(4, 116)
         root.addWidget(self.table, 1)
 
         for account in accounts or []:
             self._append_account(account)
 
-        actions = QHBoxLayout()
+        footer = QFrame()
+        footer.setObjectName("DialogFooter")
+        actions = QHBoxLayout(footer)
+        actions.setContentsMargins(10, 8, 10, 8)
+        actions.setSpacing(8)
+
         add = QPushButton("＋ Añadir cuenta")
+        add.setObjectName("AccountsAddButton")
         add.clicked.connect(lambda: self._append_account({}))
+
         remove = QPushButton("− Eliminar seleccionada")
+        remove.setObjectName("DialogSecondaryButton")
         remove.clicked.connect(self._remove_selected)
+
         actions.addWidget(add)
         actions.addWidget(remove)
         actions.addStretch(1)
@@ -500,67 +586,144 @@ class AccountManagerDialog(AegisDialog):
         cancel = QPushButton("Cancelar")
         cancel.setObjectName("DialogSecondaryButton")
         cancel.clicked.connect(self.reject)
+
         save = PrimaryButton("Guardar cuentas")
+        save.setMinimumWidth(144)
         save.clicked.connect(self.accept)
+
         actions.addWidget(cancel)
         actions.addWidget(save)
-        root.addLayout(actions)
+        root.addWidget(footer)
+
+        self._refresh_count()
 
     def _append_account(self, account: dict) -> None:
         row = self.table.rowCount()
         self.table.insertRow(row)
+        self.table.setRowHeight(row, 48)
 
-        username = QLineEdit(str(account.get("username") or ""))
-        username.setPlaceholderText("usuario")
+        username = QLineEdit(
+            str(account.get("username") or "")
+        )
+        username.setObjectName("AccountsCellEditor")
+        username.setPlaceholderText("usuario o correo")
         self.table.setCellWidget(row, 0, username)
 
-        password = QLineEdit(str(account.get("password") or ""))
+        password = QLineEdit(
+            str(account.get("password") or "")
+        )
+        password.setObjectName("AccountsCellEditor")
         password.setPlaceholderText("opcional")
-        password.setEchoMode(QLineEdit.EchoMode.Password)
+        password.setEchoMode(
+            QLineEdit.EchoMode.Normal
+            if self.show_passwords.isChecked()
+            else QLineEdit.EchoMode.Password
+        )
         self.table.setCellWidget(row, 1, password)
 
-        role = QLineEdit(str(account.get("role") or "USER"))
+        role = QLineEdit(
+            str(account.get("role") or "USER")
+        )
+        role.setObjectName("AccountsCellEditor")
         role.setPlaceholderText("USER")
         self.table.setCellWidget(row, 2, role)
 
         auth = QComboBox()
+        auth.setObjectName("AccountsAuthCombo")
+        auth.setMinimumWidth(136)
+        auth_view = QListView()
+        auth_view.setObjectName("AccountsComboPopup")
+        auth.setView(auth_view)
         auth.addItems(self.AUTH_TYPES)
-        current_auth = str(account.get("auth_type") or "none")
-        index = auth.findText(current_auth)
+
+        default_auth = str(account.get("auth_type") or "").strip()
+        if not default_auth:
+            default_auth = (
+                "basic"
+                if account.get("password")
+                else "none"
+            )
+        index = auth.findText(default_auth)
         auth.setCurrentIndex(index if index >= 0 else 0)
         self.table.setCellWidget(row, 3, auth)
 
         privileged = QCheckBox()
+        privileged.setObjectName("AccountsPrivilegeCheck")
+        privileged.setToolTip(
+            "Marca este rol como privilegiado para pruebas RBAC."
+        )
         privileged.setChecked(
-            str(account.get("role") or "") in self._privileged_roles
+            str(account.get("role") or "")
+            in self._privileged_roles
         )
         wrapper = QWidget()
+        wrapper.setObjectName("AccountsCheckWrapper")
         box = QHBoxLayout(wrapper)
         box.setContentsMargins(0, 0, 0, 0)
         box.setAlignment(Qt.AlignmentFlag.AlignCenter)
         box.addWidget(privileged)
         self.table.setCellWidget(row, 4, wrapper)
 
+        self.table.selectRow(row)
+        self._refresh_count()
+
+    def _toggle_password_visibility(
+        self,
+        visible: bool,
+    ) -> None:
+        mode = (
+            QLineEdit.EchoMode.Normal
+            if visible
+            else QLineEdit.EchoMode.Password
+        )
+        for row in range(self.table.rowCount()):
+            widget = self.table.cellWidget(row, 1)
+            if isinstance(widget, QLineEdit):
+                widget.setEchoMode(mode)
+
+    def _refresh_count(self) -> None:
+        count = self.table.rowCount()
+        self.account_count.setText(
+            f"{count} cuenta"
+            if count == 1
+            else f"{count} cuentas"
+        )
+
     def _remove_selected(self) -> None:
         row = self.table.currentRow()
         if row >= 0:
             self.table.removeRow(row)
+            self._refresh_count()
+            if self.table.rowCount():
+                self.table.selectRow(
+                    min(row, self.table.rowCount() - 1)
+                )
 
     def data(self) -> tuple[list[dict], list[str]]:
         accounts: list[dict] = []
         privileged_roles: list[str] = []
 
         for row in range(self.table.rowCount()):
-            username = self.table.cellWidget(row, 0).text().strip()
+            username_widget = self.table.cellWidget(row, 0)
+            password_widget = self.table.cellWidget(row, 1)
+            role_widget = self.table.cellWidget(row, 2)
+            auth_widget = self.table.cellWidget(row, 3)
+
+            username = username_widget.text().strip()
             if not username:
                 continue
-            password_text = self.table.cellWidget(row, 1).text()
-            role = self.table.cellWidget(row, 2).text().strip() or "USER"
-            auth = self.table.cellWidget(row, 3).currentText()
+
+            password_text = password_widget.text()
+            role = role_widget.text().strip() or "USER"
+            auth = auth_widget.currentText()
 
             wrapper = self.table.cellWidget(row, 4)
             checkbox = wrapper.findChild(QCheckBox)
-            if checkbox and checkbox.isChecked() and role not in privileged_roles:
+            if (
+                checkbox
+                and checkbox.isChecked()
+                and role not in privileged_roles
+            ):
                 privileged_roles.append(role)
 
             accounts.append(
