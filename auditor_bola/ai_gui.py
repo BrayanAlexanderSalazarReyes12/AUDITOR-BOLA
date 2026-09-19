@@ -14,12 +14,20 @@ from .ai_recipes import (
     AIRecipeProposal,
     cargar_configuracion_opencode,
     generar_tres_recetas,
+    generalizar_correccion_exitosa,
     guardar_seleccion_ia,
     guardar_sesion_ia,
     propuesta_a_correccion,
 )
 from .cycle import ciclo_correctivo
 from .source_locator import resolver_archivo_fuente
+from .remediation_knowledge import (
+    KnowledgeCandidate,
+    buscar_conocimiento,
+    guardar_conocimiento,
+    knowledge_root,
+    registrar_uso_conocimiento,
+)
 from .recipe_library import (
     RecipeLibraryCandidate,
     biblioteca_por_defecto,
@@ -43,6 +51,9 @@ class AIAssistantMixin:
         self.ai_library_candidates: list[RecipeLibraryCandidate] = []
         self.ai_library_window = None
         self.ai_selected_library_candidate: RecipeLibraryCandidate | None = None
+        self.ai_knowledge_candidates: list[KnowledgeCandidate] = []
+        self.ai_active_knowledge_candidate: KnowledgeCandidate | None = None
+        self.ai_knowledge_window = None
 
         outer = ttk.Frame(self.tab_ai, padding=8)
         outer.pack(fill="both", expand=True)
@@ -120,8 +131,28 @@ class AIAssistantMixin:
             row=4, column=1, columnspan=2, sticky="ew", pady=(4, 0)
         )
 
-        ttk.Label(header, text="Biblioteca de recetas:").grid(
+        ttk.Label(header, text="Medicinas conocidas:").grid(
             row=5, column=0, sticky="w", padx=(0, 6), pady=(4, 0)
+        )
+        self.lbl_ai_knowledge = ttk.Label(
+            header,
+            text=f"0 conocidas — {knowledge_root()}",
+            anchor="w",
+        )
+        self.lbl_ai_knowledge.grid(
+            row=5, column=1, sticky="ew", pady=(4, 0)
+        )
+        self.btn_ai_knowledge = ttk.Button(
+            header,
+            text="Ver medicinas",
+            command=self._open_knowledge_window,
+        )
+        self.btn_ai_knowledge.grid(
+            row=5, column=2, sticky="e", padx=(8, 0), pady=(4, 0)
+        )
+
+        ttk.Label(header, text="Parches concretos:").grid(
+            row=6, column=0, sticky="w", padx=(0, 6), pady=(4, 0)
         )
         self.lbl_ai_library = ttk.Label(
             header,
@@ -129,15 +160,15 @@ class AIAssistantMixin:
             anchor="w",
         )
         self.lbl_ai_library.grid(
-            row=5, column=1, sticky="ew", pady=(4, 0)
+            row=6, column=1, sticky="ew", pady=(4, 0)
         )
         self.btn_ai_library = ttk.Button(
             header,
-            text="Ver recetas guardadas",
+            text="Ver parches exactos",
             command=self._open_recipe_library_window,
         )
         self.btn_ai_library.grid(
-            row=5, column=2, sticky="e", padx=(8, 0), pady=(4, 0)
+            row=6, column=2, sticky="e", padx=(8, 0), pady=(4, 0)
         )
 
         buttons = ttk.Frame(outer)
@@ -163,7 +194,7 @@ class AIAssistantMixin:
 
         self.btn_ai_save = ttk.Button(
             buttons,
-            text="Guardar receta en perfil + biblioteca",
+            text="Guardar propuesta en perfil",
             command=self._save_ai_recipe_to_profile,
         )
         self.btn_ai_save.grid(row=0, column=2, sticky="ew", padx=3)
@@ -328,6 +359,10 @@ class AIAssistantMixin:
             self.btn_ai_library.configure(
                 state=enabled(bool(self.ai_library_candidates))
             )
+        if hasattr(self, "btn_ai_knowledge"):
+            self.btn_ai_knowledge.configure(
+                state=enabled(bool(self.ai_knowledge_candidates))
+            )
 
 
     def _ai_sync_selected_control(self):
@@ -341,8 +376,11 @@ class AIAssistantMixin:
         self.ai_session_dir = None
         self.ai_library_candidates = []
         self.ai_selected_library_candidate = None
+        self.ai_knowledge_candidates = []
+        self.ai_active_knowledge_candidate = None
         self._close_ai_proposals_window()
         self._close_recipe_library_window()
+        self._close_knowledge_window()
 
         for item in self.ai_table.get_children():
             self.ai_table.delete(item)
