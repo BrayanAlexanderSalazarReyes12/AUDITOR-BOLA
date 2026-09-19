@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QPlainTextEdit,
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
 
 from ..app_paths import (
     configure_packaged_environment,
+    default_config_dir,
     default_evidence_dir,
     default_recipe_dir,
     resource_path,
@@ -488,7 +490,7 @@ class AegisMainWindow(QMainWindow):
         selected, _filter = QFileDialog.getOpenFileName(
             self,
             "Cargar perfil JSON",
-            str(default_recipe_dir().parent / "config"),
+            str(default_config_dir()),
             "Perfil JSON (*.json)",
         )
         if selected:
