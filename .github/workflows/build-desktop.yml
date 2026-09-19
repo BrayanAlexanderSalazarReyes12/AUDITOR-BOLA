@@ -168,7 +168,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.1' \
+            'Version: 1.1.2' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -197,13 +197,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-1:
-    name: Publicar Release v1.1.1
+  release-v1-1-2:
+    name: Publicar Release v1.1.2
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.1]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.2]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -221,22 +221,25 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.1
+          # Aegis Auditor v1.1.2
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.1
-          - Pantalla de arranque fullscreen con porcentaje de carga.
-          - La ventana principal abre siempre en pantalla completa.
-          - Botón visible `✕ Salir` para cerrar Aegis desde fullscreen.
-          - Las tareas asíncronas muestran progreso visible con porcentaje.
-          - El análisis de nuevos proyectos muestra progreso por etapas.
-          - Detección genérica de cuentas y roles en código, JSON, SQL, CSV,
-            .env, properties y otros archivos de texto relevantes.
-          - Editor manual de cuentas para sistemas donde los usuarios viven
-            en base de datos, LDAP, SSO u otros servicios externos.
-          - Apache License 2.0 y NOTICE incluidos en instaladores y paquetes.
-          - Interfaz responsive en Windows, macOS y Linux.
+          ## Novedades de v1.1.2
+          - Editor de cuentas rediseñado con popup de autenticación oscuro,
+            filas mejor alineadas y opción para mostrar/ocultar contraseñas.
+          - Inventario exhaustivo de endpoints sin el límite anterior de
+            300 rutas ni de 4.000 archivos de código.
+          - Detección ampliada para Spring, Servlet/WebServlet, web.xml,
+            JAX-RS, Flask/FastAPI, Express/Fastify, NestJS, Django, Laravel,
+            Symfony, ASP.NET, Go, Rails/Sinatra/Phoenix, Rust, Play y Next.js.
+          - Lectura de OpenAPI/Swagger JSON y YAML.
+          - Referencias de formularios HTML/JSP, fetch, axios y jQuery como
+            fuente secundaria para descubrir rutas.
+          - El JSON de config incluye `endpoints_detectados` deduplicados por
+            método+ruta, con archivos y frameworks de origen.
+          - Se mantienen fullscreen, progreso, botón Salir, descubrimiento de
+            cuentas, editor manual y Apache License 2.0.
 
           ## Descargas
 
@@ -285,16 +288,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.1" >/dev/null 2>&1; then
-            gh release upload "v1.1.1" "${files[@]}" --clobber
-            gh release edit "v1.1.1" \
-              --title "Aegis Auditor v1.1.1" \
+          if gh release view "v1.1.2" >/dev/null 2>&1; then
+            gh release upload "v1.1.2" "${files[@]}" --clobber
+            gh release edit "v1.1.2" \
+              --title "Aegis Auditor v1.1.2" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.1" "${files[@]}" \
+            gh release create "v1.1.2" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.1" \
+              --title "Aegis Auditor v1.1.2" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
