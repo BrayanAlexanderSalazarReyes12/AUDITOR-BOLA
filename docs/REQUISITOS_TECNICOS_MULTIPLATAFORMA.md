@@ -131,3 +131,14 @@ Perfiles de referencia probados por cálculo:
 La barra lateral, cabecera, paddings, textos de estado, progreso y asistente de perfiles se reajustan al tamaño actual de la ventana. El cambio también se aplica cuando el usuario redimensiona la aplicación después de abrirla.
 
 No se fuerza una única resolución. En pantallas pequeñas Aegis reduce elementos secundarios; en pantallas grandes evita crecer indefinidamente y permite maximizar la ventana.
+
+## Interfaz gráfica Qt 6
+
+La interfaz principal de Aegis Auditor está construida con PySide6 / Qt 6.
+En los ejecutables publicados Qt se incluye dentro del paquete, por lo que el usuario final no instala PySide6 manualmente.
+
+Cuando Aegis se ejecuta desde código fuente se instala mediante requirements-runtime.txt o requirements.txt.
+
+En Linux el paquete de escritorio requiere además las bibliotecas gráficas declaradas por el .deb, incluyendo X11/XCB, EGL/GL y xkbcommon.
+
+Qt 6 aporta escalado HiDPI nativo para 100%, 125%, 150%, 175%, 200% y pantallas de alta densidad. Aegis complementa ese escalado con sidebar compacta y reflujo del rail derecho cuando el ancho disponible disminuye.
