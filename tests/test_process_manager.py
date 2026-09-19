@@ -140,3 +140,76 @@ def test_error_claro_si_comando_no_existe(tmp_path):
 
     assert "herramienta-inexistente" in str(exc.value)
     assert "PATH" in str(exc.value)
+
+
+def test_selecciona_comando_especifico_para_windows(tmp_path):
+    runtime = RuntimeConfig(
+        comando_inicio=["python", "fallback.py"],
+        comando_inicio_por_so={
+            "windows": ["npm", "start"],
+            "linux": ["bash", "start.sh"],
+            "macos": ["bash", "start-macos.sh"],
+        },
+        espera_inicio=0,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch("auditor_bola.process_manager.os.name", "nt"):
+        assert manager._command_for("inicio") == ["npm", "start"]
+
+
+def test_selecciona_comando_especifico_para_macos(tmp_path):
+    runtime = RuntimeConfig(
+        comando_inicio=["python", "fallback.py"],
+        comando_inicio_por_so={
+            "macos": ["php", "-S", "127.0.0.1:8080"],
+        },
+        espera_inicio=0,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch("auditor_bola.process_manager.os.name", "posix"), patch(
+        "auditor_bola.process_manager.sys.platform",
+        "darwin",
+    ):
+        assert manager._command_for("inicio") == [
+            "php",
+            "-S",
+            "127.0.0.1:8080",
+        ]
+
+
+def test_service_mode_usa_comandos_de_control(tmp_path):
+    runtime = RuntimeConfig(
+        modo="service",
+        comando_inicio=["docker", "compose", "up", "-d"],
+        comando_detener=["docker", "compose", "down"],
+        espera_inicio=0,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch.object(manager, "_run_control_command") as run:
+        manager.start()
+        assert manager.is_running() is True
+        run.assert_called_once_with(
+            ["docker", "compose", "up", "-d"],
+            action_name="iniciar",
+        )
+
+        run.reset_mock()
+        manager.stop()
+        assert manager.is_running() is False
+        run.assert_called_once_with(
+            ["docker", "compose", "down"],
+            action_name="detener",
+        )
+
+
+def test_external_mode_no_intenta_arrancar(tmp_path):
+    runtime = RuntimeConfig(modo="external")
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with pytest.raises(RuntimeError) as exc:
+        manager.start()
+
+    assert "external" in str(exc.value)
