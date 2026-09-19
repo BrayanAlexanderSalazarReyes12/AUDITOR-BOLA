@@ -20,6 +20,13 @@ from .ai_recipes import (
 )
 from .cycle import ciclo_correctivo
 from .source_locator import resolver_archivo_fuente
+from .recipe_library import (
+    RecipeLibraryCandidate,
+    biblioteca_por_defecto,
+    buscar_recetas_compatibles,
+    guardar_receta_biblioteca,
+    marcar_uso_receta,
+)
 
 
 class AIAssistantMixin:
@@ -33,6 +40,9 @@ class AIAssistantMixin:
         self.ai_provider: AIProviderConfig | None = None
         self.ai_proposals_window = None
         self.ai_proposals_notebook = None
+        self.ai_library_candidates: list[RecipeLibraryCandidate] = []
+        self.ai_library_window = None
+        self.ai_selected_library_candidate: RecipeLibraryCandidate | None = None
 
         outer = ttk.Frame(self.tab_ai, padding=8)
         outer.pack(fill="both", expand=True)
@@ -108,6 +118,26 @@ class AIAssistantMixin:
         )
         self.lbl_ai_config.grid(
             row=4, column=1, columnspan=2, sticky="ew", pady=(4, 0)
+        )
+
+        ttk.Label(header, text="Biblioteca de recetas:").grid(
+            row=5, column=0, sticky="w", padx=(0, 6), pady=(4, 0)
+        )
+        self.lbl_ai_library = ttk.Label(
+            header,
+            text=f"0 compatibles — {biblioteca_por_defecto()}",
+            anchor="w",
+        )
+        self.lbl_ai_library.grid(
+            row=5, column=1, sticky="ew", pady=(4, 0)
+        )
+        self.btn_ai_library = ttk.Button(
+            header,
+            text="Ver recetas guardadas",
+            command=self._open_recipe_library_window,
+        )
+        self.btn_ai_library.grid(
+            row=5, column=2, sticky="e", padx=(8, 0), pady=(4, 0)
         )
 
         buttons = ttk.Frame(outer)
@@ -294,6 +324,10 @@ class AIAssistantMixin:
             self.btn_ai_reload.configure(
                 state=enabled(True)
             )
+        if hasattr(self, "btn_ai_library"):
+            self.btn_ai_library.configure(
+                state=enabled(bool(self.ai_library_candidates))
+            )
 
 
     def _ai_sync_selected_control(self):
@@ -305,7 +339,10 @@ class AIAssistantMixin:
         self.ai_current_recipe = None
         self.ai_proposals = []
         self.ai_session_dir = None
+        self.ai_library_candidates = []
+        self.ai_selected_library_candidate = None
         self._close_ai_proposals_window()
+        self._close_recipe_library_window()
 
         for item in self.ai_table.get_children():
             self.ai_table.delete(item)
@@ -342,6 +379,7 @@ class AIAssistantMixin:
                     f"{control}: {resolution.archivo} "
                     f"(confianza {resolution.confianza})"
                 )
+                self._refresh_recipe_library()
             else:
                 self.ai_source_relative = None
                 self.lbl_ai_source.configure(
@@ -404,7 +442,378 @@ class AIAssistantMixin:
         self._log(
             f"Archivo IA seleccionado manualmente: {self.ai_source_relative}"
         )
+        self._refresh_recipe_library()
         self._refresh_ai_state()
+
+    def _close_recipe_library_window(self):
+        window = getattr(self, "ai_library_window", None)
+        if window is not None:
+            try:
+                if window.winfo_exists():
+                    window.destroy()
+            except tk.TclError:
+                pass
+        self.ai_library_window = None
+        self.ai_selected_library_candidate = None
+
+    def _refresh_recipe_library(self):
+        self.ai_library_candidates = []
+        self.ai_selected_library_candidate = None
+
+        if (
+            not self.cfg
+            or not self.target_root
+            or not self.ai_source_relative
+            or not self._selected_control()
+        ):
+            if hasattr(self, "lbl_ai_library"):
+                self.lbl_ai_library.configure(
+                    text=f"0 compatibles — {biblioteca_por_defecto()}"
+                )
+            return
+
+        row = (
+            self._selected_row_data()
+            if hasattr(self, "_selected_row_data")
+            else None
+        ) or {}
+
+        self.ai_library_candidates = buscar_recetas_compatibles(
+            control_id=self._selected_control(),
+            target_root=self.target_root,
+            archivo=self.ai_source_relative,
+            metodo=row.get("metodo"),
+            ruta=row.get("ruta"),
+        )
+
+        if hasattr(self, "lbl_ai_library"):
+            count = len(self.ai_library_candidates)
+            verificadas = sum(
+                candidate.verificada
+                for candidate in self.ai_library_candidates
+            )
+            self.lbl_ai_library.configure(
+                text=(
+                    f"{count} compatible(s), {verificadas} verificada(s) — "
+                    f"{biblioteca_por_defecto()}"
+                )
+            )
+
+        if self.ai_library_candidates:
+            self._log(
+                "Biblioteca: "
+                f"{len(self.ai_library_candidates)} receta(s) compatibles "
+                f"para {self._selected_control()}."
+            )
+        self._refresh_ai_state()
+
+    def _selected_library_candidate(self):
+        window = getattr(self, "ai_library_window", None)
+        table = getattr(self, "ai_library_table", None)
+        if window is None or table is None:
+            return self.ai_selected_library_candidate
+        selected = table.selection()
+        if not selected:
+            return self.ai_selected_library_candidate
+        try:
+            index = int(selected[0])
+        except (TypeError, ValueError):
+            return None
+        if index < 0 or index >= len(self.ai_library_candidates):
+            return None
+        return self.ai_library_candidates[index]
+
+    def _render_library_candidate(self, _event=None):
+        candidate = self._selected_library_candidate()
+        if candidate is None:
+            return
+
+        self.ai_selected_library_candidate = candidate
+        text = getattr(self, "ai_library_detail", None)
+        if text is None:
+            return
+
+        payload = {
+            "recipe_id": candidate.recipe_id,
+            "titulo": candidate.titulo,
+            "verificada": candidate.verificada,
+            "score": candidate.score,
+            "archivo_actual": candidate.correccion.archivo,
+            "descripcion": candidate.correccion.descripcion,
+            "requiere_reinicio": candidate.correccion.requiere_reinicio,
+            "operaciones": candidate.correccion.operaciones,
+            "codigo_resultante": candidate.preview.get("codigo_despues"),
+            "diff": candidate.preview.get("diff"),
+            "origenes": candidate.metadata.get("origenes", []),
+            "estadisticas": candidate.metadata.get("estadisticas", {}),
+        }
+
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        text.insert(
+            "1.0",
+            json.dumps(payload, ensure_ascii=False, indent=2),
+        )
+        text.configure(state="disabled")
+
+    def _open_recipe_library_window(self):
+        if not self.ai_library_candidates:
+            messagebox.showinfo(
+                "Biblioteca de recetas",
+                "No hay recetas guardadas que pasen el preview para este archivo.",
+            )
+            return
+
+        old = getattr(self, "ai_library_window", None)
+        if old is not None:
+            try:
+                if old.winfo_exists():
+                    old.lift()
+                    old.focus_force()
+                    return
+            except tk.TclError:
+                pass
+
+        window = tk.Toplevel(self)
+        self.ai_library_window = window
+        window.title("Biblioteca de recetas reutilizables")
+        screen_w = window.winfo_screenwidth()
+        screen_h = window.winfo_screenheight()
+        width = max(760, min(1300, screen_w - 100))
+        height = max(560, min(820, screen_h - 140))
+        window.geometry(f"{width}x{height}")
+        window.minsize(min(760, width), min(560, height))
+        window.protocol("WM_DELETE_WINDOW", self._close_recipe_library_window)
+
+        outer = ttk.Frame(window, padding=10)
+        outer.pack(fill="both", expand=True)
+        outer.rowconfigure(1, weight=1)
+        outer.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            outer,
+            text=(
+                f"Control: {self._selected_control()}   |   "
+                f"Archivo actual: {self.ai_source_relative}"
+            ),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        pane = tk.PanedWindow(
+            outer,
+            orient=tk.HORIZONTAL,
+            sashwidth=6,
+            relief="flat",
+            bd=0,
+        )
+        pane.grid(row=1, column=0, sticky="nsew")
+
+        left = ttk.Frame(pane, padding=4)
+        right = ttk.Frame(pane, padding=4)
+        pane.add(left, minsize=340, stretch="always")
+        pane.add(right, minsize=440, stretch="always")
+        left.rowconfigure(0, weight=1)
+        left.columnconfigure(0, weight=1)
+        right.rowconfigure(0, weight=1)
+        right.columnconfigure(0, weight=1)
+
+        columns = ("verificada", "score", "titulo")
+        table = ttk.Treeview(
+            left,
+            columns=columns,
+            show="headings",
+        )
+        self.ai_library_table = table
+        table.heading("verificada", text="Validada")
+        table.heading("score", text="Afinidad")
+        table.heading("titulo", text="Receta")
+        table.column("verificada", width=75, anchor="center")
+        table.column("score", width=70, anchor="center")
+        table.column("titulo", width=240, anchor="w")
+        table.grid(row=0, column=0, sticky="nsew")
+
+        scroll = ttk.Scrollbar(
+            left, orient="vertical", command=table.yview
+        )
+        table.configure(yscrollcommand=scroll.set)
+        scroll.grid(row=0, column=1, sticky="ns")
+
+        for index, candidate in enumerate(self.ai_library_candidates):
+            table.insert(
+                "",
+                "end",
+                iid=str(index),
+                values=(
+                    "Sí" if candidate.verificada else "No",
+                    candidate.score,
+                    candidate.titulo,
+                ),
+            )
+
+        detail = tk.Text(
+            right,
+            wrap="none",
+            font=("Consolas", 10),
+        )
+        self.ai_library_detail = detail
+        sy = ttk.Scrollbar(
+            right, orient="vertical", command=detail.yview
+        )
+        sx = ttk.Scrollbar(
+            right, orient="horizontal", command=detail.xview
+        )
+        detail.configure(
+            yscrollcommand=sy.set,
+            xscrollcommand=sx.set,
+        )
+        detail.grid(row=0, column=0, sticky="nsew")
+        sy.grid(row=0, column=1, sticky="ns")
+        sx.grid(row=1, column=0, sticky="ew")
+        detail.configure(state="disabled")
+
+        footer = ttk.Frame(outer)
+        footer.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(
+            footer,
+            text="Aplicar receta reutilizable",
+            command=self._apply_library_recipe,
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            footer,
+            text="Guardar esta receta en el perfil",
+            command=self._save_library_recipe_to_profile,
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            footer,
+            text="Cerrar",
+            command=self._close_recipe_library_window,
+        ).pack(side="right")
+
+        table.bind(
+            "<<TreeviewSelect>>",
+            self._render_library_candidate,
+        )
+        table.selection_set("0")
+        table.focus("0")
+        self.ai_selected_library_candidate = self.ai_library_candidates[0]
+        self._render_library_candidate()
+
+        window.transient(self)
+        window.lift()
+        window.focus_force()
+
+    def _replace_recipe_in_memory(self, correccion):
+        control = correccion.control_id
+        self.cfg.correcciones = [
+            item
+            for item in self.cfg.correcciones
+            if item.control_id != control
+        ]
+        self.cfg.correcciones.append(correccion)
+
+    def _write_recipe_to_profile(self, correccion):
+        if not self.config_path:
+            raise RuntimeError("No hay perfil seleccionado.")
+
+        raw_text = self.config_path.read_text(encoding="utf-8")
+        data = json.loads(raw_text)
+        corrections = [
+            item
+            for item in data.get("correcciones", [])
+            if item.get("control_id") != correccion.control_id
+        ]
+        corrections.append(asdict(correccion))
+        data["correcciones"] = corrections
+        self.config_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        self._replace_recipe_in_memory(correccion)
+        return raw_text, data
+
+    def _apply_library_recipe(self):
+        candidate = self._selected_library_candidate()
+        if (
+            candidate is None
+            or not self.cfg
+            or not self.target_root
+        ):
+            return
+
+        control = candidate.correccion.control_id
+        if not messagebox.askyesno(
+            "Aplicar receta reutilizable",
+            (
+                f"Control: {control}\n"
+                f"Receta: {candidate.titulo}\n"
+                f"Verificada previamente: "
+                f"{'Sí' if candidate.verificada else 'No'}\n\n"
+                "Esta receta pasó el preview sobre el archivo actual. "
+                "El auditor realizará backup, aplicación, verificación y "
+                "rollback si corresponde.\n\n¿Deseas continuar?"
+            ),
+        ):
+            return
+
+        self._replace_recipe_in_memory(candidate.correccion)
+
+        def task():
+            reiniciar = self._prepare_restart_callback([control])
+            result = ciclo_correctivo(
+                self.cfg,
+                control,
+                self.target_root,
+                evidence_base=self.evidence_base,
+                reiniciar=reiniciar,
+            )
+            marcar_uso_receta(
+                candidate.path,
+                exitoso=result.get("estado_final") == "CORREGIDO",
+            )
+            return result
+
+        def done(result):
+            estado = result.get("estado_final")
+            self._log(
+                f"Biblioteca: receta {candidate.recipe_id[:12]} "
+                f"aplicada a {control}: {estado}"
+            )
+            messagebox.showinfo(
+                "Resultado de receta reutilizable",
+                f"{control}: {estado}",
+            )
+            self._close_recipe_library_window()
+            self._diagnose()
+
+        self._run_background(
+            task,
+            done,
+            "Aplicando receta reutilizable…",
+        )
+
+    def _save_library_recipe_to_profile(self):
+        candidate = self._selected_library_candidate()
+        if candidate is None or not self.config_path or not self.cfg:
+            return
+
+        if not messagebox.askyesno(
+            "Guardar receta en perfil",
+            (
+                f"Se añadirá la receta '{candidate.titulo}' al perfil "
+                f"{self.config_path.name}.\n\n¿Continuar?"
+            ),
+        ):
+            return
+
+        self._write_recipe_to_profile(candidate.correccion)
+        self._log(
+            f"Biblioteca: receta {candidate.recipe_id[:12]} "
+            f"guardada en perfil para {candidate.correccion.control_id}."
+        )
+        messagebox.showinfo(
+            "Perfil actualizado",
+            "La receta reutilizable quedó guardada en el perfil actual.",
+        )
+        self._refresh_state()
 
     def _current_finding_data(self) -> tuple[str, str, str]:
         values = self._selected_values()
