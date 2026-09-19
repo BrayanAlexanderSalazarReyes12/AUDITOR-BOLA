@@ -19,7 +19,26 @@ TEXT_EXTENSIONS = {
     ".jsp", ".html", ".htm", ".xml", ".json", ".yaml", ".yml",
     ".toml", ".properties", ".gradle", ".sh", ".ps1", ".bat", ".cmd",
     ".sql", ".env", ".ini", ".conf", ".cfg", ".txt", ".csv",
+    ".md", ".markdown", ".mdown", ".rst", ".adoc", ".asciidoc",
+    ".http", ".rest", ".graphql", ".gql", ".proto", ".wsdl", ".xsd",
+    ".log", ".out", ".cnf", ".config", ".prefs",
 }
+
+DOCUMENT_EXTENSIONS = {
+    ".md", ".markdown", ".mdown", ".rst", ".adoc", ".asciidoc",
+    ".txt", ".http", ".rest",
+}
+
+BINARY_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico",
+    ".pdf", ".zip", ".7z", ".rar", ".gz", ".tar", ".tgz",
+    ".jar", ".war", ".ear", ".class", ".pyc", ".pyo",
+    ".exe", ".dll", ".so", ".dylib", ".bin", ".dat",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot",
+    ".mp3", ".mp4", ".avi", ".mov", ".mkv", ".wav",
+}
+
+MAX_TEXT_SCAN_BYTES = 5_000_000
 
 IGNORE_DIRS = {
     ".git", ".idea", ".vscode", "__pycache__", ".pytest_cache",
@@ -83,6 +102,71 @@ def _read_text(path: Path, limit: int = 500_000) -> str:
         return path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return ""
+
+
+def _looks_like_text_file(path: Path) -> bool:
+    """Acepta archivos desconocidos si su contenido parece texto."""
+    try:
+        size = path.stat().st_size
+        if size == 0:
+            return True
+        if size > MAX_TEXT_SCAN_BYTES:
+            return False
+        if path.suffix.lower() in BINARY_EXTENSIONS:
+            return False
+        sample = path.read_bytes()[:8192]
+    except OSError:
+        return False
+
+    if b"\\x00" in sample:
+        return False
+    if not sample:
+        return True
+
+    printable = sum(
+        1
+        for byte in sample
+        if byte in b"\\t\\n\\r"
+        or 32 <= byte <= 126
+        or byte >= 128
+    )
+    return printable / len(sample) >= 0.85
+
+
+def _source_kind(source: str) -> str:
+    path = Path(source)
+    suffix = path.suffix.lower()
+    name = path.name.lower()
+    lower_parts = {part.lower() for part in path.parts}
+
+    if (
+        suffix in DOCUMENT_EXTENSIONS
+        or name.startswith("readme")
+        or "manual" in name
+        or "guide" in name
+        or "guia" in name
+        or "document" in name
+        or "docs" in lower_parts
+        or "documentation" in lower_parts
+    ):
+        return "documentacion"
+
+    if suffix in {
+        ".env", ".ini", ".conf", ".cfg", ".cnf", ".config",
+        ".properties", ".yaml", ".yml", ".toml", ".json",
+        ".xml", ".sql", ".csv",
+    }:
+        return "configuracion"
+
+    if suffix in {
+        ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
+        ".java", ".kt", ".kts", ".php", ".cs", ".go", ".rb",
+        ".rs", ".scala", ".swift", ".dart", ".ex", ".exs",
+        ".jsp", ".html", ".htm", ".vue", ".svelte",
+    }:
+        return "codigo"
+
+    return "texto"
 
 
 def _iter_source_files(
