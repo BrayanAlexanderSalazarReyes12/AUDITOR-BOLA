@@ -9,6 +9,7 @@ hiddenimports = collect_submodules("auditor_bola")
 datas = collect_data_files("customtkinter") + [
     ("assets/aegis-auditor.svg", "assets"),
     ("assets/aegis-shield.svg", "assets"),
+    ("assets/aegis-auditor-logo.png", "assets"),
     ("assets/aegis-auditor.png", "assets"),
     ("config/plantilla.json", "config"),
     ("docs/REQUISITOS_USO.md", "docs"),
