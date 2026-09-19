@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -400,12 +401,28 @@ class LocalTargetProcess:
         self._reset_output_buffer()
 
         try:
+            popen_kwargs = {
+                "cwd": cwd,
+                "env": env,
+                "stdout": self._output,
+                "stderr": subprocess.STDOUT,
+            }
+
+            # Crear un grupo/sesión independiente permite detener también los
+            # procesos hijo que lance el runtime (npm -> node, mvn -> java,
+            # scripts -> servidores, etc.).
+            if os.name == "nt":
+                popen_kwargs["creationflags"] = getattr(
+                    subprocess,
+                    "CREATE_NEW_PROCESS_GROUP",
+                    0,
+                )
+            else:
+                popen_kwargs["start_new_session"] = True
+
             self.process = subprocess.Popen(
                 command,
-                cwd=cwd,
-                env=env,
-                stdout=self._output,
-                stderr=subprocess.STDOUT,
+                **popen_kwargs,
             )
         except FileNotFoundError as exc:
             self._close_output_buffer()
@@ -440,6 +457,92 @@ class LocalTargetProcess:
                 )
             raise RuntimeError(message)
 
+    def _terminate_process_tree(self) -> None:
+        """Detiene el proceso administrado y todos sus descendientes.
+
+        Terminar únicamente el wrapper padre no es suficiente: en Windows,
+        por ejemplo, npm.cmd/cmd.exe puede dejar node.exe atendiendo el mismo
+        puerto. La verificación posterior terminaría hablando con el código
+        anterior y marcaría cualquier receta como NO_CORREGIDO.
+        """
+        process = self.process
+        if process is None:
+            return
+
+        if process.poll() is not None:
+            return
+
+        pid = process.pid
+
+        if os.name == "nt":
+            # taskkill /T elimina el árbol completo; /F evita que un hijo que
+            # ignora la terminación mantenga vivo el servidor anterior.
+            try:
+                completed = subprocess.run(
+                    [
+                        "taskkill",
+                        "/PID",
+                        str(pid),
+                        "/T",
+                        "/F",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                if completed.returncode == 0:
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    return
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+            # Fallback si taskkill no está disponible.
+            try:
+                process.terminate()
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+            return
+
+        # En POSIX el proceso se creó con start_new_session=True, por lo que
+        # su PID identifica el grupo de procesos de la aplicación.
+        try:
+            pgid = os.getpgid(pid)
+        except (ProcessLookupError, OSError):
+            pgid = None
+
+        if pgid is not None:
+            try:
+                os.killpg(pgid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+
+        try:
+            process.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+
+        if pgid is not None:
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        else:
+            try:
+                process.kill()
+            except OSError:
+                pass
+
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+
     def stop(self) -> None:
         mode = self._modo()
 
@@ -457,13 +560,8 @@ class LocalTargetProcess:
             self._service_running = False
             return
 
-        if self.is_running():
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=5)
+        if self.process is not None:
+            self._terminate_process_tree()
             self.process = None
 
         self._close_output_buffer()
