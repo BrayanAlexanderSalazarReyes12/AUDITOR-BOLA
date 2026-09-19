@@ -63,7 +63,7 @@ class HomePage(QWidget):
         self.grid.setVerticalSpacing(8)
         self.grid.setColumnStretch(0, 7)
         self.grid.setColumnStretch(1, 3)
-        self.grid.setRowStretch(2, 1)
+        self.grid.setRowStretch(2, 0)
 
         self.step_card = Card()
         step_layout = QVBoxLayout(self.step_card)
@@ -153,9 +153,13 @@ class HomePage(QWidget):
         )
         self.console = QPlainTextEdit()
         self.console.setReadOnly(True)
-        self.console.setMinimumHeight(104)
-        self.console.setMaximumHeight(150)
+        self.console.setMinimumHeight(96)
+        self.console.setMaximumHeight(132)
         console_layout.addWidget(self.console, 1)
+        self.console_card.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         self.grid.addWidget(self.console_card, 2, 0)
 
         self.metrics = QWidget()
@@ -251,6 +255,8 @@ class HomePage(QWidget):
         )
         self.profile_preview = QPlainTextEdit()
         self.profile_preview.setReadOnly(True)
+        self.profile_preview.setMinimumHeight(108)
+        self.profile_preview.setMaximumHeight(170)
         self.profile_preview.setPlainText(
             '{\n  "perfil": "sin cargar"\n}'
         )
