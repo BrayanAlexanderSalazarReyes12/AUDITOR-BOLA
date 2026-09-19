@@ -1,4 +1,4 @@
-"""Gestor genérico del proceso local del sistema objetivo."""
+"""Gestor multiplataforma del proceso local del sistema objetivo."""
 
 from __future__ import annotations
 
@@ -14,12 +14,66 @@ from .config import RuntimeConfig
 
 
 class LocalTargetProcess:
+    """Arranca objetivos heterogéneos sin acoplar el Auditor a un framework.
+
+    Modos:
+    - process/command: proceso persistente administrado con Popen.
+    - service: comandos de control que terminan, pero dejan un servicio activo
+      (por ejemplo: docker compose up -d, systemctl, XAMPP).
+    - external: el objetivo ya está administrado fuera del Auditor.
+    """
+
     def __init__(self, target_root: str | Path, runtime: RuntimeConfig):
         self.root = Path(target_root).resolve()
         self.runtime = runtime
         self.process: subprocess.Popen | None = None
+        self._service_running = False
+
+    def _modo(self) -> str:
+        mode = (self.runtime.modo or "process").strip().lower()
+        if mode == "command":
+            # Compatibilidad con perfiles experimentales anteriores.
+            return "process"
+        if mode not in {"process", "service", "external"}:
+            raise ValueError(
+                f"runtime.modo no soportado: {self.runtime.modo!r}; "
+                "use process, service o external"
+            )
+        return mode
+
+    @staticmethod
+    def _platform_key() -> str:
+        if os.name == "nt":
+            return "windows"
+        if sys.platform == "darwin":
+            return "macos"
+        return "linux"
+
+    def _command_for(self, action: str) -> list[str]:
+        """Selecciona comando común o override específico del SO."""
+        if action not in {"inicio", "detener", "reinicio"}:
+            raise ValueError(f"acción de runtime no soportada: {action}")
+
+        base = list(getattr(self.runtime, f"comando_{action}") or [])
+        per_os = dict(
+            getattr(self.runtime, f"comando_{action}_por_so") or {}
+        )
+        platform_key = self._platform_key()
+
+        chosen = per_os.get(platform_key)
+        if chosen is None:
+            chosen = per_os.get("default")
+        if chosen is None:
+            chosen = base
+
+        return [str(item) for item in chosen]
 
     def is_running(self) -> bool:
+        mode = self._modo()
+        if mode == "service":
+            return self._service_running
+        if mode == "external":
+            return False
         return bool(self.process and self.process.poll() is None)
 
     @staticmethod
@@ -32,11 +86,7 @@ class LocalTargetProcess:
         cwd: Path,
         env: dict[str, str],
     ) -> Path | None:
-        """Busca un launcher dentro del propio proyecto.
-
-        Esto cubre, entre otros, mvnw, mvnw.cmd, gradlew, gradlew.bat y
-        scripts que el proyecto incluya en su raíz.
-        """
+        """Busca un launcher dentro del propio proyecto."""
         candidate = (cwd / requested).resolve()
         if candidate.exists() and candidate.is_file():
             return candidate
@@ -50,12 +100,15 @@ class LocalTargetProcess:
                 extension = extension.strip()
                 if not extension:
                     continue
-                variant = Path(str(candidate) + extension.lower())
-                if variant.exists() and variant.is_file():
-                    return variant
-                variant_upper = Path(str(candidate) + extension.upper())
-                if variant_upper.exists() and variant_upper.is_file():
-                    return variant_upper
+
+                for variant_suffix in {
+                    extension,
+                    extension.lower(),
+                    extension.upper(),
+                }:
+                    variant = Path(str(candidate) + variant_suffix)
+                    if variant.exists() and variant.is_file():
+                        return variant
 
         return None
 
@@ -86,7 +139,7 @@ class LocalTargetProcess:
         raise FileNotFoundError(
             errno.ENOENT,
             (
-                f"No se encontró el comando o archivo de inicio '{requested}'. "
+                f"No se encontró el comando o archivo '{requested}'. "
                 "Verifica que exista en el proyecto o que su runtime esté "
                 "instalado y disponible en PATH."
             ),
@@ -121,18 +174,14 @@ class LocalTargetProcess:
             if not powershell:
                 raise FileNotFoundError(
                     errno.ENOENT,
-                    "El objetivo requiere PowerShell (pwsh/powershell) y no está en PATH.",
+                    "El objetivo requiere PowerShell y no está disponible en PATH.",
                     "pwsh",
                 )
-            return [
-                powershell,
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                resolved,
-                *args,
-            ]
+            command = [powershell, "-NoProfile"]
+            if os.name == "nt":
+                command.extend(["-ExecutionPolicy", "Bypass"])
+            command.extend(["-File", resolved, *args])
+            return command
 
         if suffix == ".py":
             return [sys.executable, resolved, *args]
@@ -169,32 +218,28 @@ class LocalTargetProcess:
 
         return [resolved, *args]
 
-    def _resolver_comando(self, cwd: Path, env: dict[str, str]) -> list[str]:
-        """Resuelve cualquier comando declarado por el perfil.
+    def _resolver_comando(
+        self,
+        cwd: Path,
+        env: dict[str, str],
+        raw: list[str] | None = None,
+    ) -> list[str]:
+        """Resuelve un comando de perfil de forma portable.
 
-        Casos cubiertos:
-        - ejecutables instalados y disponibles en PATH;
-        - ejecutables/runners incluidos dentro del proyecto;
-        - wrappers .cmd/.bat de Windows (npm, npx, yarn, mvnw, gradlew);
-        - scripts .py, .ps1 y .sh;
-        - archivos .jar;
-        - scripts Node .js/.mjs/.cjs.
-
-        Si el perfil ya declara un runtime explícito, por ejemplo
-        ["python", "run.py"] o ["java", "-jar", "app.jar"], se respeta tal cual.
+        Si raw no se pasa, se usa el comando de inicio aplicable al SO actual.
         """
-        raw = [str(item) for item in self.runtime.comando_inicio]
+        raw = list(raw if raw is not None else self._command_for("inicio"))
+        raw = [str(item) for item in raw]
+
         if not raw:
             raise RuntimeError(
-                "el perfil no declara runtime.comando_inicio"
+                "el perfil no declara un comando aplicable al sistema operativo "
+                f"actual ({self._platform_key()})"
             )
 
         requested = raw[0]
         resolved = self._resolver_ruta_inicial(requested, cwd, env)
 
-        # Cuando el primer elemento ya es un runtime instalado (python, java,
-        # node, dotnet, php, ruby, go, etc.), no inferimos nada sobre los
-        # argumentos posteriores: simplemente ejecutamos el runtime resuelto.
         if Path(requested).suffix == "" and self._which(requested, env):
             suffix = Path(resolved).suffix.lower()
             if not (os.name == "nt" and suffix in {".cmd", ".bat"}):
@@ -202,17 +247,12 @@ class LocalTargetProcess:
 
         return self._resolver_interprete(resolved, raw[1:], env)
 
-    def start(self) -> None:
-        if self.is_running():
-            return
-        if not self.runtime.comando_inicio:
-            raise RuntimeError(
-                "el perfil no declara runtime.comando_inicio"
-            )
-
+    def _context(self) -> tuple[Path, dict[str, str]]:
         cwd = (self.root / self.runtime.directorio_trabajo).resolve()
+
         if cwd != self.root and self.root not in cwd.parents:
             raise ValueError("directorio_trabajo fuera del target_root")
+
         if not cwd.exists() or not cwd.is_dir():
             raise FileNotFoundError(
                 errno.ENOENT,
@@ -222,12 +262,70 @@ class LocalTargetProcess:
 
         env = os.environ.copy()
         env.update(self.runtime.variables)
+        return cwd, env
 
-        comando = self._resolver_comando(cwd, env)
+    def _run_control_command(
+        self,
+        raw: list[str],
+        *,
+        action_name: str,
+    ) -> None:
+        cwd, env = self._context()
+        command = self._resolver_comando(cwd, env, raw=raw)
+
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            if len(detail) > 1000:
+                detail = detail[-1000:]
+            raise RuntimeError(
+                f"No se pudo {action_name} el objetivo "
+                f"(código {completed.returncode}). {detail}"
+            )
+
+    def start(self) -> None:
+        mode = self._modo()
+
+        if mode == "external":
+            raise RuntimeError(
+                "Este perfil declara runtime.modo='external'. "
+                "El objetivo debe iniciarse fuera del Auditor; después puede "
+                "ejecutarse el diagnóstico contra base_url."
+            )
+
+        if self.is_running():
+            return
+
+        start_command = self._command_for("inicio")
+        if not start_command:
+            raise RuntimeError(
+                "el perfil no declara comando de inicio para "
+                f"{self._platform_key()}"
+            )
+
+        if mode == "service":
+            self._run_control_command(
+                start_command,
+                action_name="iniciar",
+            )
+            self._service_running = True
+            time.sleep(self.runtime.espera_inicio)
+            return
+
+        cwd, env = self._context()
+        command = self._resolver_comando(cwd, env, raw=start_command)
 
         try:
             self.process = subprocess.Popen(
-                comando,
+                command,
                 cwd=cwd,
                 env=env,
                 stdout=subprocess.DEVNULL,
@@ -238,13 +336,14 @@ class LocalTargetProcess:
                 errno.ENOENT,
                 (
                     "No se pudo iniciar el objetivo. "
-                    f"Comando resuelto: {comando[0]!r}. "
+                    f"Comando resuelto: {command[0]!r}. "
                     "Verifica instalación, PATH y runtime requerido."
                 ),
-                comando[0],
+                command[0],
             ) from exc
 
         time.sleep(self.runtime.espera_inicio)
+
         if self.process.poll() is not None:
             return_code = self.process.returncode
             self.process = None
@@ -255,17 +354,56 @@ class LocalTargetProcess:
             )
 
     def stop(self) -> None:
-        if not self.is_running():
-            self.process = None
+        mode = self._modo()
+
+        if mode == "external":
             return
-        self.process.terminate()
-        try:
-            self.process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
-            self.process.wait(timeout=5)
-        self.process = None
+
+        stop_command = self._command_for("detener")
+
+        if mode == "service":
+            if stop_command:
+                self._run_control_command(
+                    stop_command,
+                    action_name="detener",
+                )
+            self._service_running = False
+            return
+
+        if self.is_running():
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=5)
+            self.process = None
+
+        if stop_command:
+            self._run_control_command(
+                stop_command,
+                action_name="detener",
+            )
 
     def restart(self) -> None:
+        mode = self._modo()
+
+        if mode == "external":
+            raise RuntimeError(
+                "Este perfil usa runtime.modo='external'; "
+                "el reinicio debe administrarse fuera del Auditor."
+            )
+
+        restart_command = self._command_for("reinicio")
+
+        if mode == "service" and restart_command:
+            self._run_control_command(
+                restart_command,
+                action_name="reiniciar",
+            )
+            self._service_running = True
+            time.sleep(self.runtime.espera_inicio)
+            return
+
         self.stop()
         self.start()
