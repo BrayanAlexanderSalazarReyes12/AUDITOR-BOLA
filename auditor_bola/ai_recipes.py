@@ -746,11 +746,19 @@ def _solicitar_json_gemma(
 
 
 def _lista_strings(data: dict, key: str) -> list[str]:
+    """Normaliza listas semánticas devueltas por el modelo.
+
+    Algunos modelos devuelven un único string para campos conceptualmente
+    listados. No debe perderse una corrección verificada por una diferencia
+    superficial de formato.
+    """
     value = data.get(key)
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = [value]
     if not isinstance(value, list):
-        raise RuntimeError(
-            f"Gemma no devolvió una lista válida en '{key}'."
-        )
+        value = [value]
     return [str(item).strip() for item in value if str(item).strip()]
 
 
