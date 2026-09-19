@@ -20,8 +20,8 @@ def calculate_responsive_layout(
     screen_w: int,
     screen_h: int,
     *,
-    preferred_w: int = 1360,
-    preferred_h: int = 820,
+    preferred_w: int = 1540,
+    preferred_h: int = 900,
 ) -> ResponsiveLayout:
     """Calcula geometría segura para pantallas desde 1024×600 hasta 4K.
 
@@ -42,15 +42,15 @@ def calculate_responsive_layout(
     compact = ultra or screen_w < 1450 or screen_h < 800
 
     if ultra:
-        sidebar = 154
+        sidebar = 76
         padding = 5
         font_delta = -1
     elif compact:
-        sidebar = 190
+        sidebar = 228
         padding = 7
         font_delta = 0
     else:
-        sidebar = 236
+        sidebar = 268
         padding = 10
         font_delta = 0
 
