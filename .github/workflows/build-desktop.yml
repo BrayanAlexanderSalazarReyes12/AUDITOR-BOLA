@@ -42,18 +42,20 @@ jobs:
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           & $iscc installer\AegisAuditor.iss
-      - name: Checksums
+      - name: Preparar artefactos de release
         shell: pwsh
         run: |
-          (Get-FileHash dist\AegisAuditor.exe -Algorithm SHA256).Hash.ToLower() + "  AegisAuditor.exe" | Out-File -Encoding ascii dist\AegisAuditor.exe.sha256
-          (Get-FileHash dist\AegisAuditor-Setup.exe -Algorithm SHA256).Hash.ToLower() + "  AegisAuditor-Setup.exe" | Out-File -Encoding ascii dist\AegisAuditor-Setup.exe.sha256
+          Copy-Item dist\AegisAuditor.exe dist\AegisAuditor-Windows-x64.exe
+          Copy-Item dist\AegisAuditor-Setup.exe dist\AegisAuditor-Windows-x64-Setup.exe
+          (Get-FileHash dist\AegisAuditor-Windows-x64.exe -Algorithm SHA256).Hash.ToLower() + "  AegisAuditor-Windows-x64.exe" | Out-File -Encoding ascii dist\AegisAuditor-Windows-x64.exe.sha256
+          (Get-FileHash dist\AegisAuditor-Windows-x64-Setup.exe -Algorithm SHA256).Hash.ToLower() + "  AegisAuditor-Windows-x64-Setup.exe" | Out-File -Encoding ascii dist\AegisAuditor-Windows-x64-Setup.exe.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: Aegis-Auditor-Windows-x64
           path: |
-            dist/AegisAuditor.exe
-            dist/AegisAuditor-Setup.exe
-            dist/*.sha256
+            dist/AegisAuditor-Windows-x64.exe
+            dist/AegisAuditor-Windows-x64-Setup.exe
+            dist/AegisAuditor-Windows-x64*.sha256
           if-no-files-found: error
 
   macos:
@@ -84,20 +86,22 @@ jobs:
         run: pyinstaller --clean --noconfirm AegisAuditor.spec
       - name: Firma ad-hoc
         run: codesign --force --deep --sign - dist/AegisAuditor.app
-      - name: Crear DMG
+      - name: Crear DMG y ZIP
         shell: bash
         run: |
           mkdir -p dmg-root
           cp -R dist/AegisAuditor.app dmg-root/
           hdiutil create -volname "Aegis Auditor" -srcfolder dmg-root -ov -format UDZO "dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg"
-          shasum -a 256 "dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg" > "dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg.sha256"
+          ditto -c -k --sequesterRsrc --keepParent dist/AegisAuditor.app "dist/AegisAuditor-macOS-${{ matrix.arch }}.zip"
+          shasum -a 256 "dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg" > "dist/AegisAuditor-macOS-${{ matrix.arch }}.sha256"
+          shasum -a 256 "dist/AegisAuditor-macOS-${{ matrix.arch }}.zip" >> "dist/AegisAuditor-macOS-${{ matrix.arch }}.sha256"
       - uses: actions/upload-artifact@v4
         with:
           name: Aegis-Auditor-macOS-${{ matrix.arch }}
           path: |
-            dist/AegisAuditor.app
             dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg
-            dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg.sha256
+            dist/AegisAuditor-macOS-${{ matrix.arch }}.zip
+            dist/AegisAuditor-macOS-${{ matrix.arch }}.sha256
           if-no-files-found: error
 
   linux:
@@ -168,18 +172,108 @@ jobs:
             ' Auditor correctivo multitecnologia basado en Pilar 1 y Pilar 2.' \
             > "$root/DEBIAN/control"
           dpkg-deb --build "$root" "dist/AegisAuditor-Linux-${{ matrix.arch }}.deb"
-      - name: Checksums
+      - name: Preparar binario y checksums
         shell: bash
         run: |
-          sha256sum "dist/AegisAuditor" > "dist/AegisAuditor-Linux-${{ matrix.arch }}.sha256"
+          cp "dist/AegisAuditor" "dist/AegisAuditor-Linux-${{ matrix.arch }}"
+          chmod +x "dist/AegisAuditor-Linux-${{ matrix.arch }}"
+          sha256sum "dist/AegisAuditor-Linux-${{ matrix.arch }}" > "dist/AegisAuditor-Linux-${{ matrix.arch }}.sha256"
           sha256sum "dist/AegisAuditor-Linux-${{ matrix.arch }}.tar.gz" >> "dist/AegisAuditor-Linux-${{ matrix.arch }}.sha256"
           sha256sum "dist/AegisAuditor-Linux-${{ matrix.arch }}.deb" >> "dist/AegisAuditor-Linux-${{ matrix.arch }}.sha256"
       - uses: actions/upload-artifact@v4
         with:
           name: Aegis-Auditor-Linux-${{ matrix.arch }}
           path: |
-            dist/AegisAuditor
+            dist/AegisAuditor-Linux-${{ matrix.arch }}
             dist/AegisAuditor-Linux-${{ matrix.arch }}.tar.gz
             dist/AegisAuditor-Linux-${{ matrix.arch }}.deb
             dist/AegisAuditor-Linux-${{ matrix.arch }}.sha256
           if-no-files-found: error
+
+
+  release-v1:
+    name: Publicar Release v1.0.0
+    needs:
+      - windows-x64
+      - macos
+      - linux
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.0.0]') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descargar todos los empaquetados
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Aegis-Auditor-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Preparar notas de versión
+        shell: bash
+        run: |
+          cat > RELEASE_NOTES.md <<'EOF'
+          # Aegis Auditor v1.0.0
+
+          Primera versión distribuible de **Aegis Auditor — Security Remediation Studio**.
+
+          ## Descargas
+
+          ### Windows x64
+          - `AegisAuditor-Windows-x64-Setup.exe`: instalador recomendado.
+          - `AegisAuditor-Windows-x64.exe`: ejecutable portable.
+
+          ### macOS
+          - `AegisAuditor-macOS-arm64.dmg`: Apple Silicon (M1/M2/M3/M4).
+          - `AegisAuditor-macOS-x64.dmg`: Intel.
+          - Los ZIP contienen la aplicación `.app` correspondiente.
+
+          ### Linux
+          - `AegisAuditor-Linux-x64.deb`: Debian/Ubuntu x64.
+          - `AegisAuditor-Linux-arm64.deb`: Debian/Ubuntu ARM64.
+          - `*.tar.gz`: paquete portable.
+          - `AegisAuditor-Linux-x64` y `AegisAuditor-Linux-arm64`: binarios directos.
+
+          Cada plataforma incluye archivos SHA-256 para verificar la integridad.
+
+          > Los perfiles de aplicaciones no se distribuyen dentro del release. Aegis genera o carga los perfiles desde la interfaz.
+          EOF
+
+      - name: Publicar GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mapfile -d '' files < <(
+            find release-assets -type f \(
+              -name '*.exe' -o
+              -name '*.dmg' -o
+              -name '*.zip' -o
+              -name '*.deb' -o
+              -name '*.tar.gz' -o
+              -name '*.sha256' -o
+              -name 'AegisAuditor-Linux-x64' -o
+              -name 'AegisAuditor-Linux-arm64'
+            \) -print0 | sort -z
+          )
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No se encontraron artefactos para publicar."
+            exit 1
+          fi
+
+          if gh release view "v1.0.0" >/dev/null 2>&1; then
+            gh release upload "v1.0.0" "${files[@]}" --clobber
+            gh release edit "v1.0.0" \
+              --title "Aegis Auditor v1.0.0" \
+              --notes-file RELEASE_NOTES.md \
+              --latest
+          else
+            gh release create "v1.0.0" "${files[@]}" \
+              --target "${GITHUB_SHA}" \
+              --title "Aegis Auditor v1.0.0" \
+              --notes-file RELEASE_NOTES.md \
+              --latest
+          fi
