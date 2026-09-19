@@ -119,7 +119,7 @@ def _looks_like_text_file(path: Path) -> bool:
     except OSError:
         return False
 
-    if b"\\x00" in sample:
+    if b"\x00" in sample:
         return False
     if not sample:
         return True
@@ -127,12 +127,11 @@ def _looks_like_text_file(path: Path) -> bool:
     printable = sum(
         1
         for byte in sample
-        if byte in b"\\t\\n\\r"
+        if byte in b"\t\n\r"
         or 32 <= byte <= 126
         or byte >= 128
     )
     return printable / len(sample) >= 0.85
-
 
 def _source_kind(source: str) -> str:
     path = Path(source)
@@ -1057,7 +1056,53 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
             r"(?im)(?:^|[|>\s])"
             r"(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)"
             r"\s*(?:\||:|-)?\s*"
-            r"(https?://[^\s|<>()]+|/[A-Za-z0-9_~!        # Referencias de cliente: ayudan a descubrir rutas usadas por
+            r"(https?://[^\s|<>()]+|"
+            r"/[A-Za-z0-9_~!$&'()*+,;=:@%{}./?\-]+)",
+            text,
+        ):
+            add(
+                match.group(1),
+                match.group(2),
+                source,
+                "documentation-reference",
+            )
+
+        for match in re.finditer(
+            r"(?is)\bcurl\b(.{0,1000}?)(https?://[^\s'\"<>]+)",
+            text,
+        ):
+            options = match.group(1)
+            method_match = re.search(
+                r"(?:-X|--request)\s+"
+                r"(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)",
+                options,
+                re.I,
+            )
+            add(
+                method_match.group(1) if method_match else "GET",
+                match.group(2),
+                source,
+                "documentation-curl",
+            )
+
+        for match in re.finditer(
+            r"(?im)^\s*(?:[-*+]\s*)?"
+            r"(?:api[_\s-]?endpoint|endpoint(?:_url)?|"
+            r"service[_\s-]?url|api[_\s-]?url|route|ruta)"
+            r"\s*[:=]\s*['\"]?"
+            r"(https?://[^\s'\"|]+|"
+            r"/[A-Za-z0-9_~!$&'()*+,;=:@%{}./?\-]+)",
+            text,
+            re.I,
+        ):
+            add(
+                "ANY",
+                match.group(1),
+                source,
+                "configuration-reference",
+            )
+
+        # Referencias de cliente: ayudan a descubrir rutas usadas por
         # JSP/HTML/JS cuando la declaración del servidor no es visible.
 '()*+,;=:@%{}./?\-]+)",
             text,
@@ -1770,13 +1815,19 @@ def _extract_accounts_from_text(
 
     # Pares sin comillas, comunes en README, manuales, .env y YAML.
     loose_user_pattern = re.compile(
-        r"(?im)^\\s*(?:[-*+]\\s*)?(?:\\*\\*)?(?:username|user|usuario|login|email|correo|nombre_usuario|user_name)(?:\\*\\*)?\\s*[:=]\\s*(.+?)\\s*$"
+        r"(?im)^\s*(?:[-*+]\s*)?(?:\*\*)?"
+        r"(?:username|user|usuario|login|email|correo|nombre_usuario|user_name)"
+        r"(?:\*\*)?\s*[:=]\s*(.+?)\s*$"
     )
     loose_password_pattern = re.compile(
-        r"(?im)^\\s*(?:[-*+]\\s*)?(?:\\*\\*)?(?:password|pass|passwd|clave|contrasena|contraseña|pwd)(?:\\*\\*)?\\s*[:=]\\s*(.+?)\\s*$"
+        r"(?im)^\s*(?:[-*+]\s*)?(?:\*\*)?"
+        r"(?:password|pass|passwd|clave|contrasena|contraseña|pwd)"
+        r"(?:\*\*)?\s*[:=]\s*(.+?)\s*$"
     )
     loose_role_pattern = re.compile(
-        r"(?im)^\\s*(?:[-*+]\\s*)?(?:\\*\\*)?(?:role|rol|perfil|authority|authorities|tipo_usuario|user_role)(?:\\*\\*)?\\s*[:=]\\s*(.+?)\\s*$"
+        r"(?im)^\s*(?:[-*+]\s*)?(?:\*\*)?"
+        r"(?:role|rol|perfil|authority|authorities|tipo_usuario|user_role)"
+        r"(?:\*\*)?\s*[:=]\s*(.+?)\s*$"
     )
 
     for user_match in loose_user_pattern.finditer(text):
@@ -1788,13 +1839,22 @@ def _extract_accounts_from_text(
         candidate = _account_from_mapping(
             {
                 "username": _clean_literal(user_match.group(1)),
-                "password": _clean_literal(pass_match.group(1)) if pass_match else None,
-                "role": _clean_literal(role_match.group(1)) if role_match else "USER",
+                "password": (
+                    _clean_literal(pass_match.group(1))
+                    if pass_match
+                    else None
+                ),
+                "role": (
+                    _clean_literal(role_match.group(1))
+                    if role_match
+                    else "USER"
+                ),
             },
             source=source,
             confidence=(
                 "alta"
-                if _source_kind(source) == "configuracion" and pass_match
+                if _source_kind(source) == "configuracion"
+                and pass_match
                 else "media"
             ),
         )
@@ -1803,7 +1863,7 @@ def _extract_accounts_from_text(
 
     # Credenciales Basic embebidas en URLs de manuales/configuración.
     for match in re.finditer(
-        r"https?://([^/\\s:@]+):([^@\\s/]+)@[^/\\s]+",
+        r"https?://([^/\s:@]+):([^@\s/]+)@[^/\s]+",
         text,
         re.I,
     ):
