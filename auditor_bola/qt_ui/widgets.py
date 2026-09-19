@@ -31,7 +31,7 @@ def brand_icon() -> QIcon:
     return QIcon(str(resource_path("assets", "aegis-shield.svg")))
 
 
-def brand_logo_pixmap(width: int = 210) -> QPixmap:
+def brand_logo_pixmap(width: int = 190) -> QPixmap:
     """Logo completo oficial para superficies de branding amplias."""
     source = resource_path("assets", "aegis-auditor-logo.png")
     pixmap = QPixmap(str(source))
