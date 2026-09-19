@@ -182,8 +182,20 @@ class LocalTargetProcess:
                     "No se encontró cmd.exe para ejecutar un wrapper de Windows.",
                     "cmd.exe",
                 )
-            command_line = subprocess.list2cmdline([resolved, *args])
-            return [comspec, "/d", "/s", "/c", command_line]
+
+            # No construir previamente una cadena con list2cmdline: al pasar
+            # esa cadena nuevamente a subprocess las comillas internas pueden
+            # llegar a cmd.exe como \"...\". Usar CALL deja que subprocess
+            # haga una única capa de quoting y permite rutas con espacios.
+            return [
+                comspec,
+                "/d",
+                "/s",
+                "/c",
+                "call",
+                resolved,
+                *args,
+            ]
 
         if suffix == ".ps1":
             powershell = self._which("pwsh", env) or self._which(
