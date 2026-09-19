@@ -15,6 +15,11 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QTableWidget,
+    QLineEdit,
+    QHeaderView,
+    QComboBox,
+    QCheckBox,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -426,6 +431,152 @@ class LoadCenterDialog(AegisDialog):
         signal.emit()
 
 
+class AccountManagerDialog(AegisDialog):
+    """Editor local de cuentas de prueba y roles para el perfil."""
+
+    AUTH_TYPES = ("basic", "bearer", "header", "none")
+
+    def __init__(
+        self,
+        accounts: list[dict] | None = None,
+        privileged_roles: list[str] | None = None,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("Aegis Auditor — Cuentas y roles")
+        self.setWindowIcon(brand_icon())
+        self.configure_dialog_size(
+            preferred=(900, 560),
+            minimum=(720, 460),
+        )
+        self._privileged_roles = set(privileged_roles or [])
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 16, 18, 16)
+        root.setSpacing(10)
+
+        root.addWidget(
+            SectionHeader(
+                "Cuentas de prueba",
+                "Aegis intenta detectarlas en código, seeds, SQL, JSON, "
+                "CSV y configuración. Aquí puedes completar o corregirlas.",
+            )
+        )
+
+        hint = QLabel(
+            "Si las cuentas viven sólo en una base de datos, LDAP, SSO o "
+            "un entorno externo, agrégalas manualmente aquí."
+        )
+        hint.setObjectName("DialogHint")
+        hint.setWordWrap(True)
+        root.addWidget(hint)
+
+        self.table = QTableWidget(0, 5)
+        self.table.setObjectName("AccountsTable")
+        self.table.setHorizontalHeaderLabels(
+            ["Usuario", "Contraseña", "Rol", "Autenticación", "Privilegiado"]
+        )
+        self.table.verticalHeader().setVisible(False)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        root.addWidget(self.table, 1)
+
+        for account in accounts or []:
+            self._append_account(account)
+
+        actions = QHBoxLayout()
+        add = QPushButton("＋ Añadir cuenta")
+        add.clicked.connect(lambda: self._append_account({}))
+        remove = QPushButton("− Eliminar seleccionada")
+        remove.clicked.connect(self._remove_selected)
+        actions.addWidget(add)
+        actions.addWidget(remove)
+        actions.addStretch(1)
+
+        cancel = QPushButton("Cancelar")
+        cancel.setObjectName("DialogSecondaryButton")
+        cancel.clicked.connect(self.reject)
+        save = PrimaryButton("Guardar cuentas")
+        save.clicked.connect(self.accept)
+        actions.addWidget(cancel)
+        actions.addWidget(save)
+        root.addLayout(actions)
+
+    def _append_account(self, account: dict) -> None:
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+
+        username = QLineEdit(str(account.get("username") or ""))
+        username.setPlaceholderText("usuario")
+        self.table.setCellWidget(row, 0, username)
+
+        password = QLineEdit(str(account.get("password") or ""))
+        password.setPlaceholderText("opcional")
+        password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.table.setCellWidget(row, 1, password)
+
+        role = QLineEdit(str(account.get("role") or "USER"))
+        role.setPlaceholderText("USER")
+        self.table.setCellWidget(row, 2, role)
+
+        auth = QComboBox()
+        auth.addItems(self.AUTH_TYPES)
+        current_auth = str(account.get("auth_type") or "none")
+        index = auth.findText(current_auth)
+        auth.setCurrentIndex(index if index >= 0 else 0)
+        self.table.setCellWidget(row, 3, auth)
+
+        privileged = QCheckBox()
+        privileged.setChecked(
+            str(account.get("role") or "") in self._privileged_roles
+        )
+        wrapper = QWidget()
+        box = QHBoxLayout(wrapper)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box.addWidget(privileged)
+        self.table.setCellWidget(row, 4, wrapper)
+
+    def _remove_selected(self) -> None:
+        row = self.table.currentRow()
+        if row >= 0:
+            self.table.removeRow(row)
+
+    def data(self) -> tuple[list[dict], list[str]]:
+        accounts: list[dict] = []
+        privileged_roles: list[str] = []
+
+        for row in range(self.table.rowCount()):
+            username = self.table.cellWidget(row, 0).text().strip()
+            if not username:
+                continue
+            password_text = self.table.cellWidget(row, 1).text()
+            role = self.table.cellWidget(row, 2).text().strip() or "USER"
+            auth = self.table.cellWidget(row, 3).currentText()
+
+            wrapper = self.table.cellWidget(row, 4)
+            checkbox = wrapper.findChild(QCheckBox)
+            if checkbox and checkbox.isChecked() and role not in privileged_roles:
+                privileged_roles.append(role)
+
+            accounts.append(
+                {
+                    "username": username,
+                    "password": password_text or None,
+                    "role": role,
+                    "auth_type": auth,
+                    "token": None,
+                    "headers": {},
+                }
+            )
+
+        return accounts, privileged_roles
+
+
 class AutoProfileDialog(AegisDialog):
     profile_ready = Signal(str, str)
 
@@ -441,6 +592,8 @@ class AutoProfileDialog(AegisDialog):
         self.project_root: Path | None = None
         self.detection = None
         self.draft: dict | None = None
+        self.manual_accounts: list[dict] = []
+        self.manual_privileged_roles: list[str] = []
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -494,11 +647,19 @@ class AutoProfileDialog(AegisDialog):
         titles.addWidget(title)
         titles.addWidget(subtitle)
 
+        self.accounts_button = QPushButton("Cuentas (0)")
+        self.accounts_button.setObjectName("AccountsButton")
+        self.accounts_button.setMinimumWidth(116)
+        self.accounts_button.clicked.connect(
+            self._open_account_manager
+        )
+
         choose = PrimaryButton("Seleccionar aplicación")
         choose.setMinimumWidth(176)
         choose.clicked.connect(self._select_project)
 
         header_layout.addLayout(titles, 1)
+        header_layout.addWidget(self.accounts_button)
         header_layout.addWidget(choose)
         root.addWidget(header)
 
@@ -664,6 +825,70 @@ class AutoProfileDialog(AegisDialog):
         footer.addWidget(self.save)
         root.addWidget(footer_frame)
 
+    def _refresh_accounts_button(self) -> None:
+        accounts = (
+            self.draft.get("cuentas", [])
+            if self.draft
+            else self.manual_accounts
+        )
+        self.accounts_button.setText(
+            f"Cuentas ({len(accounts)})"
+        )
+
+    def _merge_manual_accounts(self) -> None:
+        if not self.draft:
+            return
+        existing = {
+            item.get("username"): dict(item)
+            for item in self.draft.get("cuentas", [])
+            if item.get("username")
+        }
+        for item in self.manual_accounts:
+            if item.get("username"):
+                existing[item["username"]] = dict(item)
+        self.draft["cuentas"] = list(existing.values())
+
+        roles = list(self.draft.get("roles_privilegiados") or [])
+        for role in self.manual_privileged_roles:
+            if role and role not in roles:
+                roles.append(role)
+        self.draft["roles_privilegiados"] = roles
+
+    def _open_account_manager(self) -> None:
+        accounts = (
+            list(self.draft.get("cuentas", []))
+            if self.draft
+            else list(self.manual_accounts)
+        )
+        roles = (
+            list(self.draft.get("roles_privilegiados", []))
+            if self.draft
+            else list(self.manual_privileged_roles)
+        )
+        dialog = AccountManagerDialog(
+            accounts,
+            roles,
+            self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        accounts, roles = dialog.data()
+        self.manual_accounts = accounts
+        self.manual_privileged_roles = roles
+
+        if self.draft is not None:
+            self.draft["cuentas"] = list(accounts)
+            self.draft["roles_privilegiados"] = list(roles)
+            self.preview.setPlainText(
+                json.dumps(
+                    self.draft,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        self._refresh_accounts_button()
+
     def _set_analysis_progress(
         self,
         value: int,
@@ -710,6 +935,8 @@ class AutoProfileDialog(AegisDialog):
             )
 
             self.draft = build_profile_draft(self.detection)
+            self._merge_manual_accounts()
+            self._refresh_accounts_button()
             self.stepper.set_step(3)
             self._set_analysis_progress(
                 82,
@@ -724,6 +951,7 @@ class AutoProfileDialog(AegisDialog):
                 f"Frameworks: {', '.join(meta.get('frameworks') or []) or '-'}",
                 f"Manifiestos: {', '.join(meta.get('manifiestos') or []) or '-'}",
                 f"Endpoints candidatos: {len(meta.get('endpoints_candidatos') or [])}",
+                f"Cuentas detectadas/configuradas: {len(self.draft.get('cuentas') or [])}",
                 "",
                 "El perfil generado queda abierto para completar cuentas, "
                 "roles y controles específicos antes de una auditoría productiva.",
