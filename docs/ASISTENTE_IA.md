@@ -110,19 +110,19 @@ selección automática.
 5. Pulse **Generar recetas con IA**.
 6. El auditor intenta cargar automáticamente el archivo relacionado. Si no encuentra uno adecuado, pulse **Elegir archivo**.
 7. Pulse **Generar 3 recetas con Gemma**.
-8. Compare las propuestas:
-   - **MINIMA**: cambio pequeño y localizado.
-   - **ESTRUCTURAL**: mejora de diseño o centralización.
-   - **ALTERNATIVA**: solución distinta al mismo problema.
-9. Seleccione una propuesta para ver:
-   - explicación;
-   - riesgo declarado;
-   - si requiere reinicio;
-   - receta normalizada;
-   - diff previo.
-10. Si el preview es válido, pulse **Aplicar receta seleccionada**.
-11. El auditor ejecutará su ciclo normal de respaldo, corrección, verificación y rollback.
-12. Si desea reutilizar la receta después, pulse **Guardar receta en perfil**.
+8. Se abrirá automáticamente una ventana independiente con tres pestañas:
+   - **MINIMA**;
+   - **ESTRUCTURAL**;
+   - **ALTERNATIVA**.
+9. En cada pestaña puede revisar:
+   - explicación y riesgo;
+   - consideraciones;
+   - **código resultante completo**;
+   - diff antes/después con scroll horizontal y vertical.
+10. Cambiar de pestaña selecciona esa receta también en la ventana principal.
+11. Desde la ventana independiente puede pulsar **Aplicar receta seleccionada** o **Guardar receta seleccionada en perfil**.
+12. Si cierra la ventana, puede volver a abrirla con **Ver propuestas en ventana**.
+13. El auditor ejecutará su ciclo normal de respaldo, corrección, verificación y rollback.
 
 ## Protección de información
 
