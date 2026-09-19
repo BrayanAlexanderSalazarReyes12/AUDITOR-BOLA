@@ -120,9 +120,37 @@ selección automática.
    - **código resultante completo**;
    - diff antes/después con scroll horizontal y vertical.
 10. Cambiar de pestaña selecciona esa receta también en la ventana principal.
-11. Desde la ventana independiente puede pulsar **Aplicar receta seleccionada** o **Guardar receta seleccionada en perfil**.
+11. Desde la ventana independiente puede pulsar **Aplicar receta seleccionada** o **Guardar receta en perfil + biblioteca + biblioteca**.
 12. Si cierra la ventana, puede volver a abrirla con **Ver propuestas en ventana**.
 13. El auditor ejecutará su ciclo normal de respaldo, corrección, verificación y rollback.
+
+## Biblioteca de recetas reutilizables
+
+La receta que el usuario selecciona puede reutilizarse fuera del sistema en
+el que fue creada. El auditor almacena estas recetas en:
+
+```text
+recetas/<control_id>/<recipe_id>.json
+```
+
+Solo se guarda la receta elegida. Las otras dos propuestas de Gemma permanecen
+en la evidencia de la sesión, pero no ingresan al catálogo reusable.
+
+Existen dos estados:
+
+- **no verificada**: el usuario la guardó en el perfil/biblioteca, pero todavía
+  no ha concluido un ciclo con `CORREGIDO`;
+- **verificada**: al menos una aplicación terminó el ciclo correctivo con
+  `CORREGIDO` usando esa receta.
+
+Cuando se selecciona un hallazgo y ya existe un archivo fuente resuelto, la
+GUI busca automáticamente recetas compatibles. El botón **Ver recetas
+guardadas** muestra únicamente aquellas que pasan un preview contra el archivo
+actual. Desde esa ventana es posible revisar el código resultante y el diff,
+aplicarla o añadirla al perfil de la nueva aplicación.
+
+Una receta nunca se reutiliza únicamente por compartir el mismo
+`control_id`; el patrón de corrección debe ser aplicable al código actual.
 
 ## Protección de información
 
