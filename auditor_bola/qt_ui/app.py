@@ -15,7 +15,6 @@ from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QCloseEvent, QFont, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
-    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -43,7 +42,13 @@ from ..recipe_library import biblioteca_por_defecto
 from ..remediation_knowledge import knowledge_root
 from ..version import __version__
 from .controller import AuditorController
-from .dialogs import AutoProfileDialog, LoadCenterDialog
+from .dialogs import (
+    AutoProfileDialog,
+    LoadCenterDialog,
+    styled_existing_directory,
+    styled_open_file,
+    styled_save_file,
+)
 from .loading import StartupSplash, TaskProgressOverlay
 from .pages import (
     AIPage,
@@ -784,7 +789,7 @@ class AegisMainWindow(QMainWindow):
         dialog.exec()
 
     def choose_profile(self):
-        selected, _filter = QFileDialog.getOpenFileName(
+        selected, _filter = styled_open_file(
             self,
             "Cargar perfil JSON",
             str(default_config_dir()),
@@ -802,7 +807,7 @@ class AegisMainWindow(QMainWindow):
                 )
 
     def choose_source(self):
-        selected = QFileDialog.getExistingDirectory(
+        selected = styled_existing_directory(
             self,
             "Selecciona la carpeta de código",
             str(self.controller.target_root or Path.home()),
@@ -819,7 +824,7 @@ class AegisMainWindow(QMainWindow):
                 )
 
     def choose_evidence(self):
-        selected = QFileDialog.getExistingDirectory(
+        selected = styled_existing_directory(
             self,
             "Selecciona carpeta de evidencias",
             str(self.controller.evidence_base),
@@ -829,7 +834,7 @@ class AegisMainWindow(QMainWindow):
             self.navigate("evidence")
 
     def import_package(self):
-        selected, _filter = QFileDialog.getOpenFileName(
+        selected, _filter = styled_open_file(
             self,
             "Importar auditor-package.json",
             str(Path.home()),
@@ -864,7 +869,7 @@ class AegisMainWindow(QMainWindow):
             )
             return
 
-        selected, _filter = QFileDialog.getOpenFileName(
+        selected, _filter = styled_open_file(
             self,
             "Importar cuentas y roles",
             str(Path.home()),
@@ -975,7 +980,7 @@ class AegisMainWindow(QMainWindow):
             )
 
     def import_recipes(self):
-        selected = QFileDialog.getExistingDirectory(
+        selected = styled_existing_directory(
             self,
             "Selecciona carpeta de recetas o medicinas",
             str(Path.home()),
@@ -1058,7 +1063,7 @@ class AegisMainWindow(QMainWindow):
             )
             return
 
-        selected, _filter = QFileDialog.getSaveFileName(
+        selected, _filter = styled_save_file(
             self,
             "Guardar reporte",
             str(Path.cwd() / "reporte-aegis.json"),
