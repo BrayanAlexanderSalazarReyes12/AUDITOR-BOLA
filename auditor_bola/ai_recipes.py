@@ -18,7 +18,10 @@ from typing import Iterable
 import requests
 
 from .config import ConfigObjetivo, Correccion
-from .remediation_knowledge import RemediationKnowledge
+from .remediation_knowledge import (
+    RemediationKnowledge,
+    normalizar_familia_control,
+)
 
 
 DEFAULT_PROVIDER_ID = "llmlab"
@@ -875,6 +878,12 @@ def generalizar_correccion_exitosa(
         ),
         frameworks_observados=_lista_strings(
             data, "frameworks_observados"
+        ),
+        familia_control=normalizar_familia_control(control_id),
+        tipo_control=(
+            str(metadata_hallazgo.get("tipo_control")).strip()
+            if metadata_hallazgo.get("tipo_control")
+            else None
         ),
         verificada=True,
         casos_exitosos=1,
