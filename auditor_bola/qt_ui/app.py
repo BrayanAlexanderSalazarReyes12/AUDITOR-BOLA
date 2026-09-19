@@ -60,13 +60,13 @@ class Sidebar(QFrame):
     def __init__(self, navigate, new_project, load_center, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
-        self.setFixedWidth(292)
+        self.setFixedWidth(296)
         self._compact = False
         self.buttons: dict[str, NavButton] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 12)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
 
         # --------------------------------------------------------------
         # Identidad de marca
@@ -77,13 +77,16 @@ class Sidebar(QFrame):
         # factores de escala de Windows. El escudo y cada bloque textual
         # se renderizan por separado para que Qt pueda distribuirlos.
         # --------------------------------------------------------------
-        self.brand_box = QWidget()
+        self.brand_box = QFrame()
         self.brand_box.setObjectName("BrandBox")
-        self.brand_box.setFixedHeight(250)
+        self.brand_box.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed,
+        )
 
         self.brand_layout = QVBoxLayout(self.brand_box)
-        self.brand_layout.setContentsMargins(8, 8, 8, 10)
-        self.brand_layout.setSpacing(5)
+        self.brand_layout.setContentsMargins(10, 12, 10, 12)
+        self.brand_layout.setSpacing(6)
         self.brand_layout.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
         )
@@ -109,7 +112,6 @@ class Sidebar(QFrame):
         self.brand_name.setObjectName("BrandName")
         self.brand_name.setTextFormat(Qt.TextFormat.RichText)
         self.brand_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.brand_name.setFixedHeight(31)
         self.brand_layout.addWidget(self.brand_name)
 
         self.brand_tagline = QLabel(
@@ -117,7 +119,6 @@ class Sidebar(QFrame):
         )
         self.brand_tagline.setObjectName("BrandTagline")
         self.brand_tagline.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.brand_tagline.setFixedHeight(18)
         self.brand_layout.addWidget(self.brand_tagline)
 
         self.pillars = QLabel(
@@ -129,7 +130,6 @@ class Sidebar(QFrame):
         self.pillars.setObjectName("BrandPillars")
         self.pillars.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.pillars.setWordWrap(True)
-        self.pillars.setFixedHeight(43)
         self.brand_layout.addWidget(self.pillars)
 
         self.brand_divider = QFrame()
@@ -142,6 +142,9 @@ class Sidebar(QFrame):
             0,
             Qt.AlignmentFlag.AlignTop,
         )
+        layout.addSpacing(10)
+
+        self._sync_brand_box_height()
 
         nav_items = [
             ("home", "⌂", "Inicio", lambda: navigate("home")),
@@ -197,25 +200,31 @@ class Sidebar(QFrame):
             self.ai_status.setText("○ IA no configurada")
             self.ai_status.setStyleSheet(f"color:{COLORS['muted']};")
 
+    def _sync_brand_box_height(self) -> None:
+        """Ajusta la altura del branding al contenido real y al DPI."""
+        self.brand_box.ensurePolished()
+        self.brand_box.adjustSize()
+        hint = self.brand_box.sizeHint().height()
+        self.brand_box.setFixedHeight(max(hint, 210))
+
     def _apply_full_brand_logo(self) -> None:
-        pixmap = brand_icon().pixmap(112, 112)
+        pixmap = brand_icon().pixmap(96, 96)
         self.brand_logo.setPixmap(pixmap)
-        self.brand_logo.setFixedSize(112, 112)
+        self.brand_logo.setFixedSize(96, 96)
 
     def _apply_compact_brand_logo(self) -> None:
-        pixmap = brand_icon().pixmap(42, 42)
+        pixmap = brand_icon().pixmap(40, 40)
         self.brand_logo.setPixmap(pixmap)
-        self.brand_logo.setFixedSize(48, 48)
+        self.brand_logo.setFixedSize(44, 44)
 
     def set_compact(self, compact: bool) -> None:
         if compact == self._compact:
             return
 
         self._compact = compact
-        self.setFixedWidth(76 if compact else 292)
+        self.setFixedWidth(76 if compact else 296)
 
         if compact:
-            self.brand_box.setFixedHeight(68)
             self.brand_layout.setContentsMargins(0, 8, 0, 8)
             self.brand_layout.setSpacing(0)
             self._apply_compact_brand_logo()
@@ -224,16 +233,19 @@ class Sidebar(QFrame):
             self.brand_tagline.setVisible(False)
             self.pillars.setVisible(False)
             self.brand_divider.setVisible(False)
+
+            self.brand_box.setFixedHeight(60)
         else:
-            self.brand_box.setFixedHeight(250)
-            self.brand_layout.setContentsMargins(8, 8, 8, 10)
-            self.brand_layout.setSpacing(5)
+            self.brand_layout.setContentsMargins(10, 12, 10, 12)
+            self.brand_layout.setSpacing(6)
             self._apply_full_brand_logo()
 
             self.brand_name.setVisible(True)
             self.brand_tagline.setVisible(True)
             self.pillars.setVisible(True)
             self.brand_divider.setVisible(True)
+
+            self._sync_brand_box_height()
 
         self.footer.setVisible(not compact)
 
