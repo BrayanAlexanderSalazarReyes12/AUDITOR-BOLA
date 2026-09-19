@@ -1,6 +1,6 @@
-# Auditor Correctivo de Seguridad — Dos Pilares
+# Aegis Auditor — Security Remediation Studio
 
-Motor determinista para **diagnosticar, corregir, verificar, revertir y conservar evidencia** sobre aplicaciones y repositorios de código autorizados.
+Aegis Auditor es un estudio de remediación de seguridad para **incorporar, diagnosticar, corregir, verificar, revertir y aprender** sobre aplicaciones y repositorios de código autorizados.
 
 El repositorio nació como `AUDITOR-BOLA`, pero la versión actual ya no está limitada a BOLA ni a Tramitia. El diseño separa:
 
@@ -15,6 +15,36 @@ Los dos pilares cubiertos son:
 2. **Arquitectura y Configuración**.
 
 La integridad de la evidencia es transversal y no se presenta como un tercer pilar.
+
+
+## Nuevo flujo profesional de incorporación
+
+La interfaz principal ya no obliga a preparar manualmente un perfil antes de comenzar. Use **Archivo → Nuevo proyecto / Auto-configurar** o el botón **＋ Nuevo proyecto**.
+
+Aegis analiza la carpeta seleccionada y construye un borrador compatible con `config/*.json` detectando, cuando es posible:
+
+- lenguaje y framework;
+- manifiestos y raíces de código;
+- `auditor-package.json`;
+- comandos de preparación y arranque;
+- estrategia `process`, `service` o `external`;
+- endpoints candidatos en Flask, Express, Servlet/Spring y Django;
+- configuración base multiplataforma.
+
+El asistente permite además registrar cuentas, roles privilegiados y convertir endpoints detectados en controles **BOLA** o **RBAC** antes de guardar el perfil. Las decisiones que no pueden inferirse con seguridad —por ejemplo, propietario real de un objeto o acceso esperado de un rol— requieren confirmación humana.
+
+La navegación de la aplicación se organiza en:
+
+```text
+Inicio
+Hallazgos
+Detalle / Corrección
+IA / Medicinas
+Evidencias
+Registro
+```
+
+El menú superior separa **Archivo**, **Proyecto**, **Auditoría**, **Conocimiento** y **Ayuda**. Una barra de progreso indica las operaciones en curso y el dashboard muestra proyecto, perfil, proceso y número de hallazgos.
 
 ## Guía paso a paso
 
