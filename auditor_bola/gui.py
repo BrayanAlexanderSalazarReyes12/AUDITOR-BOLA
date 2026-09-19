@@ -16,6 +16,12 @@ from tkinter import filedialog, messagebox, ttk
 import requests
 
 from .ai_gui import AIAssistantMixin
+from .app_paths import (
+    configure_packaged_environment,
+    default_article_dir,
+    default_evidence_dir,
+    resource_path,
+)
 from .article_evidence import export_article_package
 from .config import ConfigObjetivo, cargar_config
 from .corrective import correction_available
@@ -54,7 +60,15 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Aegis Auditor — Security Remediation Studio")
-        self.configure(background="#f4f7fb")
+        self.configure(background="#06111d")
+        self.data_root = configure_packaged_environment()
+
+        icon_path = resource_path("assets", "aegis-auditor.ico")
+        if icon_path.exists():
+            try:
+                self.iconbitmap(default=str(icon_path))
+            except tk.TclError:
+                pass
 
         # Inicializar el modo responsivo ANTES de construir cualquier
         # sección que lo consulte.
@@ -68,7 +82,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self.config_path: Path | None = None
         self.cfg: ConfigObjetivo | None = None
         self.target_root: Path | None = None
-        self.evidence_base = (Path.cwd() / "evidencias").resolve()
+        self.evidence_base = default_evidence_dir().resolve()
         self.resultado: dict | None = None
         self.proceso: LocalTargetProcess | None = None
         self.busy = False
@@ -79,6 +93,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
 
         self._configure_theme()
         self._build_menu()
+        self._build_shell()
         self._build_brand_header()
         self._build_header()
         self._build_runtime_bar()
@@ -89,103 +104,347 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self._build_status()
         self._refresh_evidence_list()
         self._refresh_state()
+        self._apply_dark_native_widgets(self)
 
     # ------------------------------------------------------------------
     # Construcción de interfaz
     # ------------------------------------------------------------------
     def _configure_theme(self):
-        """Tema visual propio sin dependencias externas."""
+        """Tema oscuro profesional inspirado en un SOC moderno."""
+        self.colors = {
+            "bg": "#06111d",
+            "sidebar": "#071725",
+            "panel": "#0b1f2f",
+            "panel_alt": "#0e2940",
+            "border": "#1b4f70",
+            "text": "#e8f2fb",
+            "muted": "#8ba7bc",
+            "accent": "#169cff",
+            "teal": "#22d3b6",
+            "danger": "#ff6273",
+            "warning": "#f4b85a",
+            "success": "#35d0a3",
+        }
+
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
         except tk.TclError:
             pass
 
-        style.configure(".", font=("Segoe UI", 9))
-        style.configure(
-            "TFrame",
-            background="#f4f7fb",
-        )
+        bg = self.colors["bg"]
+        panel = self.colors["panel"]
+        panel_alt = self.colors["panel_alt"]
+        border = self.colors["border"]
+        text = self.colors["text"]
+        muted = self.colors["muted"]
+        accent = self.colors["accent"]
+
+        style.configure(".", font=("Segoe UI", 9), background=bg, foreground=text)
+        style.configure("TFrame", background=panel)
+        style.configure("TLabel", background=panel, foreground=text)
         style.configure(
             "TLabelframe",
-            background="#ffffff",
-            bordercolor="#d8e1eb",
+            background=panel,
+            foreground=text,
+            bordercolor=border,
             relief="solid",
             borderwidth=1,
         )
         style.configure(
             "TLabelframe.Label",
-            background="#f4f7fb",
-            foreground="#24364b",
+            background=panel,
+            foreground="#b9d7eb",
             font=("Segoe UI Semibold", 9),
         )
         style.configure(
-            "TLabel",
-            background="#f4f7fb",
-            foreground="#24364b",
+            "TButton",
+            background=panel_alt,
+            foreground=text,
+            bordercolor=border,
+            focusthickness=1,
+            focuscolor=accent,
+            padding=(10, 6),
         )
-        style.configure(
-            "Aegis.H1.TLabel",
-            font=("Segoe UI Semibold", 17),
-            foreground="#0b1f33",
-            background="#f4f7fb",
-        )
-        style.configure(
-            "Aegis.Brand.TLabel",
-            font=("Segoe UI Semibold", 18),
-            foreground="#ffffff",
-            background="#0b1f33",
-        )
-        style.configure(
-            "Aegis.BrandSub.TLabel",
-            font=("Segoe UI", 9),
-            foreground="#b9c9d8",
-            background="#0b1f33",
-        )
-        style.configure(
-            "Aegis.Muted.TLabel",
-            foreground="#6b7c8f",
-            background="#f4f7fb",
-        )
-        style.configure(
-            "Aegis.KpiTitle.TLabel",
-            font=("Segoe UI", 8),
-            foreground="#718096",
-            background="#ffffff",
-        )
-        style.configure(
-            "Aegis.KpiValue.TLabel",
-            font=("Segoe UI Semibold", 13),
-            foreground="#0b1f33",
-            background="#ffffff",
+        style.map(
+            "TButton",
+            background=[("active", "#123a57"), ("disabled", "#132331")],
+            foreground=[("disabled", "#577083")],
         )
         style.configure(
             "Aegis.Primary.TButton",
             font=("Segoe UI Semibold", 9),
             foreground="#ffffff",
-            background="#147d73",
-            bordercolor="#147d73",
+            background=accent,
+            bordercolor=accent,
             padding=(12, 7),
         )
         style.map(
             "Aegis.Primary.TButton",
-            background=[
-                ("active", "#0f6b63"),
-                ("disabled", "#91aaa7"),
-            ],
+            background=[("active", "#0e80d8"), ("disabled", "#31546d")],
         )
         style.configure(
             "Aegis.Secondary.TButton",
+            background=panel_alt,
+            foreground=text,
+            bordercolor=border,
             padding=(10, 6),
         )
         style.configure(
-            "Aegis.Horizontal.TProgressbar",
-            troughcolor="#e5ebf1",
-            background="#24b6a6",
-            bordercolor="#e5ebf1",
-            lightcolor="#24b6a6",
-            darkcolor="#24b6a6",
+            "Aegis.H1.TLabel",
+            font=("Segoe UI Semibold", 17),
+            foreground="#ffffff",
+            background=panel,
         )
+        style.configure(
+            "Aegis.Brand.TLabel",
+            font=("Segoe UI Semibold", 17),
+            foreground="#ffffff",
+            background="#091b2b",
+        )
+        style.configure(
+            "Aegis.BrandSub.TLabel",
+            font=("Segoe UI", 9),
+            foreground="#88a8c0",
+            background="#091b2b",
+        )
+        style.configure(
+            "Aegis.Muted.TLabel",
+            foreground=muted,
+            background=panel,
+        )
+        style.configure(
+            "Aegis.KpiTitle.TLabel",
+            font=("Segoe UI", 8),
+            foreground=muted,
+            background=panel_alt,
+        )
+        style.configure(
+            "Aegis.KpiValue.TLabel",
+            font=("Segoe UI Semibold", 13),
+            foreground="#ffffff",
+            background=panel_alt,
+        )
+        style.configure(
+            "TNotebook",
+            background=bg,
+            borderwidth=0,
+            tabmargins=(0, 4, 0, 0),
+        )
+        style.configure(
+            "TNotebook.Tab",
+            background="#0a1a28",
+            foreground=muted,
+            bordercolor=border,
+            padding=(14, 8),
+            font=("Segoe UI Semibold", 9),
+        )
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", panel_alt), ("active", "#102d43")],
+            foreground=[("selected", "#ffffff"), ("active", "#ffffff")],
+        )
+        style.configure(
+            "Treeview",
+            background="#081a28",
+            fieldbackground="#081a28",
+            foreground=text,
+            bordercolor=border,
+            rowheight=28,
+        )
+        style.map(
+            "Treeview",
+            background=[("selected", "#124e75")],
+            foreground=[("selected", "#ffffff")],
+        )
+        style.configure(
+            "Treeview.Heading",
+            background="#0d2a40",
+            foreground="#c6e0f1",
+            bordercolor=border,
+            font=("Segoe UI Semibold", 9),
+        )
+        style.map("Treeview.Heading", background=[("active", "#123a57")])
+        style.configure(
+            "TEntry",
+            fieldbackground="#071927",
+            foreground=text,
+            insertcolor=text,
+            bordercolor=border,
+        )
+        style.configure(
+            "TCombobox",
+            fieldbackground="#071927",
+            foreground=text,
+            background=panel_alt,
+            arrowcolor=text,
+            bordercolor=border,
+        )
+        style.configure(
+            "TCheckbutton",
+            background=panel,
+            foreground=text,
+        )
+        style.map("TCheckbutton", background=[("active", panel)])
+        style.configure(
+            "Aegis.Horizontal.TProgressbar",
+            troughcolor="#152b3b",
+            background=accent,
+            bordercolor="#152b3b",
+            lightcolor=accent,
+            darkcolor=accent,
+        )
+
+    def _build_shell(self):
+        """Crea navegación lateral persistente y área principal."""
+        self.shell = tk.Frame(self, background=self.colors["bg"])
+        self.shell.pack(fill="both", expand=True)
+
+        self.sidebar = tk.Frame(
+            self.shell,
+            background=self.colors["sidebar"],
+            width=236,
+            highlightbackground="#15384f",
+            highlightthickness=1,
+        )
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)
+
+        self.content = tk.Frame(
+            self.shell,
+            background=self.colors["bg"],
+        )
+        self.content.pack(side="left", fill="both", expand=True)
+
+        brand = tk.Frame(self.sidebar, background=self.colors["sidebar"])
+        brand.pack(fill="x", padx=16, pady=(18, 12))
+
+        logo = tk.Canvas(
+            brand,
+            width=58,
+            height=58,
+            background=self.colors["sidebar"],
+            highlightthickness=0,
+        )
+        logo.pack(anchor="center")
+        logo.create_polygon(
+            29, 3, 53, 13, 49, 41, 29, 57, 9, 41, 5, 13,
+            fill=self.colors["accent"],
+            outline="#56c5ff",
+            width=2,
+        )
+        logo.create_line(
+            17, 29, 26, 38, 43, 20,
+            fill="#ffffff",
+            width=5,
+            capstyle=tk.ROUND,
+            joinstyle=tk.ROUND,
+        )
+
+        tk.Label(
+            brand,
+            text="AEGIS AUDITOR",
+            background=self.colors["sidebar"],
+            foreground="#ffffff",
+            font=("Segoe UI Semibold", 17),
+        ).pack(pady=(8, 0))
+        tk.Label(
+            brand,
+            text="Security Remediation Studio",
+            background=self.colors["sidebar"],
+            foreground="#7fa6bf",
+            font=("Segoe UI", 8),
+        ).pack()
+        tk.Label(
+            brand,
+            text="Pilar 1 · Identidad y Acceso\nPilar 2 · Arquitectura y Configuración",
+            background=self.colors["sidebar"],
+            foreground="#5ac8fa",
+            justify="left",
+            font=("Segoe UI", 8),
+        ).pack(anchor="w", pady=(10, 4))
+
+        nav = tk.Frame(self.sidebar, background=self.colors["sidebar"])
+        nav.pack(fill="x", padx=8, pady=(4, 0))
+
+        def nav_button(label, command, primary=False):
+            button = tk.Button(
+                nav,
+                text=label,
+                command=command,
+                anchor="w",
+                relief="flat",
+                bd=0,
+                padx=16,
+                pady=10,
+                cursor="hand2",
+                background=(
+                    "#0c4f80" if primary else self.colors["sidebar"]
+                ),
+                foreground="#ffffff" if primary else "#c2d2de",
+                activebackground="#0f5f97",
+                activeforeground="#ffffff",
+                font=("Segoe UI Semibold" if primary else "Segoe UI", 9),
+            )
+            button.pack(fill="x", pady=1)
+            return button
+
+        nav_button("⌂   Inicio", lambda: self.notebook.select(self.tab_dashboard), True)
+        nav_button("＋   Nuevo proyecto", self._new_project_wizard)
+        nav_button("▣   Cargar aplicación", self._choose_target)
+        nav_button("⚙   Auto-configuración", self._new_project_wizard)
+        nav_button("◈   Auditoría P1 + P2", lambda: self.notebook.select(self.tab_results))
+        nav_button("✦   Correcciones con IA", lambda: self.notebook.select(self.tab_ai))
+        nav_button("▤   Recetas y conocimiento", self._open_knowledge_window)
+        nav_button("▧   Evidencias", lambda: self.notebook.select(self.tab_evidence))
+        nav_button("▥   Registro", lambda: self.notebook.select(self.tab_log))
+        nav_button("▦   Reportes", self._save_report)
+        nav_button("⚙   Configuración", self._show_profile)
+
+        footer = tk.Frame(self.sidebar, background="#081a28")
+        footer.pack(side="bottom", fill="x", padx=10, pady=10)
+        tk.Label(
+            footer,
+            text="MULTIPLATAFORMA",
+            background="#081a28",
+            foreground="#5ac8fa",
+            font=("Segoe UI Semibold", 8),
+        ).pack(anchor="w", padx=10, pady=(9, 2))
+        tk.Label(
+            footer,
+            text="Windows   ·   Linux   ·   macOS\nIA: Gemma / OpenCode",
+            background="#081a28",
+            foreground="#8ba7bc",
+            justify="left",
+            font=("Segoe UI", 8),
+        ).pack(anchor="w", padx=10, pady=(0, 9))
+
+    def _apply_dark_native_widgets(self, widget):
+        """Aplica la paleta a widgets Tk que no obedecen estilos ttk."""
+        for child in widget.winfo_children():
+            if isinstance(child, tk.Text):
+                child.configure(
+                    background="#061522",
+                    foreground="#dbeaf5",
+                    insertbackground="#0e2940",
+                    selectbackground="#124e75",
+                    selectforeground="#ffffff",
+                    relief="flat",
+                    borderwidth=1,
+                    highlightbackground="#1b4f70",
+                    highlightcolor="#169cff",
+                )
+            elif isinstance(child, tk.Listbox):
+                child.configure(
+                    background="#061522",
+                    foreground="#dbeaf5",
+                    selectbackground="#124e75",
+                    selectforeground="#ffffff",
+                    borderwidth=1,
+                    highlightbackground="#1b4f70",
+                    highlightcolor="#169cff",
+                )
+            self._apply_dark_native_widgets(child)
 
     def _build_menu(self):
         menubar = tk.Menu(self)
@@ -284,7 +543,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         self.bind_all("<F5>", lambda _event: self._diagnose())
 
     def _build_brand_header(self):
-        frame = tk.Frame(self, background="#0b1f33", height=72)
+        frame = tk.Frame(self.content, background="#091b2b", height=76)
         frame.pack(fill="x")
         frame.pack_propagate(False)
 
@@ -376,7 +635,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         destination = filedialog.askdirectory(
             parent=self,
             title="Selecciona la carpeta donde crear el paquete del artículo",
-            initialdir=str(Path.cwd() / "docs" / "articulo"),
+            initialdir=str(default_article_dir()),
         )
         if not destination:
             return
@@ -416,7 +675,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         )
 
     def _build_header(self):
-        frame = ttk.LabelFrame(self, text="Objetivo", padding=8)
+        frame = ttk.LabelFrame(self.content, text="Objetivo", padding=8)
         frame.pack(fill="x", padx=8, pady=(8, 4))
 
         items = [
@@ -474,7 +733,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
                 frame.columnconfigure(col + 1, weight=1)
 
     def _build_runtime_bar(self):
-        frame = ttk.LabelFrame(self, text="Ejecución y diagnóstico", padding=8)
+        frame = ttk.LabelFrame(self.content, text="Ejecución y diagnóstico", padding=8)
         frame.pack(fill="x", padx=8, pady=4)
 
         self.btn_start = ttk.Button(
@@ -534,7 +793,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
             frame.columnconfigure(4, weight=1)
 
     def _build_notebook(self):
-        self.notebook = ttk.Notebook(self)
+        self.notebook = ttk.Notebook(self.content)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=5)
 
         self.tab_dashboard = ttk.Frame(self.notebook)
@@ -588,8 +847,8 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         for index, (title, attr) in enumerate(cards):
             card = tk.Frame(
                 outer,
-                background="#ffffff",
-                highlightbackground="#d8e1eb",
+                background="#0e2940",
+                highlightbackground="#1b4f70",
                 highlightthickness=1,
                 padx=14,
                 pady=12,
@@ -742,9 +1001,9 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
                 anchor="w",
             )
 
-        self.table.tag_configure("hallazgo", background="#f8d7da")
-        self.table.tag_configure("ok", background="#d4edda")
-        self.table.tag_configure("error", background="#fff3cd")
+        self.table.tag_configure("hallazgo", background="#472331", foreground="#ffdce2")
+        self.table.tag_configure("ok", background="#143a34", foreground="#c9fff0")
+        self.table.tag_configure("error", background="#46371d", foreground="#ffe7a5")
         self.table.bind("<<TreeviewSelect>>", self._on_result_selected)
 
         scroll_y = ttk.Scrollbar(
@@ -926,7 +1185,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
         scroll_x.grid(row=1, column=0, sticky="ew")
 
     def _build_actions(self):
-        frame = ttk.LabelFrame(self, text="Acciones correctivas", padding=8)
+        frame = ttk.LabelFrame(self.content, text="Acciones correctivas", padding=8)
         frame.pack(fill="x", padx=8, pady=4)
 
         self.btn_verify = ttk.Button(
@@ -985,7 +1244,7 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
             frame.columnconfigure(col, weight=1)
 
     def _build_status(self):
-        frame = ttk.Frame(self, padding=(8, 4))
+        frame = ttk.Frame(self.content, padding=(8, 4))
         frame.pack(fill="x")
         frame.columnconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
