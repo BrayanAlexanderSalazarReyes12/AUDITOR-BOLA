@@ -1664,6 +1664,10 @@ class AIAssistantMixin:
             if hasattr(self, "_selected_row_data")
             else None
         ) or {}
+        _, descripcion, detalle = self._current_finding_data()
+        metadata = self._ai_selected_metadata()
+        matriz = self._ai_test_matrix()
+        active_knowledge = self.ai_active_knowledge_candidate
 
         if not messagebox.askyesno(
             "Aplicar receta generada por Gemma",
@@ -1672,17 +1676,20 @@ class AIAssistantMixin:
                 f"Propuesta: {proposal.titulo}\n"
                 f"Enfoque: {proposal.enfoque}\n"
                 f"Riesgo declarado: {proposal.riesgo}\n\n"
-                "Gemma solo propuso la receta. El auditor hará backup, "
-                "aplicación, verificación y rollback si corresponde. "
-                "Si queda CORREGIDO, la receta se guardará además en la "
-                "biblioteca reutilizable del auditor.\n\n"
+                "El auditor hará backup, aplicará la implementación y "
+                "verificará la prueba exacta y sus regresiones. "
+                "Si termina en CORREGIDO, conservará el parche concreto "
+                "como evidencia y aprenderá/actualizará la medicina "
+                "semántica reutilizable.\n\n"
                 "¿Deseas continuar?"
             ),
         ):
             return
 
         def task():
-            selected_proposal, selected_control = self._install_ai_recipe_in_memory()
+            selected_proposal, selected_control = (
+                self._install_ai_recipe_in_memory()
+            )
 
             if self.ai_session_dir:
                 guardar_seleccion_ia(
@@ -1714,7 +1721,21 @@ class AIAssistantMixin:
                     resultado=result,
                 )
 
-            if result.get("estado_final") == "CORREGIDO":
+            estado = result.get("estado_final")
+            source_rel = self.ai_current_recipe.archivo
+            extension = Path(source_rel).suffix.lower()
+            caso = {
+                "sistema": self.cfg.sistema,
+                "version": self.cfg.version_objetivo,
+                "control_id": selected_control,
+                "tipo_control": row.get("tipo_control"),
+                "metodo": row.get("metodo"),
+                "ruta": row.get("ruta"),
+                "extension": extension,
+                "enfoque": selected_proposal.enfoque,
+            }
+
+            if estado == "CORREGIDO":
                 provider = self.ai_provider
                 library_path = guardar_receta_biblioteca(
                     self.ai_current_recipe,
@@ -1729,26 +1750,152 @@ class AIAssistantMixin:
                     modelo=provider.model_id if provider else None,
                     verificada=True,
                 )
-                result["receta_biblioteca"] = str(library_path)
+                result["instancia_concreta"] = str(library_path)
+
+                if active_knowledge is not None:
+                    registrar_uso_conocimiento(
+                        active_knowledge.path,
+                        exitoso=True,
+                        caso_exitoso=caso,
+                    )
+                    result["conocimiento_reutilizado"] = str(
+                        active_knowledge.path
+                    )
+                else:
+                    try:
+                        correction_info = (
+                            result.get("correccion_aplicada") or {}
+                        )
+                        backup = correction_info.get("backup")
+                        archivo = correction_info.get(
+                            "archivo",
+                            source_rel,
+                        )
+                        if not backup:
+                            raise RuntimeError(
+                                "La evidencia no contiene el backup "
+                                "necesario para generalizar la corrección."
+                            )
+
+                        codigo_antes = Path(backup).read_text(
+                            encoding="utf-8"
+                        )
+                        codigo_despues = (
+                            self.target_root / archivo
+                        ).read_text(encoding="utf-8")
+                        diff = correction_info.get("diff") or ""
+
+                        knowledge, knowledge_context, _ = (
+                            generalizar_correccion_exitosa(
+                                self.cfg,
+                                control_id=selected_control,
+                                descripcion=descripcion,
+                                detalle=detalle,
+                                metadata_hallazgo=metadata,
+                                matriz_pruebas=matriz,
+                                source_relative=archivo,
+                                codigo_antes=codigo_antes,
+                                codigo_despues=codigo_despues,
+                                diff=diff,
+                                propuesta=selected_proposal,
+                                provider=provider,
+                            )
+                        )
+                        if (
+                            extension
+                            and extension
+                            not in knowledge.lenguajes_observados
+                        ):
+                            knowledge.lenguajes_observados.append(
+                                extension
+                            )
+                        knowledge_path = guardar_conocimiento(
+                            knowledge,
+                            caso_exitoso=caso,
+                        )
+                        result["conocimiento_aprendido"] = str(
+                            knowledge_path
+                        )
+
+                        if self.ai_session_dir:
+                            (
+                                self.ai_session_dir
+                                / "conocimiento_aprendido.json"
+                            ).write_text(
+                                json.dumps(
+                                    {
+                                        "path": str(knowledge_path),
+                                        "knowledge": asdict(knowledge),
+                                        "contexto_redactado": (
+                                            knowledge_context
+                                        ),
+                                    },
+                                    ensure_ascii=False,
+                                    indent=2,
+                                )
+                                + "\n",
+                                encoding="utf-8",
+                            )
+                    except Exception as exc:
+                        result["conocimiento_error"] = str(exc)
+            elif active_knowledge is not None:
+                try:
+                    registrar_uso_conocimiento(
+                        active_knowledge.path,
+                        exitoso=False,
+                    )
+                except Exception:
+                    pass
 
             return result
 
         def done(result):
             estado = result.get("estado_final")
-            library_path = result.get("receta_biblioteca")
+            instance_path = result.get("instancia_concreta")
+            knowledge_path = result.get("conocimiento_aprendido")
+            reused_path = result.get("conocimiento_reutilizado")
+            knowledge_error = result.get("conocimiento_error")
+
             self._log(
                 f"Receta Gemma {proposal.id} aplicada a {control}: {estado}"
             )
-            if library_path:
+            if instance_path:
                 self._log(
-                    f"Receta verificada guardada en biblioteca: {library_path}"
+                    "Instancia concreta verificada guardada: "
+                    f"{instance_path}"
+                )
+            if knowledge_path:
+                self._log(
+                    "Nueva medicina semántica aprendida: "
+                    f"{knowledge_path}"
+                )
+            if reused_path:
+                self._log(
+                    "Medicina conocida validada también en este sistema: "
+                    f"{reused_path}"
+                )
+            if knowledge_error:
+                self._log(
+                    "La corrección funcionó, pero no se pudo "
+                    f"generalizar la medicina: {knowledge_error}"
                 )
 
             mensaje = f"{control}: {estado}"
-            if library_path:
+            if knowledge_path:
                 mensaje += (
-                    "\n\nLa receta validada quedó guardada también en:\n"
-                    f"{library_path}"
+                    "\n\nSe aprendió una medicina reutilizable en:\n"
+                    f"{knowledge_path}"
+                )
+            elif reused_path:
+                mensaje += (
+                    "\n\nLa medicina conocida funcionó también en este "
+                    "aplicativo y se actualizó su historial."
+                )
+            if knowledge_error:
+                mensaje += (
+                    "\n\nLa corrección sí fue válida, pero la extracción "
+                    "del conocimiento reusable falló. El parche y la "
+                    "evidencia se conservaron."
                 )
             if estado == "NO_CORREGIDO":
                 motivo = result.get("motivo") or (
@@ -1781,17 +1928,19 @@ class AIAssistantMixin:
                 if messagebox.askyesno(
                     "Reformular recetas",
                     (
-                        "La receta no solucionó la prueba objetivo y el "
-                        "auditor ya hizo rollback.\n\n"
-                        "¿Deseas que Gemma genere 3 recetas nuevas usando "
-                        "el resultado fallido como retroalimentación?"
+                        "La implementación no solucionó el hallazgo y el "
+                        "auditor hizo rollback.\n\n"
+                        "¿Deseas generar 3 implementaciones nuevas usando "
+                        "el fallo como retroalimentación?"
                     ),
                 ):
                     self._generate_ai_recipes(
-                        intento_anterior=feedback
+                        intento_anterior=feedback,
+                        conocimiento=active_knowledge,
                     )
                     return
 
+            self._refresh_recipe_library()
             self._diagnose()
 
         self._run_background(
@@ -1813,20 +1962,15 @@ class AIAssistantMixin:
         if not proposal or not control:
             return
 
-        row = (
-            self._selected_row_data()
-            if hasattr(self, "_selected_row_data")
-            else None
-        ) or {}
-
         if not messagebox.askyesno(
-            "Guardar receta",
+            "Guardar propuesta en perfil",
             (
                 f"Se guardará la propuesta {proposal.id} como receta "
-                f"persistente de {control} en el perfil actual y también "
-                "en la biblioteca reutilizable del auditor.\n\n"
-                f"Perfil: {self.config_path}\n"
-                f"Biblioteca: {biblioteca_por_defecto()}\n\n"
+                f"concreta de {control} únicamente en el perfil actual.\n\n"
+                "La biblioteca de conocimiento reusable solo aprende una "
+                "medicina después de que una implementación termina en "
+                "CORREGIDO.\n\n"
+                f"Perfil: {self.config_path}\n\n"
                 "¿Continuar?"
             ),
         ):
@@ -1845,36 +1989,16 @@ class AIAssistantMixin:
                 encoding="utf-8",
             )
 
-        provider = self.ai_provider
-        library_path = guardar_receta_biblioteca(
-            self.ai_current_recipe,
-            sistema=self.cfg.sistema,
-            version_objetivo=self.cfg.version_objetivo,
-            metodo=row.get("metodo"),
-            ruta=row.get("ruta"),
-            tipo_control=row.get("tipo_control"),
-            titulo=proposal.titulo,
-            fuente="gemma",
-            proveedor=provider.provider_name if provider else None,
-            modelo=provider.model_id if provider else None,
-            verificada=False,
-        )
-
         self._log(
-            f"Receta Gemma {proposal.id} guardada en perfil para {control}."
-        )
-        self._log(
-            f"Receta reutilizable guardada en biblioteca: {library_path}"
+            f"Propuesta Gemma {proposal.id} guardada en perfil para {control}."
         )
         messagebox.showinfo(
-            "Receta guardada",
+            "Perfil actualizado",
             (
-                f"La receta de {control} quedó guardada en el perfil y en "
-                f"la biblioteca del auditor:\n\n{library_path}\n\n"
-                "Se marcará como verificada cuando una aplicación del ciclo "
-                "correctivo finalice en CORREGIDO."
+                f"La propuesta de {control} quedó guardada en el perfil.\n\n"
+                "Todavía no se considera conocimiento reusable: primero "
+                "debe superar el ciclo correctivo y terminar en CORREGIDO."
             ),
         )
-        self._refresh_recipe_library()
         self._refresh_ai_state()
 
