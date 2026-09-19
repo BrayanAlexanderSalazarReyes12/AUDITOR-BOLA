@@ -113,7 +113,7 @@ class RuntimeConfig:
     windows, linux, macos y default.
     """
 
-    modo: str = "command"  # command | external
+    modo: str = "process"  # process | command (legacy) | service | external
     comando_inicio: list[str] = field(default_factory=list)
     comando_detener: list[str] = field(default_factory=list)
     comando_reinicio: list[str] = field(default_factory=list)
