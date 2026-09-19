@@ -711,6 +711,75 @@ QToolTip {
     padding: 5px;
 }
 
+QFileDialog {
+    background: #06121D;
+    color: #DDEBF3;
+}
+QFileDialog QWidget {
+    background: #06121D;
+    color: #DDEBF3;
+}
+QFileDialog QTreeView,
+QFileDialog QListView {
+    background: #071824;
+    alternate-background-color: #0A1D2B;
+    color: #DDEBF3;
+    border: 1px solid #173E58;
+    border-radius: 8px;
+    selection-background-color: #145B8C;
+    selection-color: #FFFFFF;
+    outline: none;
+}
+QFileDialog QTreeView::item,
+QFileDialog QListView::item {
+    min-height: 26px;
+    padding: 3px 6px;
+}
+QFileDialog QTreeView::item:hover,
+QFileDialog QListView::item:hover {
+    background: #103B59;
+}
+QFileDialog QLineEdit,
+QFileDialog QComboBox {
+    background: #071824;
+    color: #F4F8FB;
+    border: 1px solid #1A5274;
+    border-radius: 8px;
+    min-height: 34px;
+    padding: 0 9px;
+}
+QFileDialog QComboBox QAbstractItemView {
+    background: #081824;
+    color: #EAF5FB;
+    border: 1px solid #1A5274;
+    selection-background-color: #145B8C;
+    selection-color: #FFFFFF;
+}
+QFileDialog QPushButton {
+    background: #0F3046;
+    color: #EAF5FB;
+    border: 1px solid #1A5C82;
+    border-radius: 8px;
+    min-height: 34px;
+    padding: 0 12px;
+}
+QFileDialog QPushButton:hover {
+    background: #15405C;
+    border-color: #39C7FF;
+}
+QFileDialog QLabel {
+    background: transparent;
+    color: #A8C1D0;
+}
+QFileDialog QHeaderView::section {
+    background: #0D2A3E;
+    color: #CFE5F1;
+    border: none;
+    border-right: 1px solid #14384F;
+    border-bottom: 1px solid #1A5274;
+    padding: 6px;
+}
+
 QMessageBox {
     background: #081824;
 }
