@@ -710,6 +710,7 @@ class AegisMainWindow(QMainWindow):
         c.state_changed.connect(self.refresh_all)
         c.results_changed.connect(self.audit.set_rows)
         c.busy_changed.connect(self.set_busy)
+        c.task_progress.connect(self.set_task_progress)
         c.log_message.connect(self.append_log)
         c.error_message.connect(
             lambda title, body: QMessageBox.critical(
@@ -1106,6 +1107,12 @@ class AegisMainWindow(QMainWindow):
             )
             self.busy_bar.setValue(100)
             QTimer.singleShot(550, self._reset_busy_bar)
+
+    def set_task_progress(self, value: int, text: str) -> None:
+        self.task_overlay.set_progress(value, text)
+        self.busy_bar.setRange(0, 100)
+        self.busy_bar.setValue(max(0, min(100, int(value))))
+        self.status.setText(text)
 
     def _update_busy_progress(self, value: int) -> None:
         self.busy_bar.setRange(0, 100)
