@@ -98,6 +98,44 @@ La ventana permite realizar todo el ciclo sin usar la terminal:
 
 La tabla indica explícitamente si cada hallazgo tiene **Corrección: Sí/No**.
 
+## Biblioteca reutilizable de recetas
+
+Las recetas aceptadas no quedan únicamente dentro del perfil de una
+aplicación. El auditor mantiene una biblioteca propia:
+
+```text
+recetas/
+├── P1-BOLA/
+├── P1-RBAC-004/
+├── P2-CORS-001/
+└── ...
+```
+
+Cuando el usuario guarda una receta generada por Gemma, se conserva tanto en
+el perfil actual como en esta biblioteca. Si una receta se aplica y el control
+termina en `CORREGIDO`, se registra como **verificada**.
+
+Al seleccionar un hallazgo en otro sistema, el auditor busca recetas del mismo
+control, las adapta al archivo actual y ejecuta un preview en memoria. Solo
+muestra como compatibles aquellas cuyo patrón realmente puede aplicarse al
+nuevo código. Una coincidencia de `control_id` por sí sola nunca es
+suficiente.
+
+El flujo es:
+
+```text
+HALLAZGO
+   ↓
+buscar en recetas/
+   ↓
+¿hay receta compatible?
+   ├── SÍ → revisar código + diff → aplicar → verificar
+   └── NO → generar 3 propuestas con Gemma
+```
+
+La biblioteca guarda operaciones y metadatos de reutilización, no archivos
+fuente completos ni credenciales.
+
 ## Resolución automática del archivo fuente
 
 Al seleccionar una fila del diagnóstico, el auditor intenta cargar
@@ -295,6 +333,7 @@ auditor_bola/
   evidence.py          hashes y evidencia
   cycle.py             diagnóstico/corrección/verificación/rollback
   process_manager.py   proceso local configurable
+  recipe_library.py     biblioteca reutilizable de recetas
   cli.py
   gui.py
 
@@ -303,6 +342,11 @@ config/
   tramitia.json
   blog.json
   tickets.json
+
+recetas/
+  README.md
+  <control_id>/
+    <recipe_id>.json
 
 docs/
   CREAR_PERFIL.md
