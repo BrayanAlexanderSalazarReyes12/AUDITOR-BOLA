@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFileDialog,
     QFrame,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -29,8 +31,30 @@ from .theme import COLORS
 from .widgets import Card, PrimaryButton, SectionHeader, Stepper, brand_icon
 
 
+def calculate_dialog_size(
+    available_width: int,
+    available_height: int,
+    preferred_width: int,
+    preferred_height: int,
+    minimum_width: int,
+    minimum_height: int,
+    margin: int = 24,
+) -> tuple[int, int, int, int]:
+    """Calcula tamaño lógico sin salir del área útil de la pantalla."""
+    usable_width = max(640, available_width - (margin * 2))
+    usable_height = max(460, available_height - (margin * 2))
+
+    width = min(preferred_width, usable_width)
+    height = min(preferred_height, usable_height)
+
+    min_width = min(minimum_width, width)
+    min_height = min(minimum_height, height)
+
+    return width, height, min_width, min_height
+
+
 class AegisDialog(QDialog):
-    """Diálogo base con lienzo Aegis y titlebar oscuro en Windows."""
+    """Diálogo base responsive con lienzo Aegis."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -39,9 +63,70 @@ class AegisDialog(QDialog):
             Qt.WidgetAttribute.WA_StyledBackground,
             True,
         )
+        self._preferred_size = (980, 650)
+        self._minimum_dialog_size = (760, 500)
+        self._screen_margin = 22
+
+    def configure_dialog_size(
+        self,
+        preferred: tuple[int, int],
+        minimum: tuple[int, int],
+        margin: int = 22,
+    ) -> None:
+        self._preferred_size = preferred
+        self._minimum_dialog_size = minimum
+        self._screen_margin = margin
+        self._fit_to_available_screen()
+
+    def _target_screen(self):
+        parent = self.parentWidget()
+        if parent is not None and parent.screen() is not None:
+            return parent.screen()
+        if self.screen() is not None:
+            return self.screen()
+        return QApplication.primaryScreen()
+
+    def _fit_to_available_screen(self) -> None:
+        screen = self._target_screen()
+        if screen is None:
+            return
+
+        available = screen.availableGeometry()
+        width, height, min_width, min_height = calculate_dialog_size(
+            available.width(),
+            available.height(),
+            self._preferred_size[0],
+            self._preferred_size[1],
+            self._minimum_dialog_size[0],
+            self._minimum_dialog_size[1],
+            self._screen_margin,
+        )
+
+        self.setMinimumSize(min_width, min_height)
+        self.resize(width, height)
+
+        x = available.x() + max(
+            0,
+            (available.width() - width) // 2,
+        )
+        y = available.y() + max(
+            0,
+            (available.height() - height) // 2,
+        )
+        self.move(x, y)
+
+    def is_short_screen(self) -> bool:
+        screen = self._target_screen()
+        if screen is None:
+            return False
+        return screen.availableGeometry().height() < 700
 
     def showEvent(self, event):
+        self._fit_to_available_screen()
         super().showEvent(event)
+        self._apply_windows_dark_titlebar()
+
+    def _apply_windows_dark_titlebar(self) -> None:
         if os.name != "nt":
             return
         try:
@@ -61,6 +146,8 @@ class AegisDialog(QDialog):
                     break
         except Exception:
             pass
+
+
 
 
 class LoadCard(QFrame):
@@ -196,8 +283,10 @@ class LoadCenterDialog(AegisDialog):
         super().__init__(parent)
         self.setWindowTitle("Aegis Auditor — Cargar / Importar")
         self.setWindowIcon(brand_icon())
-        self.resize(980, 650)
-        self.setMinimumSize(820, 560)
+        self.configure_dialog_size(
+            preferred=(980, 650),
+            minimum=(720, 500),
+        )
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -212,8 +301,12 @@ class LoadCenterDialog(AegisDialog):
         outer.addWidget(self.dialog_root)
 
         root = QVBoxLayout(self.dialog_root)
-        root.setContentsMargins(22, 20, 22, 18)
-        root.setSpacing(14)
+        if self.is_short_screen():
+            root.setContentsMargins(14, 12, 14, 12)
+            root.setSpacing(9)
+        else:
+            root.setContentsMargins(22, 20, 22, 18)
+            root.setSpacing(14)
 
         hero = Card(elevated=True)
         hero.setObjectName("DialogHero")
@@ -305,8 +398,12 @@ class LoadCenterDialog(AegisDialog):
 
         footer_frame = QFrame()
         footer_frame.setObjectName("DialogFooter")
+        footer_frame.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         footer = QHBoxLayout(footer_frame)
-        footer.setContentsMargins(12, 8, 12, 8)
+        footer.setContentsMargins(12, 7, 12, 7)
 
         hint = QLabel(
             "Selecciona únicamente los recursos necesarios para el objetivo."
@@ -334,8 +431,10 @@ class AutoProfileDialog(AegisDialog):
         super().__init__(parent)
         self.setWindowTitle("Aegis Auditor — Nuevo proyecto")
         self.setWindowIcon(brand_icon())
-        self.resize(1120, 740)
-        self.setMinimumSize(880, 600)
+        self.configure_dialog_size(
+            preferred=(1120, 690),
+            minimum=(760, 500),
+        )
 
         self.project_root: Path | None = None
         self.detection = None
@@ -354,14 +453,23 @@ class AutoProfileDialog(AegisDialog):
         outer.addWidget(self.dialog_root)
 
         root = QVBoxLayout(self.dialog_root)
-        root.setContentsMargins(22, 20, 22, 18)
-        root.setSpacing(12)
+        if self.is_short_screen():
+            root.setContentsMargins(14, 12, 14, 12)
+            root.setSpacing(8)
+        else:
+            root.setContentsMargins(22, 20, 22, 18)
+            root.setSpacing(12)
 
         header = Card(elevated=True)
         header.setObjectName("DialogHero")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(18, 14, 18, 14)
-        header_layout.setSpacing(14)
+        if self.is_short_screen():
+            header_layout.setContentsMargins(14, 9, 14, 9)
+            header_layout.setSpacing(10)
+            header.setMaximumHeight(82)
+        else:
+            header_layout.setContentsMargins(18, 14, 18, 14)
+            header_layout.setSpacing(14)
 
         logo = QLabel()
         logo.setObjectName("DialogBrandIcon")
@@ -395,7 +503,11 @@ class AutoProfileDialog(AegisDialog):
         step_card = Card()
         step_card.setObjectName("DialogStepperCard")
         step_layout = QVBoxLayout(step_card)
-        step_layout.setContentsMargins(16, 10, 16, 10)
+        if self.is_short_screen():
+            step_layout.setContentsMargins(12, 5, 12, 5)
+            step_card.setMaximumHeight(82)
+        else:
+            step_layout.setContentsMargins(16, 10, 16, 10)
 
         self.stepper = Stepper(
             [
@@ -409,8 +521,9 @@ class AutoProfileDialog(AegisDialog):
         step_layout.addWidget(self.stepper)
         root.addWidget(step_card)
 
-        content = QHBoxLayout()
-        content.setSpacing(12)
+        content = QSplitter(Qt.Orientation.Horizontal)
+        content.setObjectName("DialogContentSplitter")
+        content.setChildrenCollapsible(False)
 
         left = Card()
         left.setObjectName("DialogContentCard")
@@ -470,14 +583,21 @@ class AutoProfileDialog(AegisDialog):
         )
         right_layout.addWidget(self.preview, 1)
 
-        content.addWidget(left, 4)
-        content.addWidget(right, 6)
-        root.addLayout(content, 1)
+        content.addWidget(left)
+        content.addWidget(right)
+        content.setStretchFactor(0, 4)
+        content.setStretchFactor(1, 6)
+        content.setSizes([420, 640])
+        root.addWidget(content, 1)
 
         footer_frame = QFrame()
         footer_frame.setObjectName("DialogFooter")
+        footer_frame.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         footer = QHBoxLayout(footer_frame)
-        footer.setContentsMargins(12, 8, 12, 8)
+        footer.setContentsMargins(12, 7, 12, 7)
         footer.setSpacing(8)
 
         self.path_label = QLabel(
