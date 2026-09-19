@@ -46,6 +46,14 @@ Registro
 
 El menú superior separa **Archivo**, **Proyecto**, **Auditoría**, **Conocimiento** y **Ayuda**. Una barra de progreso indica las operaciones en curso y el dashboard muestra proyecto, perfil, proceso y número de hallazgos.
 
+## Documentación clave
+
+- Requisitos de uso: `docs/REQUISITOS_USO.md`
+- Arquitectura de los dos pilares: `docs/ARQUITECTURA_DOS_PILARES.md`
+- Creación manual de perfiles: `docs/CREAR_PERFIL.md`
+- Evidencias y figuras para artículo: `docs/articulo/README.md`
+- Registro de implementación: `docs/articulo/REGISTRO_IMPLEMENTACION.md`
+
 ## Guía paso a paso
 
 Para utilizar la interfaz y aplicar correcciones, consulte:
