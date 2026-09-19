@@ -1340,18 +1340,16 @@ def _runtime_from_descriptor(descriptor: dict[str, Any] | None) -> dict[str, Any
     return runtime if runtime.get("comando_inicio") else None
 
 
-def _detect_runtime(
-    root: Path,
-    languages: list[str],
-    frameworks: list[str],
-    descriptor: dict[str, Any] | None,
-) -> tuple[dict[str, Any], str]:
-    from_descriptor = _runtime_from_descriptor(descriptor)
-    if from_descriptor:
-        return from_descriptor, "http://127.0.0.1:8000"
-
-    base = {
+def _runtime_template(
+    *,
+    name: str,
+    origin: str,
+    base_url: str,
+) -> dict[str, Any]:
+    return {
         "modo": "process",
+        "nombre": name,
+        "origen": origin,
         "comando_inicio": [],
         "comando_detener": [],
         "comando_reinicio": [],
@@ -1360,47 +1358,68 @@ def _detect_runtime(
         "directorio_trabajo": ".",
         "espera_inicio": 2.0,
         "variables": {},
+        "base_url": base_url,
+        "alternativas": [],
     }
 
-    compose = next(
-        (
-            name
-            for name in (
-                "compose.yml", "compose.yaml",
-                "docker-compose.yml", "docker-compose.yaml",
-            )
-            if (root / name).exists()
-        ),
-        None,
-    )
-    if compose:
-        base["modo"] = "service"
-        base["comando_inicio"] = ["docker", "compose", "-f", compose, "up", "-d"]
-        base["comando_detener"] = ["docker", "compose", "-f", compose, "down"]
-        base["comando_reinicio"] = ["docker", "compose", "-f", compose, "restart"]
-        base["espera_inicio"] = 8.0
-        return base, "http://127.0.0.1:8080"
 
+def _detect_native_runtime(
+    root: Path,
+    languages: list[str],
+    frameworks: list[str],
+) -> tuple[dict[str, Any], str]:
     if "moodle" in frameworks:
+        base = _runtime_template(
+            name="Servidor externo PHP/Moodle",
+            origin="framework:moodle",
+            base_url="http://127.0.0.1/moodle",
+        )
         base["modo"] = "external"
-        return base, "http://127.0.0.1/moodle"
+        return base, base["base_url"]
 
     if "javascript" in languages or "typescript" in languages:
+        base = _runtime_template(
+            name="Node.js",
+            origin="package.json",
+            base_url="http://127.0.0.1:3000",
+        )
+
         package_manager = "npm"
         if (root / "pnpm-lock.yaml").exists():
             package_manager = "pnpm"
         elif (root / "yarn.lock").exists():
             package_manager = "yarn"
 
-        start_command = [package_manager, "start"]
         try:
             package_data = json.loads(_read_text(root / "package.json"))
         except (json.JSONDecodeError, TypeError):
             package_data = {}
-        scripts = package_data.get("scripts") or {}
-        if "start" not in scripts and "dev" in scripts:
-            start_command = [package_manager, "run", "dev"]
 
+        scripts = (
+            package_data.get("scripts")
+            if isinstance(package_data, dict)
+            else {}
+        ) or {}
+
+        if "start" in scripts:
+            start_command = [package_manager, "start"]
+        elif "dev" in scripts:
+            start_command = [package_manager, "run", "dev"]
+        elif "serve" in scripts:
+            start_command = [package_manager, "run", "serve"]
+        else:
+            main_file = (
+                package_data.get("main")
+                if isinstance(package_data, dict)
+                else None
+            )
+            if isinstance(main_file, str) and (root / main_file).is_file():
+                start_command = ["node", main_file]
+            else:
+                base["modo"] = "external"
+                return base, base["base_url"]
+
+        base["nombre"] = f"Node.js ({package_manager})"
         base["comando_inicio"] = start_command
         base["preparar_automaticamente"] = True
         if package_manager == "npm":
@@ -1409,80 +1428,271 @@ def _detect_runtime(
             ]
         else:
             base["comandos_preparacion"] = [[package_manager, "install"]]
-        return base, "http://127.0.0.1:3000"
+
+        return base, base["base_url"]
 
     if "python" in languages:
+        base_url = (
+            "http://127.0.0.1:5000"
+            if "flask" in frameworks
+            else "http://127.0.0.1:8000"
+        )
+        base = _runtime_template(
+            name="Python",
+            origin="python-project",
+            base_url=base_url,
+        )
         base["preparar_automaticamente"] = True
+
         if (root / "requirements.txt").exists():
             base["comandos_preparacion"] = [
-                ["python", "-m", "pip", "install", "-r", "requirements.txt"]
+                [
+                    "python",
+                    "-m",
+                    "pip",
+                    "install",
+                    "-r",
+                    "requirements.txt",
+                ]
             ]
+
         if (root / "run.py").exists():
             base["comando_inicio"] = ["python", "run.py"]
         elif (root / "manage.py").exists():
-            base["comando_inicio"] = ["python", "manage.py", "runserver", "127.0.0.1:8000"]
+            base["comando_inicio"] = [
+                "python",
+                "manage.py",
+                "runserver",
+                "127.0.0.1:8000",
+            ]
+            base["base_url"] = "http://127.0.0.1:8000"
         elif "fastapi" in frameworks:
-            base["comando_inicio"] = ["python", "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"]
-        return base, "http://127.0.0.1:5000" if "flask" in frameworks else "http://127.0.0.1:8000"
+            base["comando_inicio"] = [
+                "python",
+                "-m",
+                "uvicorn",
+                "main:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000",
+            ]
+            base["base_url"] = "http://127.0.0.1:8000"
+        else:
+            base["modo"] = "external"
+
+        return base, base["base_url"]
 
     if "java" in languages:
+        base = _runtime_template(
+            name="Java",
+            origin="java-project",
+            base_url="http://127.0.0.1:8080",
+        )
+
         if (root / "mvnw.cmd").exists() or (root / "mvnw").exists():
+            base["nombre"] = "Maven Wrapper"
+            base["origen"] = "mvnw"
             base["comando_inicio_por_so"] = {
                 "windows": ["mvnw.cmd", "spring-boot:run"],
                 "linux": ["mvnw", "spring-boot:run"],
                 "macos": ["mvnw", "spring-boot:run"],
             }
-        elif "spring-boot" in frameworks:
+        elif (root / "gradlew.bat").exists() or (root / "gradlew").exists():
+            base["nombre"] = "Gradle Wrapper"
+            base["origen"] = "gradlew"
+            base["comando_inicio_por_so"] = {
+                "windows": ["gradlew.bat", "bootRun"],
+                "linux": ["gradlew", "bootRun"],
+                "macos": ["gradlew", "bootRun"],
+            }
+        elif "spring-boot" in frameworks and (root / "pom.xml").exists():
+            base["nombre"] = "Maven"
+            base["origen"] = "pom.xml"
             base["comando_inicio"] = ["mvn", "spring-boot:run"]
+        elif (
+            "spring-boot" in frameworks
+            and (
+                (root / "build.gradle").exists()
+                or (root / "build.gradle.kts").exists()
+            )
+        ):
+            base["nombre"] = "Gradle"
+            base["origen"] = "build.gradle"
+            base["comando_inicio"] = ["gradle", "bootRun"]
         else:
             base["modo"] = "external"
-        return base, "http://127.0.0.1:8080"
+
+        return base, base["base_url"]
 
     if "dotnet" in frameworks or "csharp" in languages:
+        base = _runtime_template(
+            name=".NET",
+            origin="csproj",
+            base_url="http://127.0.0.1:5000",
+        )
         base["comando_inicio"] = ["dotnet", "run"]
         base["preparar_automaticamente"] = True
         base["comandos_preparacion"] = [["dotnet", "restore"]]
-        return base, "http://127.0.0.1:5000"
+        return base, base["base_url"]
 
     if "php" in languages:
+        base = _runtime_template(
+            name="PHP",
+            origin="php-project",
+            base_url="http://127.0.0.1:8000",
+        )
         if "laravel" in frameworks and (root / "artisan").exists():
+            base["nombre"] = "Laravel"
+            base["origen"] = "artisan"
             base["comando_inicio"] = [
-                "php", "artisan", "serve",
-                "--host=127.0.0.1", "--port=8000",
+                "php",
+                "artisan",
+                "serve",
+                "--host=127.0.0.1",
+                "--port=8000",
             ]
             if (root / "composer.json").exists():
                 base["preparar_automaticamente"] = True
                 base["comandos_preparacion"] = [["composer", "install"]]
-            return base, "http://127.0.0.1:8000"
-        # Moodle, WordPress, Symfony y PHP servidos por Apache/Nginx suelen
-        # depender del entorno; evitar inventar un launcher.
+            return base, base["base_url"]
+
         base["modo"] = "external"
-        return base, "http://127.0.0.1:8000"
+        return base, base["base_url"]
 
     if "ruby" in languages:
+        base = _runtime_template(
+            name="Ruby",
+            origin="Gemfile",
+            base_url="http://127.0.0.1:4567",
+        )
         if "rails" in frameworks:
-            base["comando_inicio"] = ["bundle", "exec", "rails", "server"]
+            base["nombre"] = "Ruby on Rails"
+            base["comando_inicio"] = [
+                "bundle",
+                "exec",
+                "rails",
+                "server",
+            ]
             base["preparar_automaticamente"] = True
             base["comandos_preparacion"] = [["bundle", "install"]]
-            return base, "http://127.0.0.1:3000"
+            base["base_url"] = "http://127.0.0.1:3000"
+            return base, base["base_url"]
+
         base["modo"] = "external"
-        return base, "http://127.0.0.1:4567"
+        return base, base["base_url"]
 
     if "go" in languages:
+        base = _runtime_template(
+            name="Go",
+            origin="go.mod",
+            base_url="http://127.0.0.1:8080",
+        )
         base["comando_inicio"] = ["go", "run", "."]
-        return base, "http://127.0.0.1:8080"
+        return base, base["base_url"]
 
     if "rust" in languages:
+        base = _runtime_template(
+            name="Rust/Cargo",
+            origin="Cargo.toml",
+            base_url="http://127.0.0.1:8000",
+        )
         base["comando_inicio"] = ["cargo", "run"]
         base["preparar_automaticamente"] = True
         base["comandos_preparacion"] = [["cargo", "build"]]
-        return base, "http://127.0.0.1:8000"
+        return base, base["base_url"]
 
-    # Para stacks donde el launcher web no puede inferirse de forma fiable
-    # (Flutter, Swift, Elixir, Scala, C/C++ u otros), conservar el proyecto y
-    # generar el perfil, pero requerir confirmación humana del runtime.
+    base = _runtime_template(
+        name="Runtime externo",
+        origin="sin-launcher-inferible",
+        base_url="http://127.0.0.1:8000",
+    )
     base["modo"] = "external"
-    return base, "http://127.0.0.1:8000"
+    return base, base["base_url"]
+
+
+def _detect_runtime(
+    root: Path,
+    languages: list[str],
+    frameworks: list[str],
+    descriptor: dict[str, Any] | None,
+) -> tuple[dict[str, Any], str]:
+    from_descriptor = _runtime_from_descriptor(descriptor)
+    if from_descriptor:
+        from_descriptor.setdefault("nombre", "Runtime declarado")
+        from_descriptor.setdefault("origen", "auditor-package.json")
+        from_descriptor.setdefault(
+            "base_url",
+            "http://127.0.0.1:8000",
+        )
+        from_descriptor.setdefault("alternativas", [])
+        return from_descriptor, from_descriptor["base_url"]
+
+    native_runtime, native_url = _detect_native_runtime(
+        root,
+        languages,
+        frameworks,
+    )
+
+    compose = next(
+        (
+            name
+            for name in (
+                "compose.yml",
+                "compose.yaml",
+                "docker-compose.yml",
+                "docker-compose.yaml",
+            )
+            if (root / name).exists()
+        ),
+        None,
+    )
+
+    if not compose:
+        return native_runtime, native_url
+
+    docker_runtime = _runtime_template(
+        name="Docker Compose",
+        origin=compose,
+        base_url="http://127.0.0.1:8080",
+    )
+    docker_runtime["modo"] = "service"
+    docker_runtime["comando_inicio"] = [
+        "docker",
+        "compose",
+        "-f",
+        compose,
+        "up",
+        "-d",
+    ]
+    docker_runtime["comando_detener"] = [
+        "docker",
+        "compose",
+        "-f",
+        compose,
+        "down",
+    ]
+    docker_runtime["comando_reinicio"] = [
+        "docker",
+        "compose",
+        "-f",
+        compose,
+        "restart",
+    ]
+    docker_runtime["espera_inicio"] = 8.0
+
+    # Docker sigue siendo preferido cuando el proyecto lo declara, pero el
+    # arranque nativo queda disponible como alternativa real.
+    if (
+        native_runtime.get("modo") != "external"
+        and (
+            native_runtime.get("comando_inicio")
+            or native_runtime.get("comando_inicio_por_so")
+        )
+    ):
+        docker_runtime["alternativas"] = [native_runtime]
+
+    return docker_runtime, docker_runtime["base_url"]
 
 
 _USERNAME_KEYS = {
