@@ -77,8 +77,8 @@ class MetricCard(Card):
     ):
         super().__init__(parent, elevated=True)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(1)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(0)
 
         self.title_label = QLabel(title.upper())
         self.title_label.setObjectName("KpiTitle")
@@ -103,8 +103,8 @@ class StageRow(QWidget):
     def __init__(self, title: str, subtitle: str, parent=None):
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 5, 0, 5)
-        layout.setSpacing(10)
+        layout.setContentsMargins(0, 3, 0, 3)
+        layout.setSpacing(9)
 
         self.dot = QLabel("○")
         self.dot.setFixedWidth(24)
@@ -125,7 +125,7 @@ class StageRow(QWidget):
         self.status.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        self.status.setFixedWidth(90)
+        self.status.setFixedWidth(82)
 
         layout.addWidget(self.dot)
         layout.addLayout(text_box, 1)
@@ -159,21 +159,21 @@ class Stepper(QWidget):
         self._active = 0
 
         outer = QHBoxLayout(self)
-        outer.setContentsMargins(10, 0, 10, 0)
+        outer.setContentsMargins(8, 0, 8, 0)
         outer.setSpacing(0)
 
         for index, (title, subtitle) in enumerate(steps):
             item = QWidget()
             item_layout = QVBoxLayout(item)
-            item_layout.setContentsMargins(4, 0, 4, 0)
-            item_layout.setSpacing(2)
+            item_layout.setContentsMargins(3, 0, 3, 0)
+            item_layout.setSpacing(1)
 
             badge = QLabel(str(index + 1))
-            badge.setFixedSize(32, 32)
+            badge.setFixedSize(28, 28)
             badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
             badge.setStyleSheet(
                 "background:#17384F;border:1px solid #2A5874;"
-                "border-radius:16px;font-weight:700;color:#8FA9BC;"
+                "border-radius:14px;font-weight:700;color:#8FA9BC;"
             )
 
             title_label = QLabel(title)
@@ -224,7 +224,7 @@ class Stepper(QWidget):
                 badge.setText("✓")
                 badge.setStyleSheet(
                     "background:#169BFF;border:1px solid #38C8FF;"
-                    "border-radius:16px;font-weight:700;color:#FFFFFF;"
+                    "border-radius:14px;font-weight:700;color:#FFFFFF;"
                 )
                 self.titles[index].setStyleSheet(
                     "font-size:9px;font-weight:700;color:#F4F8FB;"
@@ -233,7 +233,7 @@ class Stepper(QWidget):
                 badge.setText(str(index + 1))
                 badge.setStyleSheet(
                     "background:#169BFF;border:1px solid #38C8FF;"
-                    "border-radius:16px;font-weight:700;color:#FFFFFF;"
+                    "border-radius:14px;font-weight:700;color:#FFFFFF;"
                 )
                 self.titles[index].setStyleSheet(
                     "font-size:9px;font-weight:700;color:#FFFFFF;"
@@ -242,7 +242,7 @@ class Stepper(QWidget):
                 badge.setText(str(index + 1))
                 badge.setStyleSheet(
                     "background:#17384F;border:1px solid #2A5874;"
-                    "border-radius:16px;font-weight:700;color:#8FA9BC;"
+                    "border-radius:14px;font-weight:700;color:#8FA9BC;"
                 )
                 self.titles[index].setStyleSheet(
                     "font-size:9px;font-weight:700;color:#8FA9BC;"
