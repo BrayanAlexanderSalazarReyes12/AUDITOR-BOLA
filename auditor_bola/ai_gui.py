@@ -1183,6 +1183,18 @@ class AIAssistantMixin:
         source_path = self.target_root / self.ai_source_relative
         provider = self.ai_provider
 
+        if (
+            conocimiento is None
+            and intento_anterior is None
+            and self.ai_knowledge_candidates
+        ):
+            conocimiento = self.ai_knowledge_candidates[0]
+            self._log(
+                "Se reutilizará automáticamente la medicina con mayor "
+                f"afinidad: {conocimiento.knowledge.titulo} "
+                f"(score {conocimiento.score})."
+            )
+
         if conocimiento is not None:
             self.ai_active_knowledge_candidate = conocimiento
         elif intento_anterior is None:
