@@ -142,136 +142,28 @@ class ModernAuditorGUI(AuditorGUI):
         )
 
     def _build_menu(self):
-        menubar = tk.Menu(
-            self,
-            background="#081A28",
-            foreground="#E6F1F8",
-            activebackground="#124E75",
-            activeforeground="#FFFFFF",
-        )
+        """La navegación vive dentro de la aplicación; no usa el menú nativo."""
+        try:
+            self.config(menu="")
+        except tk.TclError:
+            pass
 
-        archivo = tk.Menu(menubar, tearoff=False)
-        archivo.add_command(
-            label="Centro de carga / Importar…",
-            command=self._open_load_center,
-            accelerator="Ctrl+L",
+        self.bind_all(
+            "<Control-l>",
+            lambda _event: self._open_load_center(),
         )
-        archivo.add_command(
-            label="Nuevo proyecto / Auto-configurar…",
-            command=self._new_project_wizard,
-            accelerator="Ctrl+N",
+        self.bind_all(
+            "<Control-n>",
+            lambda _event: self._new_project_wizard(),
         )
-        archivo.add_separator()
-        archivo.add_command(
-            label="Cargar perfil JSON…",
-            command=self._choose_config,
+        self.bind_all(
+            "<Control-o>",
+            lambda _event: self._choose_config(),
         )
-        archivo.add_command(
-            label="Cargar código fuente…",
-            command=self._choose_target,
+        self.bind_all(
+            "<F5>",
+            lambda _event: self._diagnose(),
         )
-        archivo.add_command(
-            label="Cargar evidencias…",
-            command=self._load_evidence_from_center,
-        )
-        archivo.add_command(
-            label="Importar auditor-package.json…",
-            command=self._import_auditor_package,
-        )
-        archivo.add_command(
-            label="Importar cuentas / roles…",
-            command=self._import_accounts_roles,
-        )
-        archivo.add_command(
-            label="Importar recetas / medicinas…",
-            command=self._import_recipes,
-        )
-        archivo.add_separator()
-        archivo.add_command(
-            label="Exportar evidencia para artículo…",
-            command=self._export_article_evidence,
-        )
-        archivo.add_command(label="Salir", command=self.destroy)
-        menubar.add_cascade(label="Archivo", menu=archivo)
-
-        proyecto = tk.Menu(menubar, tearoff=False)
-        proyecto.add_command(
-            label="Auto-configuración",
-            command=lambda: self._route("project"),
-        )
-        proyecto.add_command(
-            label="Ver perfil JSON",
-            command=self._show_profile,
-        )
-        proyecto.add_separator()
-        proyecto.add_command(
-            label="Iniciar objetivo",
-            command=self._start_target,
-        )
-        proyecto.add_command(
-            label="Detener objetivo",
-            command=self._stop_target,
-        )
-        proyecto.add_command(
-            label="Reiniciar objetivo",
-            command=self._restart_target,
-        )
-        menubar.add_cascade(label="Proyecto", menu=proyecto)
-
-        auditoria = tk.Menu(menubar, tearoff=False)
-        auditoria.add_command(
-            label="Auditoría P1 + P2",
-            command=lambda: self._route("audit"),
-        )
-        auditoria.add_command(
-            label="Diagnosticar P1 + P2",
-            command=self._diagnose,
-            accelerator="F5",
-        )
-        auditoria.add_command(
-            label="Verificar seleccionado",
-            command=self._verify_selected,
-        )
-        auditoria.add_command(
-            label="Corregir seleccionado",
-            command=self._correct_selected,
-        )
-        auditoria.add_command(
-            label="Corregir todos los hallazgos",
-            command=self._correct_all,
-        )
-        menubar.add_cascade(label="Auditoría", menu=auditoria)
-
-        conocimiento = tk.Menu(menubar, tearoff=False)
-        conocimiento.add_command(
-            label="Correcciones con IA",
-            command=lambda: self._route("remediation"),
-        )
-        conocimiento.add_command(
-            label="Recetas y conocimiento",
-            command=lambda: self._route("knowledge"),
-        )
-        conocimiento.add_command(
-            label="Recargar Gemma / OpenCode",
-            command=self._configure_ai_from_load_center,
-        )
-        menubar.add_cascade(label="Conocimiento", menu=conocimiento)
-
-        ayuda = tk.Menu(menubar, tearoff=False)
-        ayuda.add_command(
-            label="Requisitos técnicos",
-            command=lambda: self._route("settings"),
-        )
-        ayuda.add_command(
-            label="Acerca de Aegis Auditor",
-            command=self._show_about,
-        )
-        menubar.add_cascade(label="Ayuda", menu=ayuda)
-
-        self.config(menu=menubar)
-        self.bind_all("<Control-l>", lambda _event: self._open_load_center())
-        self.bind_all("<Control-n>", lambda _event: self._new_project_wizard())
-        self.bind_all("<F5>", lambda _event: self._diagnose())
 
     def _build_shell(self):
         self.shell = ctk.CTkFrame(
