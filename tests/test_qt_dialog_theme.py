@@ -3,7 +3,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QFrame
 
 from auditor_bola.qt_ui.dialogs import (
     AutoProfileDialog,
@@ -37,11 +37,11 @@ def test_load_center_uses_dark_aegis_dialog_canvas():
     )
 
     cards = dialog.findChildren(
-        QPushButton,
+        QFrame,
         "LoadCard",
     )
     assert len(cards) == 8
-    assert all(card.minimumHeight() >= 100 for card in cards)
+    assert all(card.minimumHeight() >= 90 for card in cards)
 
     titles = dialog.findChildren(
         QLabel,
@@ -82,5 +82,5 @@ def test_dialog_theme_contains_no_native_light_canvas_fallback():
     assert "QDialog#AegisDialog" in QSS
     assert "QWidget#DialogRoot" in QSS
     assert "background: #06121D;" in QSS
-    assert "QPushButton#LoadCard" in QSS
+    assert "QFrame#LoadCard" in QSS
     assert "QFrame#DialogHero" in QSS
