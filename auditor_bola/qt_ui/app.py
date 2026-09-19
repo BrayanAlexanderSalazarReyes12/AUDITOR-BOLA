@@ -53,14 +53,14 @@ from .pages import (
     SettingsPage,
 )
 from .theme import COLORS, QSS
-from .widgets import Card, NavButton, PrimaryButton, brand_icon
+from .widgets import Card, NavButton, PrimaryButton, brand_icon, brand_logo_pixmap
 
 
 class Sidebar(QFrame):
     def __init__(self, navigate, new_project, load_center, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
-        self.setFixedWidth(258)
+        self.setFixedWidth(278)
         self._compact = False
         self.buttons: dict[str, NavButton] = {}
 
@@ -70,23 +70,14 @@ class Sidebar(QFrame):
 
         self.brand_box = QWidget()
         brand = QVBoxLayout(self.brand_box)
-        brand.setContentsMargins(4, 0, 4, 8)
-        brand.setSpacing(4)
+        brand.setContentsMargins(8, 4, 8, 10)
+        brand.setSpacing(6)
 
-        logo = QLabel()
-        logo.setPixmap(brand_icon().pixmap(90, 90))
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand.addWidget(logo)
-
-        name = QLabel("AEGIS AUDITOR")
-        name.setObjectName("BrandTitle")
-        name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand.addWidget(name)
-
-        subtitle = QLabel("AUDITORÍA · CORRECCIÓN · APRENDIZAJE")
-        subtitle.setObjectName("BrandSubtitle")
-        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand.addWidget(subtitle)
+        self.brand_logo = QLabel()
+        self.brand_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.brand_logo.setPixmap(brand_logo_pixmap(218))
+        self.brand_logo.setMinimumHeight(205)
+        brand.addWidget(self.brand_logo)
 
         pillars = QLabel(
             "<span style='color:#39C7FF;font-weight:700'>Pilar 1:</span> "
@@ -159,7 +150,7 @@ class Sidebar(QFrame):
         if compact == self._compact:
             return
         self._compact = compact
-        self.setFixedWidth(72 if compact else 258)
+        self.setFixedWidth(72 if compact else 278)
         self.brand_box.setVisible(not compact)
         self.footer.setVisible(not compact)
         for button in self.buttons.values():
@@ -269,10 +260,6 @@ class Topbar(QFrame):
         else:
             self.process.setText("No administrado")
             self.process.setStyleSheet(f"color:{COLORS['muted']};")
-
-    def set_compact(self, compact: bool) -> None:
-        self.quote.setVisible(not compact)
-
 
 class SimpleLogPage(QWidget):
     def __init__(self, parent=None):
