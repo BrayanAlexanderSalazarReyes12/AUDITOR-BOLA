@@ -7,8 +7,10 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
+from typing import BinaryIO
 
 from .config import RuntimeConfig
 
@@ -18,9 +20,11 @@ class LocalTargetProcess:
 
     Modos:
     - process/command: proceso persistente administrado con Popen.
-    - service: comandos de control que terminan, pero dejan un servicio activo
-      (por ejemplo: docker compose up -d, systemctl, XAMPP).
+    - service: comandos de control que terminan, pero dejan un servicio activo.
     - external: el objetivo ya está administrado fuera del Auditor.
+
+    También puede ejecutar comandos declarativos de preparación antes del
+    primer arranque administrado, por ejemplo instalación de dependencias.
     """
 
     def __init__(self, target_root: str | Path, runtime: RuntimeConfig):
@@ -28,11 +32,12 @@ class LocalTargetProcess:
         self.runtime = runtime
         self.process: subprocess.Popen | None = None
         self._service_running = False
+        self._prepared = False
+        self._output: BinaryIO | None = None
 
     def _modo(self) -> str:
         mode = (self.runtime.modo or "process").strip().lower()
         if mode == "command":
-            # Compatibilidad con perfiles experimentales anteriores.
             return "process"
         if mode not in {"process", "service", "external"}:
             raise ValueError(
@@ -68,6 +73,23 @@ class LocalTargetProcess:
 
         return [str(item) for item in chosen]
 
+    def _preparation_commands(self) -> list[list[str]]:
+        base = list(self.runtime.comandos_preparacion or [])
+        per_os = dict(self.runtime.comandos_preparacion_por_so or {})
+        platform_key = self._platform_key()
+
+        chosen = per_os.get(platform_key)
+        if chosen is None:
+            chosen = per_os.get("default")
+        if chosen is None:
+            chosen = base
+
+        return [
+            [str(item) for item in command]
+            for command in chosen
+            if command
+        ]
+
     def is_running(self) -> bool:
         mode = self._modo()
         if mode == "service":
@@ -86,7 +108,6 @@ class LocalTargetProcess:
         cwd: Path,
         env: dict[str, str],
     ) -> Path | None:
-        """Busca un launcher dentro del propio proyecto."""
         candidate = (cwd / requested).resolve()
         if candidate.exists() and candidate.is_file():
             return candidate
@@ -100,7 +121,6 @@ class LocalTargetProcess:
                 extension = extension.strip()
                 if not extension:
                     continue
-
                 for variant_suffix in {
                     extension,
                     extension.lower(),
@@ -152,7 +172,6 @@ class LocalTargetProcess:
         args: list[str],
         env: dict[str, str],
     ) -> list[str]:
-        """Convierte scripts/launchers a una invocación portable."""
         suffix = Path(resolved).suffix.lower()
 
         if os.name == "nt" and suffix in {".cmd", ".bat"}:
@@ -224,10 +243,6 @@ class LocalTargetProcess:
         env: dict[str, str],
         raw: list[str] | None = None,
     ) -> list[str]:
-        """Resuelve un comando de perfil de forma portable.
-
-        Si raw no se pasa, se usa el comando de inicio aplicable al SO actual.
-        """
         raw = list(raw if raw is not None else self._command_for("inicio"))
         raw = [str(item) for item in raw]
 
@@ -279,17 +294,62 @@ class LocalTargetProcess:
             env=env,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,
         )
 
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "").strip()
-            if len(detail) > 1000:
-                detail = detail[-1000:]
+            if len(detail) > 4000:
+                detail = detail[-4000:]
             raise RuntimeError(
                 f"No se pudo {action_name} el objetivo "
-                f"(código {completed.returncode}). {detail}"
+                f"(código {completed.returncode}).\n\n{detail}"
             )
+
+    def _prepare_if_needed(self) -> None:
+        if not self.runtime.preparar_automaticamente or self._prepared:
+            return
+
+        commands = self._preparation_commands()
+        if not commands:
+            self._prepared = True
+            return
+
+        total = len(commands)
+        for index, command in enumerate(commands, start=1):
+            self._run_control_command(
+                command,
+                action_name=f"preparar ({index}/{total})",
+            )
+
+        self._prepared = True
+
+    def _reset_output_buffer(self) -> None:
+        self._close_output_buffer()
+        self._output = tempfile.TemporaryFile(mode="w+b")
+
+    def _close_output_buffer(self) -> None:
+        if self._output is not None:
+            try:
+                self._output.close()
+            finally:
+                self._output = None
+
+    def runtime_output_tail(self, max_bytes: int = 6000) -> str:
+        if self._output is None:
+            return ""
+
+        try:
+            self._output.flush()
+            end = self._output.seek(0, os.SEEK_END)
+            start = max(0, end - max_bytes)
+            self._output.seek(start)
+            raw = self._output.read()
+            self._output.seek(0, os.SEEK_END)
+        except (OSError, ValueError):
+            return ""
+
+        return raw.decode("utf-8", errors="replace").strip()
 
     def start(self) -> None:
         mode = self._modo()
@@ -303,6 +363,8 @@ class LocalTargetProcess:
 
         if self.is_running():
             return
+
+        self._prepare_if_needed()
 
         start_command = self._command_for("inicio")
         if not start_command:
@@ -323,15 +385,18 @@ class LocalTargetProcess:
         cwd, env = self._context()
         command = self._resolver_comando(cwd, env, raw=start_command)
 
+        self._reset_output_buffer()
+
         try:
             self.process = subprocess.Popen(
                 command,
                 cwd=cwd,
                 env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=self._output,
+                stderr=subprocess.STDOUT,
             )
         except FileNotFoundError as exc:
+            self._close_output_buffer()
             raise FileNotFoundError(
                 errno.ENOENT,
                 (
@@ -346,12 +411,22 @@ class LocalTargetProcess:
 
         if self.process.poll() is not None:
             return_code = self.process.returncode
+            detail = self.runtime_output_tail()
             self.process = None
-            raise RuntimeError(
+            self._close_output_buffer()
+
+            message = (
                 "el sistema objetivo terminó durante el arranque "
-                f"(código {return_code}). Ejecuta el comando manualmente "
-                "en la carpeta del proyecto para ver su salida."
+                f"(código {return_code})."
             )
+            if detail:
+                message += f"\n\nSalida del proceso:\n{detail}"
+            else:
+                message += (
+                    "\nNo produjo salida. Verifica el comando y las "
+                    "dependencias del proyecto."
+                )
+            raise RuntimeError(message)
 
     def stop(self) -> None:
         mode = self._modo()
@@ -378,6 +453,8 @@ class LocalTargetProcess:
                 self.process.kill()
                 self.process.wait(timeout=5)
             self.process = None
+
+        self._close_output_buffer()
 
         if stop_command:
             self._run_control_command(
