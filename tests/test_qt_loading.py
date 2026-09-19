@@ -18,8 +18,8 @@ def _app():
     return app
 
 
-def test_version_is_1_1_4():
-    assert __version__ == "1.1.4"
+def test_version_is_1_1_6():
+    assert __version__ == "1.1.6"
 
 
 def test_startup_splash_reports_percentage():
@@ -42,6 +42,11 @@ def test_task_overlay_reports_progress_and_completion():
     app.processEvents()
     assert overlay.isVisible()
     assert overlay.progress.value() >= 4
+    overlay.set_progress(63, "Pilar 1 · BOLA · Control 7/12")
+    app.processEvents()
+    assert overlay.progress.value() == 63
+    assert overlay.percent.text() == "63%"
+    assert "Control 7/12" in overlay.status.text()
     overlay.finish()
     app.processEvents()
     assert overlay.progress.value() == 100
