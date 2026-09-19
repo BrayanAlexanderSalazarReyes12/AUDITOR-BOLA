@@ -375,3 +375,44 @@ El JSON generado conserva tanto la versión elegida como su procedencia:
 
 Si no existe ninguna versión verificable, Aegis usa `"desconocida"` en lugar
 de inventar `1.0.0`.
+
+
+## Selección y fallback de runtime
+
+Aegis puede guardar más de una estrategia de arranque para una misma
+aplicación. Por ejemplo, si existe `docker-compose.yml` pero el proyecto
+también puede ejecutarse con `npm start`, el perfil conserva ambas opciones.
+
+Durante el arranque Aegis valida, en orden:
+
+1. que exista el directorio de trabajo;
+2. que el comando de inicio esté disponible en el proyecto o en `PATH`;
+3. que también estén disponibles los comandos de preparación requeridos.
+
+Si la estrategia principal no está disponible, Aegis intenta la siguiente y
+registra cuál descartó y por qué. Cada estrategia puede declarar su propia
+`base_url`, de forma que un fallback de Docker a Node.js pueda cambiar, por
+ejemplo, de `http://127.0.0.1:8080` a `http://127.0.0.1:3000`.
+
+Ejemplo:
+
+```json
+{
+  "runtime": {
+    "nombre": "Docker Compose",
+    "comando_inicio": ["docker", "compose", "up", "-d"],
+    "base_url": "http://127.0.0.1:8080",
+    "alternativas": [
+      {
+        "nombre": "Node.js (npm)",
+        "comando_inicio": ["npm", "start"],
+        "base_url": "http://127.0.0.1:3000"
+      }
+    ]
+  }
+}
+```
+
+Si un arranque falla antes de iniciar realmente el objetivo, Aegis no ejecuta
+un comando de parada para ese runtime. Esto evita errores secundarios como
+intentar `docker compose down` cuando Docker ni siquiera está instalado.
