@@ -338,3 +338,40 @@ Ejemplo de endpoint detectado desde documentación:
 El análisis es estático y exhaustivo sobre archivos de texto relevantes, pero
 una ruta creada únicamente en tiempo de ejecución, descargada desde un servicio
 externo o generada desde base de datos puede requerir validación dinámica.
+
+
+## Detección de versión de la aplicación
+
+Aegis no asigna una versión ficticia al proyecto. Durante la incorporación
+intenta detectar la versión real desde fuentes priorizadas, entre ellas:
+
+- `auditor-package.json`.
+- Archivos `VERSION`, `VERSION.txt`, `.version`.
+- `package.json`, `composer.json`, `pyproject.toml`, `setup.cfg`,
+  `setup.py`, `Cargo.toml`, `pubspec.yaml`.
+- `pom.xml`, `build.gradle`, `build.gradle.kts`,
+  `gradle.properties`.
+- Archivos `*.csproj`, `mix.exs`, `version.php`,
+  `META-INF/MANIFEST.MF`.
+- Constantes como `__version__`, `APP_VERSION`,
+  `APPLICATION_VERSION`, `PROJECT_VERSION` y claves como
+  `info.app.version`.
+- README, manuales y documentación como fallback cuando no existe una fuente
+  de mayor confianza.
+
+El JSON generado conserva tanto la versión elegida como su procedencia:
+
+```json
+{
+  "version_objetivo": "3.4.1",
+  "metadata_detectada": {
+    "version_detectada": "3.4.1",
+    "version_fuente": "pom.xml",
+    "version_confianza": "alta",
+    "version_candidatas": []
+  }
+}
+```
+
+Si no existe ninguna versión verificable, Aegis usa `"desconocida"` en lugar
+de inventar `1.0.0`.
