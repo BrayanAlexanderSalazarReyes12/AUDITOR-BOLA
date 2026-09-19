@@ -1104,54 +1104,6 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
 
         # Referencias de cliente: ayudan a descubrir rutas usadas por
         # JSP/HTML/JS cuando la declaración del servidor no es visible.
-'()*+,;=:@%{}./?\-]+)",
-            text,
-        ):
-            add(
-                match.group(1),
-                match.group(2),
-                source,
-                "documentation-reference",
-            )
-
-        for match in re.finditer(
-            r"(?is)\bcurl\b(.{0,1000}?)(https?://[^\s'\"<>]+)",
-            text,
-        ):
-            options = match.group(1)
-            method_match = re.search(
-                r"(?:-X|--request)\s+"
-                r"(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)",
-                options,
-                re.I,
-            )
-            add(
-                method_match.group(1) if method_match else "GET",
-                match.group(2),
-                source,
-                "documentation-curl",
-            )
-
-        for match in re.finditer(
-            r"(?im)^\s*(?:[-*+]\s*)?"
-            r"(?:api[_\s-]?endpoint|endpoint(?:_url)?|"
-            r"service[_\s-]?url|api[_\s-]?url|route|ruta)"
-            r"\s*[:=]\s*['\"]?"
-            r"(https?://[^\s'\"|]+|/[A-Za-z0-9_~!        # Referencias de cliente: ayudan a descubrir rutas usadas por
-        # JSP/HTML/JS cuando la declaración del servidor no es visible.
-'()*+,;=:@%{}./?\-]+)",
-            text,
-            re.I,
-        ):
-            add(
-                "ANY",
-                match.group(1),
-                source,
-                "configuration-reference",
-            )
-
-        # Referencias de cliente: ayudan a descubrir rutas usadas por
-        # JSP/HTML/JS cuando la declaración del servidor no es visible.
         for match in re.finditer(
             r"<form\b([^>]*?)\baction\s*=\s*['\"]([^'\"]+)['\"]([^>]*)>",
             text,
@@ -1171,13 +1123,15 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
             )
 
         for match in re.finditer(
-            r"\bfetch\(\s*['\"]([^'\"]+)['\"]\s*(?:,\s*\{(.{0,1200}?)\})?",
+            r"\bfetch\(\s*['\"]([^'\"]+)['\"]\s*"
+            r"(?:,\s*\{(.{0,1200}?)\})?",
             text,
             re.I | re.S,
         ):
             options = match.group(2) or ""
             method_match = re.search(
-                r"\bmethod\s*:\s*['\"](GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)['\"]",
+                r"\bmethod\s*:\s*['\"]"
+                r"(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)['\"]",
                 options,
                 re.I,
             )
