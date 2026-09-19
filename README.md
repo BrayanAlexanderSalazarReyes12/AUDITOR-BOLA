@@ -46,9 +46,28 @@ Registro
 
 El menú superior separa **Archivo**, **Proyecto**, **Auditoría**, **Conocimiento** y **Ayuda**. Una barra de progreso indica las operaciones en curso y el dashboard muestra proyecto, perfil, proceso y número de hallazgos.
 
+## Aplicaciones de escritorio
+
+Aegis Auditor se compila de forma nativa para los principales sistemas operativos:
+
+| Sistema | Distribución |
+|---|---|
+| Windows x64 | `AegisAuditor.exe` y `AegisAuditor-Setup.exe` |
+| macOS Intel | `AegisAuditor.app` y `AegisAuditor-macOS-x64.dmg` |
+| macOS Apple Silicon | `AegisAuditor.app` y `AegisAuditor-macOS-arm64.dmg` |
+| Linux x64 | binario, `.tar.gz` y `.deb` |
+| Linux arm64 | binario, `.tar.gz` y `.deb` |
+
+El workflow `Build desktop executables` genera los artefactos mediante GitHub Actions. Consulte `docs/DISTRIBUCIONES_ESCRITORIO.md` y `docs/REQUISITOS_TECNICOS_MULTIPLATAFORMA.md`.
+
+La aplicación empaquetada guarda perfiles, evidencias, recetas y material del artículo en la carpeta de datos del usuario, no dentro de la instalación.
+
 ## Documentación clave
 
 - Requisitos de uso: `docs/REQUISITOS_USO.md`
+- Requisitos técnicos multiplataforma: `docs/REQUISITOS_TECNICOS_MULTIPLATAFORMA.md`
+- Distribuciones de escritorio: `docs/DISTRIBUCIONES_ESCRITORIO.md`
+- Ejecutable Windows: `docs/EJECUTABLE_WINDOWS.md`
 - Arquitectura de los dos pilares: `docs/ARQUITECTURA_DOS_PILARES.md`
 - Creación manual de perfiles: `docs/CREAR_PERFIL.md`
 - Evidencias y figuras para artículo: `docs/articulo/README.md`
