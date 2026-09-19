@@ -46,9 +46,14 @@ Para un hallazgo seleccionado, la GUI solicita tres alternativas
 <baseURL>/chat/completions
 ```
 
-Luego muestra el diff antes de escribir y permite al usuario elegir qué receta
-someter al ciclo determinista de backup, aplicación, reinicio, verificación y
-rollback.
+Luego abre automáticamente una **ventana independiente y redimensionable**
+con una pestaña para cada alternativa. En ella se puede revisar el **código
+resultante completo** y el diff antes de escribir, seleccionar la receta,
+aplicarla o guardarla en el perfil. La ventana principal conserva el botón
+**Ver propuestas en ventana** para volver a abrirla.
+
+Después, la receta seleccionada se somete al ciclo determinista de backup,
+aplicación, reinicio, verificación y rollback.
 
 **Gemma propone; el usuario decide; el auditor verifica.**
 
