@@ -6,6 +6,7 @@ import csv
 import json
 import re
 import unicodedata
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -75,6 +76,10 @@ class ProjectDetection:
     routes: list[DetectedRoute] = field(default_factory=list)
     runtime: dict[str, Any] = field(default_factory=dict)
     package_descriptor: dict[str, Any] | None = None
+    version: str | None = None
+    version_source: str | None = None
+    version_confidence: str | None = None
+    version_candidates: list[dict[str, Any]] = field(default_factory=list)
     accounts: list[dict[str, Any]] = field(default_factory=list)
     account_sources: list[dict[str, Any]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -90,6 +95,10 @@ class ProjectDetection:
             "routes": [route.as_dict() for route in self.routes],
             "runtime": self.runtime,
             "package_descriptor": self.package_descriptor,
+            "version": self.version,
+            "version_source": self.version_source,
+            "version_confidence": self.version_confidence,
+            "version_candidates": list(self.version_candidates),
             "accounts": list(self.accounts),
             "account_sources": list(self.account_sources),
             "notes": list(self.notes),
