@@ -289,3 +289,52 @@ descubrir rutas que no tienen una declaración de servidor visible.
 
 Las rutas creadas dinámicamente en tiempo de ejecución, desde plugins externos,
 bases de datos o metaprogramación pueden requerir validación en runtime.
+
+
+## Fuentes documentales y archivos de texto
+
+Además del código fuente, Aegis revisa documentación y archivos de texto que
+puedan contener cuentas, roles, URLs o rutas de servicio. Esto incluye, entre
+otros:
+
+- `README.md`, `*.md`, `*.markdown`, `*.rst`, `*.adoc`.
+- Manuales y guías, incluso archivos sin una extensión conocida si su contenido
+  parece texto.
+- `.env`, `*.properties`, `*.ini`, `*.conf`, `*.cfg`, YAML, TOML,
+  XML, SQL, CSV y JSON.
+- Archivos `.http` / `.rest`, ejemplos `curl`, tablas Markdown y
+  documentación REST.
+- Colecciones JSON con estructuras tipo Postman/Insomnia.
+- Referencias de formularios HTML/JSP, `fetch`, `axios` y jQuery.
+
+Las coincidencias conservan trazabilidad mediante `tipo_fuente` y el archivo
+de origen. Los archivos binarios y dependencias generadas se excluyen del
+escaneo.
+
+Ejemplo de evidencia de cuenta detectada:
+
+```json
+{
+  "username": "qa.admin",
+  "role": "ADMIN",
+  "archivo": "README.md",
+  "tipo_fuente": "documentacion",
+  "confianza": "media"
+}
+```
+
+Ejemplo de endpoint detectado desde documentación:
+
+```json
+{
+  "metodo": "POST",
+  "ruta": "/api/login",
+  "archivos": ["docs/MANUAL_API.md"],
+  "frameworks": ["documentation-reference"],
+  "tipos_fuente": ["documentacion"]
+}
+```
+
+El análisis es estático y exhaustivo sobre archivos de texto relevantes, pero
+una ruta creada únicamente en tiempo de ejecución, descargada desde un servicio
+externo o generada desde base de datos puede requerir validación dinámica.
