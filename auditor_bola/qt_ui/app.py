@@ -9,8 +9,9 @@ import shutil
 import sys
 from dataclasses import asdict
 from pathlib import Path
+from typing import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QCloseEvent, QFont, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -40,8 +41,10 @@ from ..app_paths import (
 from ..config import cargar_config
 from ..recipe_library import biblioteca_por_defecto
 from ..remediation_knowledge import knowledge_root
+from ..version import __version__
 from .controller import AuditorController
 from .dialogs import AutoProfileDialog, LoadCenterDialog
+from .loading import StartupSplash, TaskProgressOverlay
 from .pages import (
     AIPage,
     AuditPage,
@@ -280,7 +283,7 @@ class Sidebar(QFrame):
         platform.setObjectName("Muted")
         footer_layout.addWidget(platform)
 
-        version = QLabel("Aegis Auditor · v1.0.0")
+        version = QLabel(f"Aegis Auditor · v{__version__}")
         version.setObjectName("KpiSub")
         footer_layout.addWidget(version)
 
@@ -532,9 +535,15 @@ class SimpleLogPage(QWidget):
 
 
 class AegisMainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(
+        self,
+        startup_progress: Callable[[int, str], None] | None = None,
+    ):
         super().__init__()
         configure_packaged_environment()
+        self._startup_progress = startup_progress
+        self._force_fullscreen = True
+        self._startup(28, "Preparando ventana principal…")
 
         self.setWindowTitle(
             "Aegis Auditor — Security Remediation Studio"
@@ -544,6 +553,7 @@ class AegisMainWindow(QMainWindow):
         self.setMinimumSize(900, 620)
 
         self.controller = AuditorController(self)
+        self._startup(38, "Inicializando motor de auditoría…")
         self.page_keys: dict[str, int] = {}
         self.current_page = "home"
         self._busy = False
@@ -574,6 +584,7 @@ class AegisMainWindow(QMainWindow):
             self.open_load_center,
         )
         content_l.addWidget(self.topbar)
+        self._startup(52, "Construyendo navegación y paneles…")
 
         self.stack = QStackedWidget()
         content_l.addWidget(self.stack, 1)
@@ -587,6 +598,7 @@ class AegisMainWindow(QMainWindow):
         self.reports = ReportsPage(self.controller)
         self.log_page = SimpleLogPage()
         self.settings = SettingsPage(self.controller)
+        self._startup(74, "Cargando módulos de Aegis…")
 
         self._add_page("home", self.home)
         self._add_page("project", self.project_page)
@@ -627,10 +639,23 @@ class AegisMainWindow(QMainWindow):
 
         content_l.addWidget(self.footer)
 
+        self.task_overlay = TaskProgressOverlay(self)
+        self.task_overlay.progress_changed.connect(
+            self._update_busy_progress
+        )
+        self.task_overlay.setGeometry(self.rect())
+
+        self._startup(84, "Conectando eventos y servicios…")
         self._wire_pages()
         self._wire_controller()
+        self._startup(92, "Sincronizando estado inicial…")
         self.navigate("home")
         self.refresh_all()
+        self._startup(97, "Finalizando interfaz…")
+
+    def _startup(self, value: int, text: str) -> None:
+        if self._startup_progress:
+            self._startup_progress(value, text)
 
     def _add_page(self, key: str, page: QWidget) -> None:
         scroll = QScrollArea()
@@ -1045,11 +1070,30 @@ class AegisMainWindow(QMainWindow):
     def set_busy(self, busy: bool, text: str):
         self._busy = busy
         self.status.setText(text)
+        self.busy_bar.setRange(0, 100)
+        self.busy_bar.setTextVisible(False)
+
         if busy:
-            self.busy_bar.setRange(0, 0)
+            self.busy_bar.setValue(4)
+            self.task_overlay.start(text)
         else:
-            self.busy_bar.setRange(0, 1)
-            self.busy_bar.setValue(0)
+            self.task_overlay.finish(
+                "Tarea completada"
+                if text == "Listo"
+                else text
+            )
+            self.busy_bar.setValue(100)
+            QTimer.singleShot(550, self._reset_busy_bar)
+
+    def _update_busy_progress(self, value: int) -> None:
+        self.busy_bar.setRange(0, 100)
+        self.busy_bar.setValue(value)
+
+    def _reset_busy_bar(self) -> None:
+        if self._busy:
+            return
+        self.busy_bar.setRange(0, 100)
+        self.busy_bar.setValue(0)
 
     def refresh_all(self):
         self.topbar.refresh(self.controller)
@@ -1101,10 +1145,25 @@ class AegisMainWindow(QMainWindow):
         )
         self.topbar.set_compact(topbar_compact)
         self.home.set_compact(page_compact)
+        if hasattr(self, "task_overlay"):
+            self.task_overlay.setGeometry(self.rect())
 
     def showEvent(self, event):
         super().showEvent(event)
         self._apply_windows_dark_titlebar()
+        if self._force_fullscreen and not self.isFullScreen():
+            QTimer.singleShot(0, self.showFullScreen)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if (
+            self._force_fullscreen
+            and event.type() == QEvent.Type.WindowStateChange
+            and self.isVisible()
+            and not self.isMinimized()
+            and not self.isFullScreen()
+        ):
+            QTimer.singleShot(0, self.showFullScreen)
 
     def _apply_windows_dark_titlebar(self):
         if os.name != "nt":
@@ -1164,8 +1223,22 @@ def run_qt_app() -> int:
     app.setFont(QFont("Segoe UI", 9))
     app.setStyleSheet(QSS)
 
-    window = AegisMainWindow()
-    window.show()
+    splash = StartupSplash()
+    splash.showFullScreen()
+    app.processEvents()
+
+    def startup_progress(value: int, text: str) -> None:
+        splash.set_progress(value, text)
+        app.processEvents()
+
+    startup_progress(10, "Inicializando Aegis Auditor…")
+    window = AegisMainWindow(startup_progress=startup_progress)
+    startup_progress(100, "Aegis Auditor listo")
+    window.showFullScreen()
+    app.processEvents()
+    splash.close()
+    window.raise_()
+    window.activateWindow()
 
     if owns_app:
         return app.exec()
