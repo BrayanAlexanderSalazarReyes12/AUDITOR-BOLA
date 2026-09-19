@@ -3,6 +3,7 @@ import json
 from auditor_bola.remediation_knowledge import (
     RemediationKnowledge,
     buscar_conocimiento,
+    crear_conocimiento_respaldo_verificado,
     guardar_conocimiento,
     registrar_uso_conocimiento,
 )
@@ -200,3 +201,36 @@ def test_medicina_se_recupera_por_tipo_si_el_perfil_usa_otro_id(tmp_path):
     assert "tipo de control" in " ".join(
         candidatos[0].razones
     ).lower()
+
+
+def test_fallback_verificado_siempre_puede_guardarse(tmp_path):
+    root = tmp_path / "conocimiento"
+    knowledge = crear_conocimiento_respaldo_verificado(
+        control_id="P1-BOLA-NODE-001",
+        descripcion="Un usuario no debe acceder a un recurso ajeno",
+        tipo_control="bola",
+        extension=".js",
+    )
+
+    path = guardar_conocimiento(
+        knowledge,
+        caso_exitoso={
+            "sistema": "vulncommerce-node",
+            "control_id": "P1-BOLA-NODE-001",
+            "tipo_control": "bola",
+            "extension": ".js",
+        },
+        root=root,
+    )
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    assert data["verificada"] is True
+    assert data["casos_exitosos"] >= 1
+    assert data["tipo"] == "conocimiento_correctivo_semantico"
+    assert ".js" in data["lenguajes_observados"]
+    assert data["estrategia_general"]
+    assert data["contrato_verificacion"]
+    serializado = json.dumps(data, ensure_ascii=False)
+    assert '"buscar"' not in serializado
+    assert '"reemplazar"' not in serializado
