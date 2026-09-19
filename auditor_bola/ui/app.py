@@ -1106,6 +1106,10 @@ class ModernAuditorGUI(AuditorGUI):
                 self.proceso is not None,
             )
 
+    def _refresh_state(self):
+        super()._refresh_state()
+        self._refresh_dashboard()
+
     def _refresh_process_state(self):
         running = self._process_running()
 
