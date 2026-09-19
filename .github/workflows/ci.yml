@@ -35,8 +35,10 @@ jobs:
 
 
   ui-smoke:
-    name: interfaz moderna
+    name: interfaz profesional Qt
     runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
 
     steps:
       - name: Checkout
@@ -50,14 +52,34 @@ jobs:
       - name: Dependencias de escritorio
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb libx11-6 libxext6 libxrender1 libxft2 libfontconfig1
+          sudo apt-get install -y libx11-6 libxext6 libxrender1 libxft2 libfontconfig1 libegl1 libgl1 libdbus-1-3 libxcb-cursor0 libxkbcommon-x11-0
 
       - name: Dependencias Python
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Smoke test de Aegis moderno
+      - name: Smoke test de Aegis Qt
+        run: |
+          python - <<'PY'
+          from PySide6.QtWidgets import QApplication
+          from auditor_bola.qt_ui.app import AegisMainWindow
+
+          app = QApplication([])
+          window = AegisMainWindow()
+          window.show()
+          app.processEvents()
+
+          assert window.current_page == "home"
+          assert window.sidebar.buttons["home"].property("active") is True
+          assert window.minimumWidth() <= 900
+          assert window.home.stepper is not None
+
+          window.close()
+          app.processEvents()
+          PY
+
+      - name: Smoke test fallback CustomTkinter
         run: |
           xvfb-run -a python - <<'PY'
           from auditor_bola.ui.app import ModernAuditorGUI
@@ -66,6 +88,5 @@ jobs:
           app.withdraw()
           app.update_idletasks()
           assert app.notebook.select() == "home"
-          assert app.sidebar.active == "home"
           app.destroy()
           PY
