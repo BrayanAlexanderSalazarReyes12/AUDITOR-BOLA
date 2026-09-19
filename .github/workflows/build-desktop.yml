@@ -146,27 +146,27 @@ jobs:
           cp dist/AegisAuditor "$root/usr/local/bin/AegisAuditor"
           chmod 755 "$root/usr/local/bin/AegisAuditor"
           cp assets/aegis-auditor.png "$root/usr/share/icons/hicolor/256x256/apps/aegis-auditor.png"
-          cat > "$root/usr/share/applications/aegis-auditor.desktop" <<EOF
-[Desktop Entry]
-Name=Aegis Auditor
-Comment=Security Remediation Studio
-Exec=/usr/local/bin/AegisAuditor
-Icon=aegis-auditor
-Terminal=false
-Type=Application
-Categories=Development;Security;
-EOF
-          cat > "$root/DEBIAN/control" <<EOF
-Package: aegis-auditor
-Version: 1.0.0
-Section: devel
-Priority: optional
-Architecture: ${{ matrix.deb_arch }}
-Maintainer: Aegis Auditor Project
-Depends: libc6, libx11-6, libxext6, libxrender1, libxft2, libfontconfig1
-Description: Aegis Auditor - Security Remediation Studio
- Auditor correctivo multitecnologia basado en Pilar 1 y Pilar 2.
-EOF
+          printf '%s\n' \
+            '[Desktop Entry]' \
+            'Name=Aegis Auditor' \
+            'Comment=Security Remediation Studio' \
+            'Exec=/usr/local/bin/AegisAuditor' \
+            'Icon=aegis-auditor' \
+            'Terminal=false' \
+            'Type=Application' \
+            'Categories=Development;Security;' \
+            > "$root/usr/share/applications/aegis-auditor.desktop"
+          printf '%s\n' \
+            'Package: aegis-auditor' \
+            'Version: 1.0.0' \
+            'Section: devel' \
+            'Priority: optional' \
+            'Architecture: ${{ matrix.deb_arch }}' \
+            'Maintainer: Aegis Auditor Project' \
+            'Depends: libc6, libx11-6, libxext6, libxrender1, libxft2, libfontconfig1' \
+            'Description: Aegis Auditor - Security Remediation Studio' \
+            ' Auditor correctivo multitecnologia basado en Pilar 1 y Pilar 2.' \
+            > "$root/DEBIAN/control"
           dpkg-deb --build "$root" "dist/AegisAuditor-Linux-${{ matrix.arch }}.deb"
       - name: Checksums
         shell: bash
