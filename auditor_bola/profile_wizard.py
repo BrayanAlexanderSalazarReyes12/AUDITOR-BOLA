@@ -9,6 +9,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Callable
 
+from .app_paths import default_config_dir, resource_path
 from .profile_builder import (
     ProjectDetection,
     build_profile_draft,
@@ -32,7 +33,14 @@ class ProfileWizard(tk.Toplevel):
     ):
         super().__init__(master)
         self.title("Aegis Auditor — Incorporar aplicación")
-        self.geometry("1040x720")
+        self.configure(background="#06111d")
+        icon_path = resource_path("assets", "aegis-auditor.ico")
+        if icon_path.exists():
+            try:
+                self.iconbitmap(default=str(icon_path))
+            except tk.TclError:
+                pass
+        self.geometry("1120x760")
         self.minsize(860, 620)
         self.transient(master)
         self.on_saved = on_saved
@@ -49,6 +57,8 @@ class ProfileWizard(tk.Toplevel):
         self.auto_prepare_var = tk.BooleanVar(value=False)
 
         self._build_ui()
+        if hasattr(master, "_apply_dark_native_widgets"):
+            master._apply_dark_native_widgets(self)
 
         if initial_project:
             self.after(80, lambda: self._load_project(Path(initial_project)))
@@ -999,7 +1009,7 @@ class ProfileWizard(tk.Toplevel):
         selected = filedialog.asksaveasfilename(
             parent=self,
             title="Guardar perfil de aplicación",
-            initialdir=str(Path.cwd() / "config"),
+            initialdir=str(default_config_dir()),
             initialfile=default_name,
             defaultextension=".json",
             filetypes=[("Perfil JSON", "*.json")],
