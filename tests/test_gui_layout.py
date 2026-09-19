@@ -11,8 +11,8 @@ def test_layout_1280x720_activa_modo_compacto():
 def test_layout_escritorio_grande_no_es_compacto():
     width, height, compact = calcular_layout(1920, 1080)
     assert compact is False
-    assert width == 1360
-    assert height == 820
+    assert width == 1540
+    assert height == 900
 
 
 def test_layout_pequeno_no_supera_area_disponible_normal():
