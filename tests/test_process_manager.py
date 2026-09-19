@@ -191,7 +191,10 @@ def test_service_mode_usa_comandos_de_control(tmp_path):
     )
     manager = LocalTargetProcess(tmp_path, runtime)
 
-    with patch.object(manager, "_run_control_command") as run:
+    with patch.object(manager, "_select_runtime_if_needed"), patch.object(
+        manager,
+        "_run_control_command",
+    ) as run:
         manager.start()
         assert manager.is_running() is True
         run.assert_called_once_with(
@@ -343,3 +346,87 @@ def test_posix_detiene_grupo_de_procesos(tmp_path):
         manager._terminate_process_tree()
 
     killpg.assert_called_once_with(9876, signal.SIGTERM)
+
+
+def test_selecciona_runtime_alternativo_si_docker_no_existe(tmp_path):
+    script = tmp_path / "run.py"
+    script.write_text("print('ok')\n", encoding="utf-8")
+
+    runtime = RuntimeConfig(
+        modo="service",
+        nombre="Docker Compose",
+        comando_inicio=["docker", "compose", "up", "-d"],
+        comando_detener=["docker", "compose", "down"],
+        base_url="http://127.0.0.1:8080",
+        alternativas=[
+            {
+                "modo": "process",
+                "nombre": "Python local",
+                "origen": "run.py",
+                "comando_inicio": ["run.py"],
+                "directorio_trabajo": ".",
+                "espera_inicio": 0,
+                "base_url": "http://127.0.0.1:5000",
+            }
+        ],
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch(
+        "auditor_bola.process_manager.shutil.which",
+        return_value=None,
+    ):
+        manager._select_runtime_if_needed()
+
+    status = manager.runtime_status()
+    assert status["nombre"] == "Python local"
+    assert status["base_url"] == "http://127.0.0.1:5000"
+    assert status["comando_inicio"] == ["run.py"]
+    assert any(
+        "Docker Compose" in item
+        for item in status["alternativas_descartadas"]
+    )
+
+
+def test_stop_no_ejecuta_docker_si_el_arranque_nunca_funciono(tmp_path):
+    runtime = RuntimeConfig(
+        modo="service",
+        nombre="Docker Compose",
+        comando_inicio=["docker", "compose", "up", "-d"],
+        comando_detener=["docker", "compose", "down"],
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch.object(manager, "_run_control_command") as run:
+        manager.stop()
+
+    run.assert_not_called()
+
+
+def test_error_runtime_enumera_candidatos_no_disponibles(tmp_path):
+    runtime = RuntimeConfig(
+        modo="service",
+        nombre="Docker Compose",
+        comando_inicio=["docker", "compose", "up", "-d"],
+        alternativas=[
+            {
+                "modo": "process",
+                "nombre": "Node.js",
+                "comando_inicio": ["npm", "start"],
+            }
+        ],
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch(
+        "auditor_bola.process_manager.shutil.which",
+        return_value=None,
+    ):
+        with pytest.raises(RuntimeError) as exc:
+            manager._select_runtime_if_needed()
+
+    message = str(exc.value)
+    assert "Docker Compose" in message
+    assert "Node.js" in message
+    assert "docker" in message
+    assert "npm" in message
