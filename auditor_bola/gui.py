@@ -2377,7 +2377,20 @@ class AuditorGUI(AIAssistantMixin, tk.Tk):
 
 
 def main():
-    AuditorGUI().mainloop()
+    """Abre la interfaz moderna por defecto; legacy queda como fallback."""
+    if os.getenv("AEGIS_LEGACY_UI", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        AuditorGUI().mainloop()
+        return
+
+    # Import diferido para evitar ciclo: ui.app reutiliza AuditorGUI como
+    # backend visual durante la migración.
+    from .ui.app import ModernAuditorGUI
+
+    ModernAuditorGUI().mainloop()
 
 
 if __name__ == "__main__":
