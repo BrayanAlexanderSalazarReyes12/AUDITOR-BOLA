@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import patch
+import signal
 
 import pytest
 
@@ -286,3 +287,57 @@ def test_windows_cmd_no_preescapa_comillas_de_ruta(tmp_path):
         "--no-audit",
     ]
     assert all('\\"' not in part for part in command)
+
+
+def test_windows_detiene_arbol_completo_con_taskkill(tmp_path):
+    runtime = RuntimeConfig(comando_inicio=["npm", "start"], espera_inicio=0)
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    class FakeProcess:
+        pid = 4321
+        def poll(self):
+            return None
+        def wait(self, timeout=None):
+            return 0
+        def terminate(self):
+            raise AssertionError("no debe usar terminate si taskkill funciona")
+        def kill(self):
+            raise AssertionError("no debe usar kill si taskkill funciona")
+
+    manager.process = FakeProcess()
+
+    completed = type("Completed", (), {"returncode": 0})()
+
+    with patch("auditor_bola.process_manager.os.name", "nt"), patch(
+        "auditor_bola.process_manager.subprocess.run",
+        return_value=completed,
+    ) as run:
+        manager._terminate_process_tree()
+
+    run.assert_called_once()
+    command = run.call_args.args[0]
+    assert command == ["taskkill", "/PID", "4321", "/T", "/F"]
+
+
+def test_posix_detiene_grupo_de_procesos(tmp_path):
+    runtime = RuntimeConfig(comando_inicio=["python", "app.py"], espera_inicio=0)
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    class FakeProcess:
+        pid = 9876
+        def poll(self):
+            return None
+        def wait(self, timeout=None):
+            return 0
+
+    manager.process = FakeProcess()
+
+    with patch("auditor_bola.process_manager.os.name", "posix"), patch(
+        "auditor_bola.process_manager.os.getpgid",
+        return_value=9876,
+    ), patch(
+        "auditor_bola.process_manager.os.killpg"
+    ) as killpg:
+        manager._terminate_process_tree()
+
+    killpg.assert_called_once_with(9876, signal.SIGTERM)
