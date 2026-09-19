@@ -10,6 +10,8 @@ datas = collect_data_files("customtkinter") + [
     ("assets/aegis-auditor.svg", "assets"),
     ("assets/aegis-shield.svg", "assets"),
     ("assets/aegis-auditor-logo.png", "assets"),
+    ("LICENSE", "."),
+    ("NOTICE", "."),
     ("assets/aegis-auditor.png", "assets"),
     ("docs/REQUISITOS_USO.md", "docs"),
     ("docs/REQUISITOS_APLICACION.md", "docs"),
