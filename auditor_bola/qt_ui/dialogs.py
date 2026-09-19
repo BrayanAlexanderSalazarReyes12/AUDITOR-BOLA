@@ -74,16 +74,21 @@ class AegisDialog(QDialog):
         self._preferred_size = (980, 650)
         self._minimum_dialog_size = (760, 500)
         self._screen_margin = 22
+        self._open_maximized = True
+        self.setModal(True)
 
     def configure_dialog_size(
         self,
         preferred: tuple[int, int],
         minimum: tuple[int, int],
         margin: int = 22,
+        *,
+        maximized: bool = True,
     ) -> None:
         self._preferred_size = preferred
         self._minimum_dialog_size = minimum
         self._screen_margin = margin
+        self._open_maximized = maximized
         self._fit_to_available_screen()
 
     def _target_screen(self):
@@ -133,6 +138,8 @@ class AegisDialog(QDialog):
         self._fit_to_available_screen()
         super().showEvent(event)
         self._apply_windows_dark_titlebar()
+        if self._open_maximized and not self.isMaximized():
+            QTimer.singleShot(0, self.showMaximized)
 
     def _apply_windows_dark_titlebar(self) -> None:
         if os.name != "nt":
@@ -156,6 +163,52 @@ class AegisDialog(QDialog):
             pass
 
 
+
+
+def styled_open_file(
+    parent,
+    caption: str,
+    directory: str = "",
+    file_filter: str = "",
+) -> tuple[str, str]:
+    return QFileDialog.getOpenFileName(
+        parent,
+        caption,
+        directory,
+        file_filter,
+        options=QFileDialog.Option.DontUseNativeDialog,
+    )
+
+
+def styled_save_file(
+    parent,
+    caption: str,
+    directory: str = "",
+    file_filter: str = "",
+) -> tuple[str, str]:
+    return QFileDialog.getSaveFileName(
+        parent,
+        caption,
+        directory,
+        file_filter,
+        options=QFileDialog.Option.DontUseNativeDialog,
+    )
+
+
+def styled_existing_directory(
+    parent,
+    caption: str,
+    directory: str = "",
+) -> str:
+    return QFileDialog.getExistingDirectory(
+        parent,
+        caption,
+        directory,
+        options=(
+            QFileDialog.Option.ShowDirsOnly
+            | QFileDialog.Option.DontUseNativeDialog
+        ),
+    )
 
 
 class LoadCard(QFrame):
@@ -369,8 +422,15 @@ class LoadCenterDialog(AegisDialog):
         grid.setContentsMargins(2, 2, 2, 2)
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(12)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
+        screen = self._target_screen()
+        available_width = (
+            screen.availableGeometry().width()
+            if screen is not None
+            else 1200
+        )
+        self.load_columns = 4 if available_width >= 1400 else 2
+        for column in range(self.load_columns):
+            grid.setColumnStretch(column, 1)
 
         signal_map = {
             "new": self.request_new_project,
@@ -397,8 +457,8 @@ class LoadCenterDialog(AegisDialog):
             )
             grid.addWidget(
                 card,
-                index // 2,
-                index % 2,
+                index // self.load_columns,
+                index % self.load_columns,
             )
 
         scroll.setWidget(holder)
@@ -916,9 +976,9 @@ class AutoProfileDialog(AegisDialog):
 
         content.addWidget(left)
         content.addWidget(right)
-        content.setStretchFactor(0, 4)
-        content.setStretchFactor(1, 6)
-        content.setSizes([420, 640])
+        content.setStretchFactor(0, 5)
+        content.setStretchFactor(1, 7)
+        content.setSizes([520, 720])
         root.addWidget(content, 1)
 
         self.analysis_progress_frame = QFrame()
@@ -1069,7 +1129,7 @@ class AutoProfileDialog(AegisDialog):
         QApplication.processEvents()
 
     def _select_project(self):
-        selected = QFileDialog.getExistingDirectory(
+        selected = styled_existing_directory(
             self,
             "Selecciona la carpeta raíz de la aplicación",
         )
@@ -1163,7 +1223,7 @@ class AutoProfileDialog(AegisDialog):
             default_config_dir()
             / f"{self.draft['sistema']}.json"
         )
-        selected, _filter = QFileDialog.getSaveFileName(
+        selected, _filter = styled_save_file(
             self,
             "Guardar perfil de aplicación",
             str(default_path),
