@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -435,8 +436,14 @@ def detect_project(root: str | Path) -> ProjectDetection:
 
 
 def _slug(value: str) -> str:
-    value = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip().lower())
-    return value.strip("-._") or "aplicacion"
+    normalized = unicodedata.normalize("NFKD", value.strip())
+    ascii_value = normalized.encode("ascii", "ignore").decode("ascii")
+    ascii_value = re.sub(
+        r"[^a-zA-Z0-9._-]+",
+        "-",
+        ascii_value.lower(),
+    )
+    return ascii_value.strip("-._") or "aplicacion"
 
 
 def build_profile_draft(
