@@ -18,7 +18,7 @@ from ..ai_recipes import (
     propuesta_a_correccion,
 )
 from ..app_paths import default_config_dir, default_evidence_dir
-from ..config import ConfigObjetivo, cargar_config
+from ..config import ConfigObjetivo, RuntimeConfig, cargar_config
 from ..cycle import (
     ciclo_correctivo,
     controles_hallazgo,
@@ -29,6 +29,7 @@ from ..process_manager import LocalTargetProcess
 from ..profile_builder import (
     build_profile_draft,
     detect_project,
+    detect_runtime_profile,
     save_profile_draft,
 )
 from ..remediation_knowledge import (
@@ -120,6 +121,117 @@ class AuditorController(QObject):
         worker.signals.error.connect(failed)
         self.pool.start(worker)
 
+    @staticmethod
+    def _runtime_key(data: dict) -> str:
+        return json.dumps(
+            {
+                "modo": data.get("modo"),
+                "comando_inicio": data.get("comando_inicio") or [],
+                "comando_inicio_por_so": (
+                    data.get("comando_inicio_por_so") or {}
+                ),
+                "directorio_trabajo": (
+                    data.get("directorio_trabajo") or "."
+                ),
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+
+    def _augment_runtime_from_target(self) -> None:
+        """Complementa perfiles antiguos con runtimes detectados hoy."""
+        if not self.cfg or not self.target_root:
+            return
+
+        current = self.cfg.runtime
+
+        try:
+            detected_raw, detected_url = detect_runtime_profile(
+                self.target_root
+            )
+        except Exception as exc:
+            self.log_message.emit(
+                "No se pudo revalidar el runtime del proyecto: "
+                f"{exc}"
+            )
+            return
+
+        current_data = asdict(current)
+        current_key = self._runtime_key(current_data)
+
+        detected_primary = dict(detected_raw)
+        detected_alternatives = list(
+            detected_primary.pop("alternativas", []) or []
+        )
+        candidates = [
+            detected_primary,
+            *[
+                dict(item)
+                for item in detected_alternatives
+                if isinstance(item, dict)
+            ],
+        ]
+
+        known = {
+            self._runtime_key(item)
+            for item in (current.alternativas or [])
+            if isinstance(item, dict)
+        }
+        known.add(current_key)
+
+        added: list[str] = []
+
+        for candidate in candidates:
+            candidate.setdefault("alternativas", [])
+            key = self._runtime_key(candidate)
+
+            if key in known:
+                if key == current_key:
+                    if not current.nombre:
+                        current.nombre = str(
+                            candidate.get("nombre") or ""
+                        )
+                    if not current.origen:
+                        current.origen = str(
+                            candidate.get("origen") or ""
+                        )
+                    if not current.base_url:
+                        current.base_url = str(
+                            candidate.get("base_url")
+                            or self.cfg.base_url
+                            or detected_url
+                            or ""
+                        )
+                continue
+
+            mode = str(candidate.get("modo") or "process").lower()
+            start = candidate.get("comando_inicio") or []
+            per_os = candidate.get("comando_inicio_por_so") or {}
+
+            if mode == "external" or (not start and not per_os):
+                continue
+
+            current.alternativas.append(candidate)
+            known.add(key)
+            added.append(
+                str(
+                    candidate.get("nombre")
+                    or (start[0] if start else "runtime alternativo")
+                )
+            )
+
+        if not current.base_url:
+            current.base_url = (
+                self.cfg.base_url
+                or str(detected_url or "")
+            )
+
+        if added:
+            self.log_message.emit(
+                "Perfil de runtime complementado automáticamente: "
+                + ", ".join(added)
+            )
+
     def _ensure_process(self) -> LocalTargetProcess:
         if not self.cfg:
             raise RuntimeError("Carga primero un perfil JSON.")
@@ -127,6 +239,7 @@ class AuditorController(QObject):
             raise RuntimeError("Carga primero la carpeta de código fuente.")
 
         if self.proceso is None:
+            self._augment_runtime_from_target()
             self.proceso = LocalTargetProcess(
                 self.target_root,
                 self.cfg.runtime,
