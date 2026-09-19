@@ -1,4 +1,8 @@
-"""Punto de entrada estable para desarrollo y ejecutable de Aegis Auditor."""
+"""Punto de entrada estable de Aegis Auditor."""
+
+from __future__ import annotations
+
+import os
 
 from auditor_bola.app_paths import configure_packaged_environment
 
@@ -6,12 +10,19 @@ from auditor_bola.app_paths import configure_packaged_environment
 def main() -> None:
     configure_packaged_environment()
 
-    # Importar la GUI después de configurar rutas persistentes garantiza que
-    # las bibliotecas de recetas/medicinas utilicen la carpeta del usuario en
-    # la versión empaquetada.
-    from auditor_bola.gui import AuditorGUI
+    if os.getenv("AEGIS_LEGACY_UI", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        from auditor_bola.gui import AuditorGUI
 
-    app = AuditorGUI()
+        app = AuditorGUI()
+    else:
+        from auditor_bola.ui.app import ModernAuditorGUI
+
+        app = ModernAuditorGUI()
+
     app.mainloop()
 
 
