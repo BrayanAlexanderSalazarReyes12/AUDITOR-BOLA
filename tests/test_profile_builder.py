@@ -536,3 +536,130 @@ def test_markdown_bold_labels_detectan_cuenta(tmp_path):
 
     assert by_user["soporte.demo"]["password"] == "soporte-123"
     assert by_user["soporte.demo"]["role"] == "SOPORTE"
+
+
+def test_detecta_version_desde_package_json(tmp_path):
+    (tmp_path / "package.json").write_text(
+        json.dumps({
+            "name": "demo-app",
+            "version": "2.7.4",
+            "dependencies": {"express": "4.18.2"},
+        }),
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+    profile = build_profile_draft(detection)
+
+    assert detection.version == "2.7.4"
+    assert detection.version_source == "package.json"
+    assert profile["version_objetivo"] == "2.7.4"
+    assert profile["metadata_detectada"]["version_detectada"] == "2.7.4"
+
+
+def test_detecta_version_maven_directa_y_no_dependencia(tmp_path):
+    (tmp_path / "pom.xml").write_text(
+        '<project xmlns="http://maven.apache.org/POM/4.0.0">'
+        '<modelVersion>4.0.0</modelVersion>'
+        '<groupId>com.demo</groupId>'
+        '<artifactId>demo</artifactId>'
+        '<version>3.4.1</version>'
+        '<dependencies>'
+        '<dependency>'
+        '<groupId>x</groupId>'
+        '<artifactId>y</artifactId>'
+        '<version>99.99.99</version>'
+        '</dependency>'
+        '</dependencies>'
+        '</project>',
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    assert profile["version_objetivo"] == "3.4.1"
+    assert profile["metadata_detectada"]["version_fuente"] == "pom.xml"
+
+
+def test_detecta_version_maven_por_propiedad_revision(tmp_path):
+    (tmp_path / "pom.xml").write_text(
+        '<project>'
+        '<modelVersion>4.0.0</modelVersion>'
+        '<version>${revision}</version>'
+        '<properties><revision>5.2.0-SNAPSHOT</revision></properties>'
+        '</project>',
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+
+    assert detection.version == "5.2.0-SNAPSHOT"
+
+
+def test_detecta_version_desde_pyproject(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\n'
+        'name = "demo"\n'
+        'version = "1.8.3"\n',
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    assert profile["version_objetivo"] == "1.8.3"
+    assert profile["metadata_detectada"]["version_fuente"] == "pyproject.toml"
+
+
+def test_detecta_version_desde_gradle(tmp_path):
+    (tmp_path / "build.gradle").write_text(
+        "plugins { id 'java' }\n"
+        "version = '4.6.2'\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    assert profile["version_objetivo"] == "4.6.2"
+
+
+def test_detecta_version_desde_readme_como_fallback(tmp_path):
+    (tmp_path / "README.md").write_text(
+        "# Demo\n\n"
+        "Versión actual: v6.1.0\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    assert profile["version_objetivo"] == "6.1.0"
+    assert profile["metadata_detectada"]["version_fuente"] == "README.md"
+    assert profile["metadata_detectada"]["version_confianza"] == "media"
+
+
+def test_sin_version_no_inventa_1_0_0(tmp_path):
+    (tmp_path / "main.custom").write_text(
+        "aplicacion sin version declarada",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    assert profile["version_objetivo"] == "desconocida"
+    assert profile["metadata_detectada"]["version_detectada"] is None
+
+
+def test_version_explicita_sobrescribe_la_detectada(tmp_path):
+    (tmp_path / "package.json").write_text(
+        json.dumps({
+            "name": "demo",
+            "version": "2.0.0",
+        }),
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(
+        detect_project(tmp_path),
+        version="9.9.9",
+    )
+
+    assert profile["version_objetivo"] == "9.9.9"
