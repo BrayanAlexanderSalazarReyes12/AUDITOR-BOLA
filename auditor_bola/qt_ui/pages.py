@@ -9,7 +9,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -37,6 +36,7 @@ from ..app_paths import (
 from ..article_evidence import export_article_package
 from ..recipe_library import biblioteca_por_defecto
 from ..remediation_knowledge import knowledge_root
+from .dialogs import styled_existing_directory, styled_open_file
 from .theme import COLORS
 from .widgets import (
     Card,
@@ -810,7 +810,7 @@ class AIPage(QWidget):
             if self.controller.target_root
             else ""
         )
-        selected, _filter = QFileDialog.getOpenFileName(
+        selected, _filter = styled_open_file(
             self,
             "Selecciona el archivo fuente del hallazgo",
             initial,
@@ -1028,7 +1028,7 @@ class EvidencePage(QWidget):
         index = self.list.currentRow()
         if index < 0 or index >= len(self.sessions):
             return
-        destination = QFileDialog.getExistingDirectory(
+        destination = styled_existing_directory(
             self,
             "Selecciona la carpeta de salida",
             str(default_article_dir()),
