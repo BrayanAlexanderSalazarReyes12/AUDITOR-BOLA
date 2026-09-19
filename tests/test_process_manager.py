@@ -213,3 +213,43 @@ def test_external_mode_no_intenta_arrancar(tmp_path):
         manager.start()
 
     assert "external" in str(exc.value)
+
+
+def test_preparacion_automatica_se_ejecuta_una_sola_vez(tmp_path):
+    runtime = RuntimeConfig(
+        comando_inicio=["python", "app.py"],
+        preparar_automaticamente=True,
+        comandos_preparacion=[
+            ["npm", "install"],
+            ["npm", "run", "build"],
+        ],
+        espera_inicio=0,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch.object(manager, "_run_control_command") as run:
+        manager._prepare_if_needed()
+        manager._prepare_if_needed()
+
+    assert run.call_count == 2
+    assert manager._prepared is True
+
+
+def test_error_de_arranque_incluye_salida_real_del_proceso(tmp_path):
+    script = tmp_path / "fail.py"
+    script.write_text(
+        "import sys\nprint('ERROR_DE_PRUEBA')\nsys.exit(1)\n",
+        encoding="utf-8",
+    )
+
+    runtime = RuntimeConfig(
+        comando_inicio=[str(script)],
+        espera_inicio=0.2,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with pytest.raises(RuntimeError) as exc:
+        manager.start()
+
+    assert "código 1" in str(exc.value)
+    assert "ERROR_DE_PRUEBA" in str(exc.value)
