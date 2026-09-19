@@ -1476,12 +1476,116 @@ def _split_sql_values(text: str) -> list[str]:
     ]
 
 
+def _extract_table_accounts(
+    text: str,
+    *,
+    source: str,
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    found: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    lines = text.splitlines()
+
+    for index, line in enumerate(lines):
+        if "|" not in line:
+            continue
+
+        headers = [
+            cell.strip().strip(chr(96)).strip("*").lower()
+            for cell in line.strip().strip("|").split("|")
+        ]
+        username_index = next(
+            (
+                idx
+                for idx, header in enumerate(headers)
+                if header in _USERNAME_KEYS
+            ),
+            None,
+        )
+        if username_index is None:
+            continue
+
+        password_index = next(
+            (
+                idx
+                for idx, header in enumerate(headers)
+                if header in _PASSWORD_KEYS
+            ),
+            None,
+        )
+        role_index = next(
+            (
+                idx
+                for idx, header in enumerate(headers)
+                if header in _ROLE_KEYS
+            ),
+            None,
+        )
+
+        row_index = index + 1
+        if row_index < len(lines) and re.match(
+            r"^\s*\|?\s*:?-{2,}",
+            lines[row_index],
+        ):
+            row_index += 1
+
+        while row_index < len(lines):
+            row_line = lines[row_index]
+            if "|" not in row_line or not row_line.strip():
+                break
+
+            cells = [
+                _clean_literal(cell)
+                for cell in row_line.strip().strip("|").split("|")
+            ]
+            if username_index >= len(cells):
+                break
+
+            username = cells[username_index]
+            if not username:
+                row_index += 1
+                continue
+
+            password = (
+                cells[password_index]
+                if password_index is not None
+                and password_index < len(cells)
+                else None
+            )
+            role = (
+                cells[role_index]
+                if role_index is not None
+                and role_index < len(cells)
+                else "USER"
+            )
+
+            candidate = _account_from_mapping(
+                {
+                    "username": username,
+                    "password": password,
+                    "role": role or "USER",
+                },
+                source=source,
+                confidence="media",
+            )
+            if candidate:
+                found.append(candidate)
+
+            row_index += 1
+
+    return found
+
 def _extract_accounts_from_text(
     text: str,
     *,
     source: str,
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     found: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+    found.extend(
+        _extract_table_accounts(
+            text,
+            source=source,
+        )
+    )
 
     insert_pattern = re.compile(
         r"INSERT\s+INTO\s+[\w.\"\-]+\s*"
