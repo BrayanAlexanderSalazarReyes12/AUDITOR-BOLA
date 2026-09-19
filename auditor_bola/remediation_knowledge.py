@@ -17,7 +17,14 @@ from pathlib import Path
 from typing import Any
 
 
-KNOWLEDGE_SCHEMA_VERSION = 1
+KNOWLEDGE_SCHEMA_VERSION = 2
+
+
+def normalizar_familia_control(control_id: str) -> str:
+    """Agrupa variantes numeradas sin amarrarse a un perfil concreto."""
+    value = (control_id or "").strip().upper()
+    value = re.sub(r"[-_.](?:V)?\d+$", "", value)
+    return value or "CONTROL"
 
 
 def _ts() -> str:
@@ -62,6 +69,8 @@ class RemediationKnowledge:
     consideraciones: list[str] = field(default_factory=list)
     lenguajes_observados: list[str] = field(default_factory=list)
     frameworks_observados: list[str] = field(default_factory=list)
+    familia_control: str | None = None
+    tipo_control: str | None = None
     knowledge_id: str | None = None
     verificada: bool = True
     casos_exitosos: int = 0
@@ -69,8 +78,12 @@ class RemediationKnowledge:
     usos_exitosos: int = 0
 
     def canonical_payload(self) -> dict[str, Any]:
+        family = self.familia_control or normalizar_familia_control(
+            self.control_id
+        )
         return {
-            "control_id": self.control_id,
+            "familia_control": family,
+            "tipo_control": self.tipo_control,
             "causa_raiz": self.causa_raiz.strip(),
             "invariante_seguridad": self.invariante_seguridad.strip(),
             "estrategia_general": [
@@ -85,6 +98,10 @@ class RemediationKnowledge:
         }
 
     def ensure_id(self) -> str:
+        if not self.familia_control:
+            self.familia_control = normalizar_familia_control(
+                self.control_id
+            )
         if self.knowledge_id:
             return self.knowledge_id
         raw = json.dumps(
@@ -140,6 +157,11 @@ def _load_knowledge(path: Path) -> RemediationKnowledge:
         frameworks_observados=list(
             data.get("frameworks_observados") or []
         ),
+        familia_control=(
+            data.get("familia_control")
+            or normalizar_familia_control(data["control_id"])
+        ),
+        tipo_control=data.get("tipo_control"),
         knowledge_id=data.get("knowledge_id"),
         verificada=bool(data.get("verificada", True)),
         casos_exitosos=int(data.get("casos_exitosos", 0)),
@@ -160,7 +182,11 @@ def guardar_conocimiento(
         else knowledge_root()
     )
     knowledge_id = knowledge.ensure_id()
-    folder = base / _safe_name(knowledge.control_id)
+    if not knowledge.familia_control:
+        knowledge.familia_control = normalizar_familia_control(
+            knowledge.control_id
+        )
+    folder = base / _safe_name(knowledge.familia_control)
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{knowledge_id[:24]}.json"
 
@@ -200,6 +226,8 @@ def guardar_conocimiento(
         "tipo": "conocimiento_correctivo_semantico",
         "knowledge_id": knowledge_id,
         "control_id": knowledge.control_id,
+        "familia_control": knowledge.familia_control,
+        "tipo_control": knowledge.tipo_control,
         "titulo": knowledge.titulo,
         "causa_raiz": knowledge.causa_raiz,
         "invariante_seguridad": knowledge.invariante_seguridad,
@@ -267,11 +295,31 @@ def _score(
     source_text: str | None,
     extension: str | None,
 ) -> tuple[int, list[str]]:
-    if knowledge.control_id != control_id:
-        return -1, []
+    requested_family = normalizar_familia_control(control_id)
+    known_family = (
+        knowledge.familia_control
+        or normalizar_familia_control(knowledge.control_id)
+    )
 
-    score = 100
-    reasons = ["mismo control de seguridad"]
+    score = 0
+    reasons: list[str] = []
+
+    if knowledge.control_id == control_id:
+        score += 100
+        reasons.append("mismo control")
+    elif known_family == requested_family:
+        score += 85
+        reasons.append("misma familia de vulnerabilidad")
+    elif (
+        tipo_control
+        and knowledge.tipo_control
+        and str(knowledge.tipo_control).lower()
+        == str(tipo_control).lower()
+    ):
+        score += 65
+        reasons.append("mismo tipo de control")
+    else:
+        return -1, []
 
     haystack = (
         (descripcion or "")
@@ -321,12 +369,28 @@ def buscar_conocimiento(
         if root is not None
         else knowledge_root()
     )
-    folder = base / _safe_name(control_id)
-    if not folder.exists():
-        return []
+    family = normalizar_familia_control(control_id)
+    paths: list[Path] = []
+
+    family_folder = base / _safe_name(family)
+    if family_folder.exists():
+        paths.extend(sorted(family_folder.glob("*.json")))
+
+    # Si el perfil usa otro ID pero conserva el mismo tipo semántico,
+    # revisamos también el resto del conocimiento disponible.
+    if tipo_control and base.exists():
+        paths.extend(sorted(base.glob("*/*.json")))
+
+    unique_paths: list[Path] = []
+    seen: set[Path] = set()
+    for item in paths:
+        resolved = item.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique_paths.append(item)
 
     candidates: list[KnowledgeCandidate] = []
-    for path in sorted(folder.glob("*.json")):
+    for path in unique_paths:
         try:
             knowledge = _load_knowledge(path)
             score, reasons = _score(
