@@ -106,11 +106,15 @@ class Correccion:
 
 @dataclass
 class RuntimeConfig:
-    """Cómo iniciar/detener/reiniciar una copia local del objetivo.
+    """Cómo preparar/iniciar/detener/reiniciar una copia local del objetivo.
 
     Los campos *_por_so permiten adaptar el mismo perfil a Windows, Linux y
     macOS sin duplicar el resto de la configuración. Las claves soportadas son
     windows, linux, macos y default.
+
+    comandos_preparacion permite declarar uno o más comandos previos al
+    arranque (por ejemplo npm install o pip install). Se ejecutan una vez por
+    instancia administrada cuando preparar_automaticamente es True.
     """
 
     modo: str = "process"  # process | command (legacy) | service | external
@@ -120,10 +124,16 @@ class RuntimeConfig:
     comando_inicio_por_so: dict[str, list[str]] = field(default_factory=dict)
     comando_detener_por_so: dict[str, list[str]] = field(default_factory=dict)
     comando_reinicio_por_so: dict[str, list[str]] = field(default_factory=dict)
+
+    preparar_automaticamente: bool = False
+    comandos_preparacion: list[list[str]] = field(default_factory=list)
+    comandos_preparacion_por_so: dict[str, list[list[str]]] = field(
+        default_factory=dict
+    )
+
     directorio_trabajo: str = "."
     espera_inicio: float = 1.2
     variables: dict[str, str] = field(default_factory=dict)
-
 
 @dataclass
 class ConfigObjetivo:
