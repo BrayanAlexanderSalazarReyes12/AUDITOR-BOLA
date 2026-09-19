@@ -12,7 +12,8 @@ class ReportsPage(ctk.CTkFrame):
     def __init__(self, master, app):
         super().__init__(master, fg_color=COLORS["bg"])
         self.app = app
-        self.grid_columnconfigure((0, 1, 2), weight=1)
+        for column in range(3):
+            self.grid_columnconfigure(column, weight=1)
 
         ctk.CTkLabel(
             self,
@@ -35,7 +36,8 @@ class ReportsPage(ctk.CTkFrame):
             "Guarda resultados técnicos o genera material redactado para el artículo.",
         )
         actions.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 0))
-        actions.grid_columnconfigure((0, 1), weight=1)
+        actions.grid_columnconfigure(0, weight=1)
+        actions.grid_columnconfigure(1, weight=1)
 
         app.btn_save = ActionButton(
             actions,
