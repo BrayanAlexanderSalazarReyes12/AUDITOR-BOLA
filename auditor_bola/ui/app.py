@@ -1922,13 +1922,13 @@ class ModernAuditorGUI(AuditorGUI):
         )
 
         ultra = (
-            width < 1050
-            or height < 650
+            width < 960
+            or height < 620
         )
         compact = (
             ultra
-            or width < 1380
-            or height < 780
+            or width < 1240
+            or height < 720
         )
 
         self.compact_mode = compact
