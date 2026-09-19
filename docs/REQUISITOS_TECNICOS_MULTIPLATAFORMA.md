@@ -117,3 +117,17 @@ Independientemente del sistema operativo o tecnología, Aegis conserva exactamen
 2. Pilar 2 — Arquitectura y Configuración.
 
 La portabilidad del ejecutable no amplía artificialmente la cobertura de seguridad: los controles deben pertenecer a uno de estos pilares y estar implementados de forma reusable.
+
+## Adaptación de pantalla
+
+La interfaz detecta el tamaño disponible y cambia de densidad automáticamente.
+
+Perfiles de referencia probados por cálculo:
+- 1024×600: modo ultra compacto;
+- 1366×768: modo compacto para portátil;
+- 1920×1080: modo estándar;
+- 2560×1440 y 3840×2160: ventana contenida, redimensionable y compatible con alta resolución.
+
+La barra lateral, cabecera, paddings, textos de estado, progreso y asistente de perfiles se reajustan al tamaño actual de la ventana. El cambio también se aplica cuando el usuario redimensiona la aplicación después de abrirla.
+
+No se fuerza una única resolución. En pantallas pequeñas Aegis reduce elementos secundarios; en pantallas grandes evita crecer indefinidamente y permite maximizar la ventana.
