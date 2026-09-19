@@ -136,6 +136,7 @@ class RuntimeConfig:
     directorio_trabajo: str = "."
     espera_inicio: float = 1.2
     variables: dict[str, str] = field(default_factory=dict)
+    base_url: str = ""
 
     # Estrategias alternativas completas de runtime. Aegis prueba la
     # estrategia principal y, si su ejecutable no está disponible, intenta
