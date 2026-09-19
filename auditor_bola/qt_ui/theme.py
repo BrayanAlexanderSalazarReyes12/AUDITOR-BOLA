@@ -452,6 +452,131 @@ QTableWidget#AccountsTable {
     gridline-color: #14384F;
     color: #DDEBF3;
 }
+QFrame#AccountsHero {
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:1,
+        stop:0 #0D2B40,
+        stop:1 #091D2B
+    );
+    border: 1px solid #1E638B;
+    border-radius: 14px;
+}
+QLabel#AccountsHeroIcon {
+    background: #0B3A56;
+    border: 1px solid #1A6D9C;
+    border-radius: 10px;
+    color: #78D7FF;
+    font-size: 20px;
+    font-weight: 800;
+}
+QFrame#AccountsToolbar {
+    background: #081824;
+    border: 1px solid #14384F;
+    border-radius: 10px;
+}
+QLineEdit#AccountsCellEditor {
+    background: #061722;
+    border: 1px solid #145072;
+    border-radius: 8px;
+    min-height: 34px;
+    padding: 0 10px;
+    color: #F4F8FB;
+}
+QLineEdit#AccountsCellEditor:focus {
+    border-color: #28B8FF;
+    background: #071D2A;
+}
+QComboBox#AccountsAuthCombo {
+    background: #061722;
+    border: 1px solid #145072;
+    border-radius: 8px;
+    min-height: 34px;
+    padding: 0 26px 0 10px;
+    color: #F4F8FB;
+}
+QComboBox#AccountsAuthCombo:hover,
+QComboBox#AccountsAuthCombo:focus {
+    border-color: #28B8FF;
+}
+QComboBox#AccountsAuthCombo::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 26px;
+    border: none;
+    background: #0D2C40;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+QComboBox#AccountsAuthCombo::down-arrow {
+    image: none;
+    width: 0;
+    height: 0;
+}
+QListView#AccountsComboPopup,
+QComboBox#AccountsAuthCombo QAbstractItemView {
+    background: #081824;
+    color: #EAF5FB;
+    border: 1px solid #1A5274;
+    outline: 0;
+    selection-background-color: #145B8C;
+    selection-color: #FFFFFF;
+    padding: 4px;
+}
+QListView#AccountsComboPopup::item {
+    min-height: 30px;
+    padding: 4px 8px;
+    border-radius: 5px;
+}
+QListView#AccountsComboPopup::item:hover {
+    background: #103B59;
+}
+QListView#AccountsComboPopup::item:selected {
+    background: #145B8C;
+    color: #FFFFFF;
+}
+QWidget#AccountsCheckWrapper {
+    background: transparent;
+}
+QCheckBox#AccountsPrivilegeCheck {
+    spacing: 0;
+}
+QCheckBox#AccountsPrivilegeCheck::indicator {
+    width: 18px;
+    height: 18px;
+    background: #061722;
+    border: 1px solid #2A6688;
+    border-radius: 4px;
+}
+QCheckBox#AccountsPrivilegeCheck::indicator:checked {
+    background: #169BFF;
+    border-color: #39C7FF;
+}
+QCheckBox#AccountsShowPasswords {
+    color: #B7CFDD;
+    font-size: 9px;
+    spacing: 7px;
+}
+QCheckBox#AccountsShowPasswords::indicator {
+    width: 16px;
+    height: 16px;
+    background: #061722;
+    border: 1px solid #2A6688;
+    border-radius: 4px;
+}
+QCheckBox#AccountsShowPasswords::indicator:checked {
+    background: #169BFF;
+    border-color: #39C7FF;
+}
+QPushButton#AccountsAddButton {
+    background: #0F3A51;
+    border: 1px solid #1A668C;
+    color: #C9ECFF;
+    font-weight: 700;
+}
+QPushButton#AccountsAddButton:hover {
+    background: #14506F;
+    border-color: #39C7FF;
+}
 QPushButton#SuccessButton {
     background: #31D3A2;
     border-color: #31D3A2;
