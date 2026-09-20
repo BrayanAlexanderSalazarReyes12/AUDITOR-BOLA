@@ -1470,9 +1470,15 @@ def test_autoperfil_scope_python_soporta_get_json_y_alias(
         encoding="utf-8",
     )
 
-    profile = build_profile_draft(detect_project(tmp_path))
+    detection = detect_project(tmp_path)
+    contracts = profile_builder._extract_http_test_contracts(detection)
+    profile = build_profile_draft(detection)
 
-    assert len(profile["chequeos_agente"]) == 1
+    assert len(profile["chequeos_agente"]) == 1, {
+        "contracts": contracts,
+        "endpoints": profile["endpoints_detectados"],
+        "registry": profile["chequeos_pilar1"],
+    }
     check = profile["chequeos_agente"][0]
     assert check["steps_json_path"] == "$.steps"
     assert check["tool_field"] == "tool"
