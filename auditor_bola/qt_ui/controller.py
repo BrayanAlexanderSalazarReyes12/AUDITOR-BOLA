@@ -42,6 +42,7 @@ from ..cycle import (
     verificar_control,
 )
 from ..process_manager import LocalTargetProcess
+from ..p1_resolver import resolve_live_bola_candidates
 from ..profile_builder import (
     build_profile_draft,
     detect_project,
@@ -793,6 +794,126 @@ class AuditorController(QObject):
                 + ", ".join(added_p2)
             )
 
+    def _resolve_live_p1_candidates(self) -> int:
+        """Resuelve candidatos P1 que requieren evidencia del servicio vivo."""
+        if not self.cfg or not self.process_running():
+            return 0
+
+        metadata = self.detected_metadata()
+        if not (metadata.get("candidatos_pilar1") or []):
+            return 0
+
+        active_url = str(
+            self.active_runtime_status.get("base_url")
+            or self.cfg.base_url
+            or ""
+        ).strip().rstrip("/")
+        if not active_url:
+            return 0
+
+        try:
+            resolved = resolve_live_bola_candidates(
+                self.cfg,
+                metadata,
+                base_url=active_url,
+            )
+        except Exception as exc:
+            self.log_message.emit(
+                "No se pudieron resolver candidatos P1 con el objetivo vivo: "
+                f"{exc}"
+            )
+            return 0
+
+        if not resolved:
+            return 0
+
+        self.cfg.endpoints.extend(resolved)
+        self.cfg.chequeos_pilar1 = construir_registro_pilar1(
+            self.cfg.endpoints,
+            self.cfg.chequeos_acceso,
+            self.cfg.chequeos_agente,
+        )
+
+        if self.config_path and self.config_path.exists():
+            try:
+                payload = json.loads(
+                    self.config_path.read_text(encoding="utf-8")
+                )
+                if isinstance(payload, dict):
+                    payload["endpoints"] = [
+                        asdict(item)
+                        for item in self.cfg.endpoints
+                    ]
+                    payload["chequeos_pilar1"] = list(
+                        self.cfg.chequeos_pilar1
+                    )
+                    meta = dict(
+                        payload.get("metadata_detectada") or {}
+                    )
+                    live_items = list(
+                        meta.get(
+                            "controles_pilar1_resueltos_en_vivo"
+                        )
+                        or []
+                    )
+                    known_ids = {
+                        str(item.get("id_control") or "")
+                        for item in live_items
+                        if isinstance(item, dict)
+                    }
+                    for endpoint in resolved:
+                        if endpoint.id_control in known_ids:
+                            continue
+                        live_items.append(
+                            {
+                                "id_control": endpoint.id_control,
+                                "tipo": "bola",
+                                "metodo": endpoint.metodo,
+                                "ruta": endpoint.ruta,
+                                "id_prueba": endpoint.id_prueba,
+                                "propietario_esperado": (
+                                    endpoint.propietario_esperado
+                                ),
+                                "fuente": "objetivo-vivo-solo-lectura",
+                            }
+                        )
+                    meta["controles_pilar1_resueltos_en_vivo"] = (
+                        live_items
+                    )
+                    meta["total_controles_pilar1_activos"] = (
+                        len(self.cfg.endpoints)
+                        + len(self.cfg.chequeos_acceso)
+                        + len(self.cfg.chequeos_agente)
+                    )
+                    meta["total_controles_activos"] = (
+                        meta["total_controles_pilar1_activos"]
+                        + len(self.cfg.chequeos_pilar2)
+                    )
+                    payload["metadata_detectada"] = meta
+                    self.config_path.write_text(
+                        json.dumps(
+                            payload,
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+            except (OSError, json.JSONDecodeError) as exc:
+                self.log_message.emit(
+                    "No se pudo persistir el Pilar 1 resuelto en vivo: "
+                    f"{exc}"
+                )
+
+        self.log_message.emit(
+            "Pilar 1 resuelto con evidencia de solo lectura del objetivo: "
+            + ", ".join(
+                endpoint.id_control or "P1-BOLA"
+                for endpoint in resolved
+            )
+        )
+        return len(resolved)
+
     def _enforce_profile_base_url(self) -> None:
         """Sincroniza runtimes con la IP/puerto autorizados por config JSON."""
         if not self.cfg:
@@ -1059,6 +1180,14 @@ class AuditorController(QObject):
             + len(self.cfg.chequeos_agente)
         )
         p2_total = len(self.cfg.chequeos_pilar2)
+
+        if p1_total == 0:
+            self._resolve_live_p1_candidates()
+            p1_total = (
+                len(self.cfg.endpoints) * len(self.cfg.cuentas)
+                + len(self.cfg.chequeos_acceso)
+                + len(self.cfg.chequeos_agente)
+            )
 
         missing: list[str] = []
         if p1_total == 0:
