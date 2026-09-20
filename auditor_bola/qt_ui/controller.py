@@ -585,6 +585,8 @@ class AuditorController(QObject):
                 )
 
     def ai_status(self) -> tuple[bool, str]:
+        if self.ai_provider is None:
+            self._refresh_ai_provider(silent=True)
         if self.ai_provider:
             return True, self.ai_provider.model_name
         return False, "No configurada"
