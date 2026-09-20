@@ -3,6 +3,7 @@ import json
 from auditor_bola.profile_builder import (
     build_profile_draft,
     detect_project,
+    detect_runtime_profile,
     save_profile_draft,
 )
 
