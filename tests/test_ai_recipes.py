@@ -558,3 +558,151 @@ def test_configuracion_ia_desde_variables_funciona_sin_archivo(
     assert provider.base_url == "https://env.example/v1"
     assert provider.model_id == "coder-env"
     assert provider.api_key == "key-env"
+
+
+
+def test_varios_perfiles_ia_se_pueden_guardar_y_seleccionar(
+    tmp_path,
+    monkeypatch,
+):
+    config_path = tmp_path / "ai-provider.json"
+    monkeypatch.setattr(
+        ai,
+        "default_ai_config_path",
+        lambda: config_path,
+    )
+
+    first = ai.guardar_perfil_ia(
+        profile_name="UTB - Gemma",
+        base_url="https://utb.example/v1",
+        model_id="lab-coder",
+        api_key="key-utb",
+    )
+    second = ai.guardar_perfil_ia(
+        profile_name="Ollama local",
+        base_url="http://127.0.0.1:11434/v1",
+        model_id="qwen2.5-coder",
+        api_key="",
+    )
+
+    profiles = ai.listar_perfiles_ia()
+    assert len(profiles) == 2
+    assert sum(bool(item["active"]) for item in profiles) == 1
+    assert second.profile_id != first.profile_id
+    assert ai.cargar_configuracion_aegis_ai().profile_id == second.profile_id
+
+    selected = ai.seleccionar_perfil_ia(first.profile_id)
+    assert selected.profile_name == "UTB - Gemma"
+    assert selected.api_key == "key-utb"
+    assert ai.cargar_configuracion_aegis_ai().profile_id == first.profile_id
+
+
+def test_lista_perfiles_ia_no_expone_api_keys(tmp_path, monkeypatch):
+    config_path = tmp_path / "ai-provider.json"
+    monkeypatch.setattr(
+        ai,
+        "default_ai_config_path",
+        lambda: config_path,
+    )
+
+    ai.guardar_perfil_ia(
+        profile_name="Proveedor privado",
+        base_url="https://private.example/v1",
+        model_id="coder",
+        api_key="NO-DEBE-SALIR",
+    )
+
+    profiles = ai.listar_perfiles_ia()
+    serialized = json.dumps(profiles)
+    assert "NO-DEBE-SALIR" not in serialized
+    assert profiles[0]["has_api_key"] is True
+
+
+def test_perfil_ia_se_puede_duplicar_y_eliminar(tmp_path, monkeypatch):
+    config_path = tmp_path / "ai-provider.json"
+    monkeypatch.setattr(
+        ai,
+        "default_ai_config_path",
+        lambda: config_path,
+    )
+
+    original = ai.guardar_perfil_ia(
+        profile_name="LM Studio",
+        base_url="http://127.0.0.1:1234/v1",
+        model_id="local-model",
+        api_key="local-key",
+    )
+    duplicate = ai.duplicar_perfil_ia(original.profile_id)
+
+    assert duplicate.profile_id != original.profile_id
+    assert duplicate.profile_name == "LM Studio copia"
+    assert duplicate.api_key == "local-key"
+    assert len(ai.listar_perfiles_ia()) == 2
+
+    active_after_delete = ai.eliminar_perfil_ia(duplicate.profile_id)
+    assert active_after_delete == original.profile_id
+    assert ai.cargar_configuracion_aegis_ai().profile_id == original.profile_id
+    assert len(ai.listar_perfiles_ia()) == 1
+
+
+def test_editar_perfil_ia_conserva_clave_si_campo_vacio(
+    tmp_path,
+    monkeypatch,
+):
+    config_path = tmp_path / "ai-provider.json"
+    monkeypatch.setattr(
+        ai,
+        "default_ai_config_path",
+        lambda: config_path,
+    )
+
+    provider = ai.guardar_perfil_ia(
+        profile_name="Proveedor editable",
+        base_url="https://one.example/v1",
+        model_id="modelo-1",
+        api_key="clave-existente",
+    )
+    updated = ai.guardar_perfil_ia(
+        profile_id=provider.profile_id,
+        profile_name="Proveedor editado",
+        base_url="https://two.example/v1",
+        model_id="modelo-2",
+        api_key=None,
+    )
+
+    assert updated.profile_id == provider.profile_id
+    assert updated.profile_name == "Proveedor editado"
+    assert updated.base_url == "https://two.example/v1"
+    assert updated.model_id == "modelo-2"
+    assert updated.api_key == "clave-existente"
+
+
+def test_migra_configuracion_ia_antigua_a_perfiles(tmp_path, monkeypatch):
+    config_path = tmp_path / "ai-provider.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "provider_id": "llmlab",
+                "provider_name": "Laboratorio UTB",
+                "model_id": "lab-coder",
+                "model_name": "Gemma Lab",
+                "base_url": "https://lab.example/v1",
+                "api_key": "legacy-key",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ai,
+        "default_ai_config_path",
+        lambda: config_path,
+    )
+
+    provider = ai.cargar_configuracion_aegis_ai()
+    stored = json.loads(config_path.read_text(encoding="utf-8"))
+
+    assert provider.base_url == "https://lab.example/v1"
+    assert provider.api_key == "legacy-key"
+    assert stored["schema_version"] == 2
+    assert len(stored["profiles"]) == 1
+    assert stored["active_profile_id"] == stored["profiles"][0]["id"]
