@@ -1,4 +1,4 @@
-# docker-aware-profile-release: v1.1.15
+# executable-controls-release: v1.1.16
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.15' \
+            'Version: 1.1.16' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-15:
-    name: Publicar Release v1.1.15
+  release-v1-1-16:
+    name: Publicar Release v1.1.16
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.15]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.16]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,11 +253,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.15
+          # Aegis Auditor v1.1.16
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.15
+          ## Novedades de v1.1.16
           - Corrige la versión de la aplicación analizada: ya no se asigna
             `1.0.0` por defecto.
           - Detecta la versión real desde package.json, pom.xml, Gradle,
@@ -316,6 +316,9 @@ jobs:
           - Al generar el JSON, Aegis comprueba si Docker está instalado en el equipo actual; sin Docker, selecciona directamente el runtime local como principal.
           - El perfil registra metadata_detectada.entorno_ejecucion con docker_instalado y el runtime principal elegido.
           - Las pruebas CI fueron actualizadas para la verificación real de disponibilidad de servicios.
+          - El diagnóstico ya no puede devolver '0 hallazgos' cuando el perfil contiene 0 controles activos; ahora informa que no se ejecutó ninguna prueba de seguridad.
+          - El auto-perfil infiere controles P2 de alta confianza para reflexión CORS, secretos con valor por defecto y usuario efectivo de Docker.
+          - Los perfiles antiguos con cero controles se enriquecen automáticamente al volver a cargar el código fuente, sin borrar controles manuales existentes.
 
           ## Descargas
 
@@ -364,16 +367,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.15" >/dev/null 2>&1; then
-            gh release upload "v1.1.15" "${files[@]}" --clobber
-            gh release edit "v1.1.15" \
-              --title "Aegis Auditor v1.1.15" \
+          if gh release view "v1.1.16" >/dev/null 2>&1; then
+            gh release upload "v1.1.16" "${files[@]}" --clobber
+            gh release edit "v1.1.16" \
+              --title "Aegis Auditor v1.1.16" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.15" "${files[@]}" \
+            gh release create "v1.1.16" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.15" \
+              --title "Aegis Auditor v1.1.16" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
