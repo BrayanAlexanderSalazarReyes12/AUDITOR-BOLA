@@ -1,4 +1,4 @@
-# matrix-policy-evaluation-release: v1.2.6-alpha
+# security-patching-release: v1.3.0
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.2.6~alpha' \
+            'Version: 1.3.0' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-2-6-alpha:
-    name: Publicar Pre-release v1.2.6-alpha
+  release-v1-3-0:
+    name: Publicar Release v1.3.0
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.6-alpha]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.3.0]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,63 +253,43 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.2.6-alpha
+          # Aegis Auditor v1.3.0
 
-          **Versión alpha de validación.** El objetivo de esta compilación es
-          probar el flujo real de medicina/parche antes de promoverlo a estable.
+          Versión estable centrada en el ciclo real de corrección de vulnerabilidades:
+          **detectar → parchear código real → reiniciar → reescanear → verificar → guardar medicina**.
 
-          Nueva versión de **Aegis Auditor — Security Remediation Studio**.
+          ## Corrección y parchado
 
-          ## Novedades principales
+          - Aegis identifica automáticamente el lenguaje y señales de framework del archivo cargado antes de generar una medicina.
+          - La IA recibe ese lenguaje como restricción: Python recibe Python válido, Java recibe Java, JavaScript recibe JavaScript y así sucesivamente.
+          - Las recetas pueden modificar uno o varios archivos cuando la causa raíz atraviesa varias capas.
+          - Los planes multiarchivo se validan y aplican de forma transaccional con backup y rollback.
+          - Antes de aplicar una receta, la interfaz muestra el cambio calculado sobre el código real: líneas anteriores en rojo y líneas nuevas en verde.
+          - Las propuestas no aplicables permanecen visibles para diagnóstico, pero no se pueden ejecutar.
+          - El archivo se protege por SHA-256 para impedir aplicar un parche generado sobre una versión diferente.
 
-          - Nuevo motor de seguridad basado en evidencia y comportamiento, sin reglas específicas de una aplicación.
-          - Construcción explícita del modelo **Identidad → Rol/Atributos → Endpoint → Acción → Recurso → Propiedad**.
-          - Registro extensible de familias de controles para BOLA, RBAC/ABAC, Agent Scope, bypass de límites, CORS, secretos, contenedores, debug y sesión.
-          - Estados diferenciados para candidato, evidencia insuficiente, por confirmar, prueba preparada, confirmado, descartado y no ejecutable.
-          - Separación estructural **Hallazgo → Evidencias → Casos de prueba**.
-          - IDs semánticos y estables generados dinámicamente; no dependen de IDs históricos de otros proyectos.
-          - Deduplicación por familia, endpoint/componente, recurso y causa raíz para evitar contar varias pruebas como vulnerabilidades distintas.
-          - Matriz **endpoint × identidad** enriquecida con forma de respuesta JSON, conteo de objetos, IDs observados y firma semántica.
-          - Las diferencias entre respuestas de usuarios se conservan como evidencia; cuando la matriz determina `vulnerable=true`, el resultado se promueve y consolida como **HALLAZGO**.
-          - POST/PUT/PATCH solo se ejecutan cuando existe un payload de prueba seguro derivado de evidencia; de lo contrario quedan como **NO_EJECUTABLE**.
-          - DELETE continúa protegido para evitar acciones destructivas durante el barrido automático.
-          - Mejor correlación de propiedad de objetos mediante aliases de identidad como `user_id`, `account_id`, `cliente_id` y equivalentes.
-          - Consolidación runtime de hallazgos únicos manteniendo todos los casos de prueba relacionados.
-          - Pilar 2 evolucionado a motor genérico de descubrimiento por familias: evidencia → candidato → prueba → hallazgo → corrección → verificación.
-          - CORS selecciona endpoints seguros automáticamente y combina GET/OPTIONS con evidencia de ACAO, credenciales, Vary, métodos y headers.
-          - SECRET distingue documentación/tests de configuración desplegable, analiza fallbacks por entorno y evita exponer valores sensibles en la evidencia.
-          - LIMIT_BYPASS conserva señales estáticas como candidatos hasta una prueba diferencial con identidades y payload seguro.
-          - CONTAINER interpreta Dockerfiles multi-stage y correlaciona Compose/Kubernetes, usuario efectivo, privileged, UID 0, runAsNonRoot, Docker socket, host networking/PID y capabilities.
-          - Deduplicación semántica: varios casos de prueba pueden consolidarse en un único hallazgo cuando comparten causa raíz, sin fusionar secretos o componentes independientes.
-          - Nuevos estados y estadísticas separan candidatos, controles ejecutados, confirmados, seguros, por confirmar, no ejecutables y duplicados consolidados.
-          - Pilar 2 mantiene familia, severidad, confianza, causa raíz, evidencia estructurada, componente, casos de prueba y estrategia abstracta de corrección.
-          - La corrección asistida por IA carga automáticamente el archivo asociado al hallazgo antes de generar recetas, priorizando archivo, componente y evidencia del hallazgo.
-          - Si no existe una referencia explícita, Aegis usa resolución semántica por control, método, ruta y descripción; la selección manual queda como fallback.
-          - El archivo analizado por IA se protege con SHA-256: si cambia antes de aplicar el parche, Aegis bloquea la receta y exige regenerarla sobre la versión actual.
-          - La remediación IA ahora ejecuta diagnóstico de causa raíz antes de parchear y puede ampliar contexto a controller/handler, service, repository/DAO, seguridad y configuración relacionados.
-          - Cada intento conserva hipótesis, estrategia, archivo objetivo, resultado técnico y análisis del fallo para evitar repetir soluciones ineficaces.
-          - Tras dos intentos fallidos se activa STRATEGY_RESET: Aegis reanaliza el flujo completo y rechaza variaciones cosméticas de estrategias descartadas.
-          - Los parches se someten a validación sintáctica y, cuando aplica, build y tests reconocidos antes del reescaneo de seguridad.
-          - Estados de remediación explícitos incluyen PATCH_VERIFIED, PATCH_FAILED, PATCH_PARTIAL, BUILD_FAILED, TEST_FAILED, REGRESSION_DETECTED y MANUAL_REVIEW_REQUIRED.
-          - Si build, tests o verificación fallan, Aegis realiza rollback automático y conserva evidencia del fallo.
-          - El aprendizaje de recetas y medicina semántica ocurre únicamente después de PATCH_VERIFIED.
-          - Las recetas IA pueden modificar varios archivos relacionados en una sola estrategia cuando la causa raíz atraviesa controller/handler, service, repository/DAO o seguridad.
-          - Los planes multiarchivo se aplican de forma transaccional: Aegis valida todos los cambios en memoria, crea backups completos y revierte todos los archivos si cualquier paso falla.
-          - La validación local revisa cada regex y la sintaxis de todos los archivos modificados antes de permitir aplicar la propuesta.
-          - Si una primera respuesta IA contiene propuestas inválidas, Aegis envía automáticamente los errores exactos al modelo y solicita una nueva ronda antes de mostrarlas al usuario.
-          - Una medicina que falla en runtime, tests o reescaneo queda descartada y se elimina de las correcciones activas para impedir reutilización accidental.
-          - Después de dos intentos fallidos, STRATEGY_RESET puede regenerar automáticamente nuevas estrategias usando los fallos previos como evidencia y rechazando variaciones superficiales.
-          - Las opciones NO APLICABLE permanecen visibles para diagnóstico, pero no pueden ejecutarse desde la interfaz.
-          - La salida de QA conserva stdout y stderr relevantes para que TEST_FAILED alimente correctamente el siguiente diagnóstico.
-          - El archivo seleccionado para la medicina se inspecciona antes de generar el parche y Aegis detecta automáticamente su lenguaje y señales de framework.
-          - La IA recibe lenguaje y framework detectados como una restricción de implementación: un archivo Python debe recibir Python válido, Java debe recibir Java válido, JavaScript debe recibir JavaScript válido, etc.
-          - Las medicinas IA fuerzan reinicio/recarga del servicio antes del reescaneo para evitar validar contra un proceso que todavía ejecuta el código anterior.
-          - El orden de verificación queda explícito: aplicar parche → validar sintaxis/build → reiniciar servicio → reejecutar el control de seguridad → confirmar que el bug ya no es reproducible.
-          - La suite funcional general se ejecuta después de demostrar que el exploit original dejó de reproducirse; una prueba antigua que espere el comportamiento vulnerable ya no provoca por sí sola que Aegis restaure el bug.
-          - Cuando la vulnerabilidad queda cerrada pero la suite funcional reporta problemas, Aegis conserva el parche como PATCH_VERIFIED_WITH_WARNINGS y deja la advertencia separada para revisión.
-          - Los hallazgos vulnerables descubiertos por la matriz endpoint × identidad se contabilizan como hallazgos P1 y reciben IDs semánticos estables cuando no existe un control previo.
-          - Se conserva la detección real de versiones, runtimes locales/Docker, documentación, cuentas, endpoints, recetas verificables y fallbacks de ejecución.
-          - Validación automatizada en Python 3.11 y 3.12, Qt y CustomTkinter.
+          ## Verificación de seguridad
+
+          - El orden correcto es: aplicar parche → validar sintaxis/build → reiniciar o recargar servicio → reejecutar el control de seguridad.
+          - El parche solo se considera verificado cuando el bug o fallo de seguridad original deja de ser reproducible.
+          - La suite funcional general se ejecuta después del reescaneo de seguridad.
+          - Si la vulnerabilidad ya quedó cerrada pero una prueba antigua todavía espera el comportamiento vulnerable, Aegis conserva el parche como PATCH_VERIFIED_WITH_WARNINGS en lugar de restaurar el bug.
+          - Si el parche no elimina el hallazgo, falla sintaxis/build o introduce una regresión del control, Aegis ejecuta rollback y conserva evidencia.
+
+          ## Medicina y aprendizaje
+
+          - Todo parche verificado se guarda en la biblioteca de recetas, tanto PATCH_VERIFIED como PATCH_VERIFIED_WITH_WARNINGS.
+          - La biblioteca de recetas usa schema v2 y conserva planes multiarchivo verificados.
+          - El conocimiento semántico se guarda únicamente después de verificar dinámicamente la corrección.
+          - Las medicinas fallidas no se promueven como soluciones verificadas.
+          - Aegis conserva diagnóstico, intento y evidencia para evitar repetir estrategias que ya fallaron.
+
+          ## Auditoría P1 + P2
+
+          - Matriz endpoint × identidad y promoción de filas vulnerables a hallazgos reales.
+          - Pilar 2 generalizado por familias, causa raíz, evidencia y deduplicación semántica.
+          - IDs estables, hallazgos consolidados y separación entre caso de prueba y vulnerabilidad.
+          - Pruebas automáticas preferentemente no destructivas y payloads derivados de evidencia.
 
           ## Descargas
 
@@ -320,27 +300,27 @@ jobs:
           ### macOS
           - `AegisAuditor-macOS-arm64.dmg`: Apple Silicon.
           - `AegisAuditor-macOS-x64.dmg`: Intel.
-          - Los ZIP contienen la aplicación `.app` correspondiente.
+          - Los ZIP contienen la aplicación correspondiente.
 
           ### Linux
-          - `AegisAuditor-Linux-x64.deb`: Debian/Ubuntu x64.
-          - `AegisAuditor-Linux-arm64.deb`: Debian/Ubuntu ARM64.
-          - `*.tar.gz`: paquetes portables.
-          - Binarios directos para x64 y arm64.
+          - Paquetes DEB para x64 y ARM64.
+          - TAR.GZ y binarios directos para ambas arquitecturas.
 
-          Cada plataforma incluye archivos SHA-256 para verificar integridad.
+          Cada plataforma incluye checksums SHA-256.
 
           ## Licencia
 
-          Aegis Auditor se distribuye bajo Apache License 2.0. Los perfiles de
-          aplicaciones analizadas no se incluyen dentro del release.
+          Apache License 2.0. Los perfiles de aplicaciones analizadas y las
+          credenciales del usuario no forman parte del release.
           EOF
 
-      - name: Publicar GitHub Release
+      - name: Reemplazar Release v1.3.0 con la versión corregida
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          set -euo pipefail
+
           files=()
           while IFS= read -r -d '' file; do
             case "$file" in
@@ -357,16 +337,15 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.2.6-alpha" >/dev/null 2>&1; then
-            gh release upload "v1.2.6-alpha" "${files[@]}" --clobber
-            gh release edit "v1.2.6-alpha" \
-              --title "Aegis Auditor v1.2.6-alpha" \
-              --notes-file RELEASE_NOTES.md \
-              --prerelease
+          # El v1.3.0 anterior no representa esta línea estable. Se elimina
+          # release + tag y se recrea apuntando exactamente a este commit.
+          if gh release view "v1.3.0" >/dev/null 2>&1; then
+            gh release delete "v1.3.0" --yes --cleanup-tag
           else
-            gh release create "v1.2.6-alpha" "${files[@]}" \
-              --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.2.6-alpha" \
-              --notes-file RELEASE_NOTES.md \
-              --prerelease
+            git push origin :refs/tags/v1.3.0 >/dev/null 2>&1 || true
           fi
+
+          gh release create "v1.3.0" "${files[@]}" \
+            --target "${GITHUB_SHA}" \
+            --title "Aegis Auditor v1.3.0" \
+            --notes-file RELEASE_NOTES.md
