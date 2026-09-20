@@ -1293,6 +1293,7 @@ class SettingsPage(QWidget):
     def _duplicate_ai(self) -> None:
         profile_id = self._selected_profile_id()
         if profile_id:
+            self._editing_profile_id = None
             self.controller.duplicate_ai_profile(profile_id)
 
     def _delete_ai(self) -> None:
@@ -1310,9 +1311,11 @@ class SettingsPage(QWidget):
             QMessageBox.StandardButton.No,
         )
         if answer == QMessageBox.StandardButton.Yes:
+            self._editing_profile_id = None
             self.controller.delete_ai_profile(profile_id)
 
     def _import_ai(self) -> None:
+        self._editing_profile_id = None
         self.controller.import_ai_from_opencode()
         self.ai_key.clear()
 
