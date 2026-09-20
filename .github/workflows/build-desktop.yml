@@ -1,4 +1,4 @@
-# matrix-policy-evaluation-release: v1.2.6
+# matrix-policy-evaluation-release: v1.2.6-alpha
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.2.6' \
+            'Version: 1.2.6~alpha' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-2-6:
-    name: Publicar Release v1.2.6
+  release-v1-2-6-alpha:
+    name: Publicar Pre-release v1.2.6-alpha
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.6]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.6-alpha]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,7 +253,9 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.2.6
+          # Aegis Auditor v1.2.6-alpha
+
+          **Pre-release alpha para validar el flujo real de parcheo.**
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
@@ -355,16 +357,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.2.6" >/dev/null 2>&1; then
-            gh release upload "v1.2.6" "${files[@]}" --clobber
-            gh release edit "v1.2.6" \
-              --title "Aegis Auditor v1.2.6" \
+          if gh release view "v1.2.6-alpha" >/dev/null 2>&1; then
+            gh release upload "v1.2.6-alpha" "${files[@]}" --clobber
+            gh release edit "v1.2.6-alpha" \
+              --title "Aegis Auditor v1.2.6-alpha" \
               --notes-file RELEASE_NOTES.md \
-              --latest
+              --prerelease
           else
-            gh release create "v1.2.6" "${files[@]}" \
+            gh release create "v1.2.6-alpha" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.2.6" \
+              --title "Aegis Auditor v1.2.6-alpha" \
               --notes-file RELEASE_NOTES.md \
-              --latest
+              --prerelease
           fi
