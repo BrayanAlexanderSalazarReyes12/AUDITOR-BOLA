@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
@@ -28,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..app_paths import (
+    default_ai_config_path,
     default_article_dir,
     default_config_dir,
     default_evidence_dir,
@@ -1142,20 +1144,82 @@ class SettingsPage(QWidget):
         ia = Card()
         ia_l = QVBoxLayout(ia)
         ia_l.setContentsMargins(16, 14, 16, 14)
+        ia_l.setSpacing(10)
         ia_l.addWidget(
             SectionHeader(
                 "Inteligencia artificial",
-                "Estado del proveedor OpenCode / Gemma.",
+                "Configura el proveedor directamente en Aegis. "
+                "OpenCode queda como opción de importación, no como requisito.",
             )
         )
         self.ai = QLabel()
         self.ai.setObjectName("Muted")
+        self.ai.setWordWrap(True)
         ia_l.addWidget(self.ai)
+
+        ai_grid = QGridLayout()
+        ai_grid.setHorizontalSpacing(10)
+        ai_grid.setVerticalSpacing(8)
+
+        ai_grid.addWidget(QLabel("URL base"), 0, 0)
+        self.ai_base_url = QLineEdit()
+        self.ai_base_url.setPlaceholderText(
+            "https://servidor-ejemplo/v1"
+        )
+        ai_grid.addWidget(self.ai_base_url, 0, 1)
+
+        ai_grid.addWidget(QLabel("Modelo"), 1, 0)
+        self.ai_model = QLineEdit()
+        self.ai_model.setPlaceholderText("lab-coder")
+        ai_grid.addWidget(self.ai_model, 1, 1)
+
+        ai_grid.addWidget(QLabel("API key"), 2, 0)
+        self.ai_key = QLineEdit()
+        self.ai_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.ai_key.setPlaceholderText(
+            "Déjala vacía para conservar la clave guardada"
+        )
+        ai_grid.addWidget(self.ai_key, 2, 1)
+
+        ia_l.addLayout(ai_grid)
+
+        ai_actions = QHBoxLayout()
+        save_ai = PrimaryButton("Guardar configuración IA")
+        save_ai.clicked.connect(self._save_ai)
+        ai_actions.addWidget(save_ai)
+
+        import_ai = QPushButton("Importar desde OpenCode")
+        import_ai.clicked.connect(self._import_ai)
+        ai_actions.addWidget(import_ai)
+        ai_actions.addStretch(1)
+        ia_l.addLayout(ai_actions)
+
+        self.ai_path = QLabel()
+        self.ai_path.setObjectName("Muted")
+        self.ai_path.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.ai_path.setWordWrap(True)
+        ia_l.addWidget(self.ai_path)
+
         layout.addWidget(ia)
         layout.addStretch(1)
 
+    def _save_ai(self):
+        self.controller.save_ai_settings(
+            base_url=self.ai_base_url.text().strip(),
+            model_id=self.ai_model.text().strip() or "lab-coder",
+            api_key=self.ai_key.text().strip() or None,
+        )
+        self.ai_key.clear()
+
+    def _import_ai(self):
+        self.controller.import_ai_from_opencode()
+        self.ai_key.clear()
+
     def refresh(self):
         enabled, model = self.controller.ai_status()
+        settings = self.controller.ai_settings()
         self.paths.setText(
             f"Config: {default_config_dir()}\n"
             f"Evidencias: {default_evidence_dir()}\n"
@@ -1165,8 +1229,32 @@ class SettingsPage(QWidget):
         self.ai.setText(
             f"● Conectada · {model}"
             if enabled
-            else "○ No configurada"
+            else (
+                "○ No configurada · registra aquí el proveedor para que "
+                "la IA funcione aunque OpenCode no esté instalado."
+            )
         )
         self.ai.setStyleSheet(
             f"color:{COLORS['success'] if enabled else COLORS['muted']};"
+        )
+
+        if settings.get("base_url"):
+            self.ai_base_url.setText(str(settings["base_url"]))
+        elif not self.ai_base_url.text():
+            self.ai_base_url.clear()
+
+        if settings.get("model_id"):
+            self.ai_model.setText(str(settings["model_id"]))
+        elif not self.ai_model.text():
+            self.ai_model.setText("lab-coder")
+
+        config_path = (
+            settings.get("config_path")
+            or str(default_ai_config_path())
+        )
+        self.ai_path.setText(
+            "Configuración activa: "
+            f"{config_path}\n"
+            "La API key se conserva solo en la configuración local del equipo "
+            "y no se muestra en esta pantalla."
         )
