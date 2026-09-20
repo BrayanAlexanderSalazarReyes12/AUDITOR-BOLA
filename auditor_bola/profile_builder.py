@@ -623,52 +623,55 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
                     "python-route",
                 )
 
-        # Express / Fastify / generic JS routers.
-        for match in re.finditer(
-            r"\b(?:app|router|server|fastify|\w+)"
-            r"\.(get|post|put|patch|delete|options|head|all)"
-            r"\(\s*['\"]([^'\"]+)['\"]",
-            text,
-            re.I,
-        ):
-            method = match.group(1).upper()
-            add(
-                "ANY" if method == "ALL" else method,
-                match.group(2),
-                source,
-                "javascript-router",
-            )
-
-        # Fastify object form.
-        for match in re.finditer(
-            r"\.route\s*\(\s*\{(.{0,1600}?)\}\s*\)",
-            text,
-            re.I | re.S,
-        ):
-            block = match.group(1)
-            url_match = re.search(
-                r"\b(?:url|path)\s*:\s*['\"]([^'\"]+)['\"]",
-                block,
+        # Express / Fastify / generic JS routers. No ejecutar este
+        # detector sobre Python: decoradores Flask como bp.get(...) tenían
+        # la misma forma textual y generaban rutas duplicadas sin url_prefix.
+        if suffix in {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"}:
+            for match in re.finditer(
+                r"\b(?:app|router|server|fastify|\w+)"
+                r"\.(get|post|put|patch|delete|options|head|all)"
+                r"\(\s*['\"]([^'\"]+)['\"]",
+                text,
                 re.I,
-            )
-            method_match = re.search(
-                r"\bmethod\s*:\s*['\"]([^'\"]+)['\"]",
-                block,
-                re.I,
-            )
-            if url_match:
-                methods = (
-                    _literal_methods(method_match.group(1))
-                    if method_match
-                    else ["ANY"]
+            ):
+                method = match.group(1).upper()
+                add(
+                    "ANY" if method == "ALL" else method,
+                    match.group(2),
+                    source,
+                    "javascript-router",
                 )
-                for method in methods or ["ANY"]:
-                    add(
-                        method,
-                        url_match.group(1),
-                        source,
-                        "fastify",
+
+            # Fastify object form.
+            for match in re.finditer(
+                r"\.route\s*\(\s*\{(.{0,1600}?)\}\s*\)",
+                text,
+                re.I | re.S,
+            ):
+                block = match.group(1)
+                url_match = re.search(
+                    r"\b(?:url|path)\s*:\s*['\"]([^'\"]+)['\"]",
+                    block,
+                    re.I,
+                )
+                method_match = re.search(
+                    r"\bmethod\s*:\s*['\"]([^'\"]+)['\"]",
+                    block,
+                    re.I,
+                )
+                if url_match:
+                    methods = (
+                        _literal_methods(method_match.group(1))
+                        if method_match
+                        else ["ANY"]
                     )
+                    for method in methods or ["ANY"]:
+                        add(
+                            method,
+                            url_match.group(1),
+                            source,
+                            "fastify",
+                        )
 
         # NestJS: combina prefijo Controller + decoradores de método.
         controller_match = re.search(
