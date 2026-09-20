@@ -1967,9 +1967,59 @@ class AuditorController(QObject):
                 ),
             }
 
+        related_sources: dict[str, str] = {}
+        hashes: dict[str, str] = {relative: source_hash}
+        try:
+            context_resolution = resolver_contexto_fuente(
+                self.cfg,
+                root,
+                control_id=row["id"],
+                metodo=row.get("metodo"),
+                ruta=row.get("ruta"),
+                descripcion=row.get("control"),
+                max_relacionados=10,
+            )
+            for item in context_resolution.relacionados:
+                candidate = (root / item.archivo).resolve()
+                if (
+                    not candidate.is_file()
+                    or candidate == root
+                    or root not in candidate.parents
+                    or item.archivo == relative
+                ):
+                    continue
+                try:
+                    data = candidate.read_bytes()
+                except OSError:
+                    continue
+                if len(data) > 1_500_000:
+                    continue
+                related_sources[item.archivo] = data.decode(
+                    "utf-8",
+                    errors="replace",
+                )
+                hashes[item.archivo] = hashlib.sha256(data).hexdigest()
+        except Exception as exc:
+            self.log_message.emit(
+                "No se pudo ampliar el contexto de código: "
+                f"{exc}"
+            )
+
+        failures = list(
+            self.ai_failed_attempts.get(row["id"], [])
+        )
+        strategy_reset = len(failures) >= 2
+        if strategy_reset:
+            self.log_message.emit(
+                "STRATEGY_RESET activado para "
+                f"{row['id']}: dos o más intentos fallaron. "
+                "Se reanalizará causa raíz y flujo completo."
+            )
+
         self.log_message.emit(
-            "Archivo del hallazgo cargado para IA: "
-            f"{relative} · confianza={resolution.get('confianza')} · "
+            "Contexto de remediación cargado: "
+            f"{relative} + {len(related_sources)} archivo(s) relacionado(s). "
+            f"confianza={resolution.get('confianza')} · "
             f"origen={resolution.get('origen')}"
         )
 
@@ -1980,11 +2030,7 @@ class AuditorController(QObject):
             source_text=source_text,
             extension=source.suffix.lower(),
         )
-        reusable = (
-            knowledge[0].public_dict()
-            if knowledge
-            else None
-        )
+        reusable = knowledge[0].public_dict() if knowledge else None
 
         metadata = dict(row)
         metadata["archivo_cargado_ia"] = {
@@ -1995,6 +2041,7 @@ class AuditorController(QObject):
             "tiene_receta_previa": bool(
                 resolution.get("tiene_receta")
             ),
+            "archivos_relacionados": list(related_sources),
         }
 
         def work():
@@ -2012,8 +2059,10 @@ class AuditorController(QObject):
                     for item in self.rows
                     if item.get("id") == row.get("id")
                 ],
-                intento_anterior=self.ai_failed_attempts.get(row["id"]),
+                intento_anterior=failures,
                 conocimiento_reutilizable=reusable,
+                archivos_relacionados=related_sources,
+                strategy_reset=strategy_reset,
             )
             session = guardar_sesion_ia(
                 self.evidence_base,
@@ -2021,26 +2070,64 @@ class AuditorController(QObject):
                 propuestas=proposals,
                 provider=provider,
             )
-            return proposals, session
+            return proposals, session, context
 
         def success(payload):
-            proposals, session = payload
+            proposals, session, context = payload
             self.ai_proposals = list(proposals)
             self.ai_session_dir = Path(session)
             self.ai_source_relative = relative
             self.ai_source_hash = source_hash
+            self.ai_source_hashes = dict(hashes)
             self.ai_source_resolution = dict(resolution or {})
+            diagnosis = context.get("diagnostico_causa_raiz")
+            self.ai_diagnosis = (
+                dict(diagnosis)
+                if isinstance(diagnosis, dict)
+                else None
+            )
             self.ai_target_row = dict(row)
             self.ai_proposals_changed.emit(
                 [proposal.as_dict() for proposal in proposals]
             )
-            self.log_message.emit(
-                "Gemma generó tres recetas para "
-                f"{row['id']} usando {relative}."
+            valid_count = sum(
+                proposal.validacion_ok
+                for proposal in proposals
             )
+            root_file = (
+                (self.ai_diagnosis or {}).get("archivo_causa_raiz")
+                or relative
+            )
+            self.log_message.emit(
+                "IA completó diagnóstico + tres estrategias para "
+                f"{row['id']}. Causa raíz propuesta en {root_file}. "
+                f"Propuestas aplicables={valid_count}/3."
+            )
+            if strategy_reset:
+                self.info_message.emit(
+                    "Strategy Reset",
+                    (
+                        f"{row['id']}: los intentos anteriores fallaron. "
+                        "Aegis reanalizó el flujo completo y exigió "
+                        "estrategias sustancialmente diferentes."
+                    ),
+                )
+            if valid_count == 0:
+                self.error_message.emit(
+                    "Ninguna receta es aplicable",
+                    (
+                        "Las tres propuestas fueron rechazadas por "
+                        "validación local. Regenera las recetas; Aegis "
+                        "conservará diagnóstico y fallos como contexto."
+                    ),
+                )
 
         self._run_async(
-            f"Generando recetas IA para {row['id']}…",
+            (
+                f"Reanalizando causa raíz y generando recetas para {row['id']}…"
+                if strategy_reset
+                else f"Diagnosticando causa raíz y generando recetas para {row['id']}…"
+            ),
             work,
             success,
         )
