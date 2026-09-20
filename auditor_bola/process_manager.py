@@ -1377,7 +1377,15 @@ class LocalTargetProcess:
             if minimum_wait:
                 time.sleep(minimum_wait)
             if self.process is not None and self.process.poll() is not None:
-                return False, "el proceso terminó durante el arranque"
+                return_code = self.process.returncode
+                detail = self.runtime_output_tail()
+                message = (
+                    "el proceso terminó durante el arranque "
+                    f"(código {return_code})"
+                )
+                if detail:
+                    message += f"\n\nSalida del proceso:\n{detail}"
+                return False, message
             return True, "sin endpoint de disponibilidad configurado"
 
         host, port = endpoint
