@@ -1260,7 +1260,7 @@ def _extraer_contenido_chat(response_json: dict) -> str:
     choices = response_json.get("choices")
     if not isinstance(choices, list) or not choices:
         raise RuntimeError(
-            "El Laboratorio UTB no devolvió choices en chat/completions."
+            "El proveedor IA no devolvió choices en chat/completions."
         )
 
     message = choices[0].get("message") or {}
@@ -1280,7 +1280,7 @@ def _extraer_contenido_chat(response_json: dict) -> str:
             return "".join(textos).strip()
 
     raise RuntimeError(
-        "La respuesta de Gemma no contiene texto utilizable."
+        "La respuesta del proveedor IA no contiene texto utilizable."
     )
 
 
@@ -1305,7 +1305,7 @@ def _extraer_json(texto: str) -> dict:
             pass
 
     raise RuntimeError(
-        "Gemma no devolvió un JSON válido con las tres recetas."
+        "El proveedor IA no devolvió un JSON válido con las tres recetas."
     )
 
 
@@ -1786,11 +1786,15 @@ def diagnosticar_causa_raiz(
         "intentos_fallidos": _redactar_estructura(attempts),
         "strategy_reset": reset,
     }
-    data = _solicitar_json_gemma(
+    data, provider, provider_trace = _solicitar_json_con_fallback(
         provider,
         system_prompt=system_prompt,
         user_payload=payload,
         timeout=timeout,
+        temperature=0.1,
+        requested_output=6144,
+        task="diagnosis",
+        has_failures=bool(attempts),
     )
 
     probable = str(data.get("causa_raiz_probable") or "").strip()
@@ -1843,6 +1847,7 @@ def diagnosticar_causa_raiz(
             "diagnostico_degradado": True,
         }
     data["strategy_reset"] = reset
+    data["provider_trace"] = provider_trace
     data["archivos_contexto_disponibles"] = [
         source_relative,
         *[key for key in related if key != source_relative],
@@ -2101,44 +2106,30 @@ def generar_tres_recetas(
         + json.dumps(contexto, ensure_ascii=False, indent=2)
     )
 
-    endpoint = provider.base_url.rstrip("/") + "/chat/completions"
-    headers = {"Content-Type": "application/json"}
-    if provider.api_key:
-        headers["Authorization"] = f"Bearer {provider.api_key}"
-
     source_files = {
         source_relative: source_text,
         **(archivos_relacionados or {}),
     }
+    provider_trace: list[dict] = []
 
     def request_proposals(
         current_prompt: str,
         *,
         temperature: float,
     ) -> list[AIRecipeProposal]:
-        payload = {
-            "model": provider.model_id,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": current_prompt},
-            ],
-            "temperature": temperature,
-            "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
-        }
-        resp = requests.post(
-            endpoint,
-            headers=headers,
-            json=payload,
+        nonlocal provider, provider_trace
+        data, used_provider, trace = _solicitar_json_con_fallback(
+            provider,
+            system_prompt=system_prompt,
+            user_payload=current_prompt,
             timeout=timeout,
+            temperature=temperature,
+            requested_output=DEFAULT_MAX_OUTPUT_TOKENS,
+            task="patch",
+            has_failures=bool(attempts),
         )
-        if resp.status_code >= 400:
-            raise RuntimeError(
-                "Laboratorio UTB respondió HTTP "
-                f"{resp.status_code}: {resp.text[:1200]}"
-            )
-        data = _extraer_json(
-            _extraer_contenido_chat(resp.json())
-        )
+        provider = used_provider
+        provider_trace.extend(trace)
         proposals = _validar_propuestas(data)
         return validar_propuestas_contextuales(
             proposals,
@@ -2191,6 +2182,8 @@ def generar_tres_recetas(
                 "motivo": "validación local de propuestas",
             }
 
+    contexto["provider_trace"] = provider_trace
+    contexto["provider_used_for_patch"] = provider.public_dict()
     contexto["validacion_local_propuestas"] = [
         {
             "id": item.id,
@@ -2325,6 +2318,121 @@ def guardar_seleccion_ia(
     )
 
 
+def _request_json_provider(
+    provider: AIProviderConfig,
+    *,
+    system_prompt: str,
+    user_payload,
+    timeout: int,
+    temperature: float = 0.1,
+    requested_output: int = DEFAULT_MAX_OUTPUT_TOKENS,
+) -> tuple[dict, dict]:
+    compacted, was_compacted = _compact_payload_for_provider(
+        provider,
+        system_prompt=system_prompt,
+        user_payload=user_payload,
+        requested_output=requested_output,
+    )
+    user_content = (
+        compacted
+        if isinstance(compacted, str)
+        else json.dumps(compacted, ensure_ascii=False, indent=2)
+    )
+    max_tokens = _dynamic_output_tokens(
+        provider,
+        system_prompt=system_prompt,
+        user_content=user_content,
+        requested=requested_output,
+    )
+    endpoint = provider.base_url.rstrip("/") + "/chat/completions"
+    payload = {
+        "model": provider.model_id,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    response = requests.post(
+        endpoint,
+        headers=_provider_headers(provider),
+        json=payload,
+        timeout=timeout,
+    )
+    if response.status_code >= 400:
+        body = response.text[:2400]
+        raise RuntimeError(
+            f"{provider.provider_name} · {provider.model_id} respondió "
+            f"HTTP {response.status_code}: {body}"
+        )
+    data = _extraer_json(
+        _extraer_contenido_chat(response.json())
+    )
+    telemetry = {
+        "provider": provider.public_dict(),
+        "max_tokens": max_tokens,
+        "context_compacted": was_compacted,
+        "estimated_input_tokens": (
+            _estimate_tokens(system_prompt)
+            + _estimate_tokens(user_content)
+        ),
+    }
+    return data, telemetry
+
+
+def _solicitar_json_con_fallback(
+    preferred: AIProviderConfig | None,
+    *,
+    system_prompt: str,
+    user_payload,
+    timeout: int = 120,
+    temperature: float = 0.1,
+    requested_output: int = DEFAULT_MAX_OUTPUT_TOKENS,
+    task: str = "patch",
+    has_failures: bool = False,
+) -> tuple[dict, AIProviderConfig, list[dict]]:
+    providers = resolver_cadena_proveedores_ia(
+        task=task,
+        preferred=preferred,
+        has_failures=has_failures,
+    )
+    if not providers:
+        raise RuntimeError(
+            "No hay proveedores IA configurados para esta operación."
+        )
+
+    attempts: list[dict] = []
+    errors: list[str] = []
+    for provider in providers:
+        try:
+            data, telemetry = _request_json_provider(
+                provider,
+                system_prompt=system_prompt,
+                user_payload=user_payload,
+                timeout=timeout,
+                temperature=temperature,
+                requested_output=requested_output,
+            )
+            telemetry["status"] = "ok"
+            attempts.append(telemetry)
+            return data, provider, attempts
+        except Exception as exc:
+            attempts.append({
+                "provider": provider.public_dict(),
+                "status": "error",
+                "error": str(exc),
+            })
+            errors.append(
+                f"{provider.profile_name or provider.model_name}: {exc}"
+            )
+
+    raise RuntimeError(
+        "Ningún proveedor IA pudo completar la operación. "
+        + " | ".join(errors)
+    )
+
+
 def _solicitar_json_gemma(
     provider: AIProviderConfig,
     *,
@@ -2332,42 +2440,18 @@ def _solicitar_json_gemma(
     user_payload: dict,
     timeout: int = 120,
 ) -> dict:
-    endpoint = provider.base_url.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": provider.model_id,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": json.dumps(
-                    user_payload,
-                    ensure_ascii=False,
-                    indent=2,
-                ),
-            },
-        ],
-        "temperature": 0.1,
-        "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
-    }
-    headers = {"Content-Type": "application/json"}
-    if provider.api_key:
-        headers["Authorization"] = f"Bearer {provider.api_key}"
-
-    resp = requests.post(
-        endpoint,
-        headers=headers,
-        json=payload,
+    """Compatibilidad histórica: ahora usa routing/fallback multimodelo."""
+    data, _used, _trace = _solicitar_json_con_fallback(
+        provider,
+        system_prompt=system_prompt,
+        user_payload=user_payload,
         timeout=timeout,
+        temperature=0.1,
+        requested_output=DEFAULT_MAX_OUTPUT_TOKENS,
+        task="patch",
+        has_failures=False,
     )
-    if resp.status_code >= 400:
-        raise RuntimeError(
-            "Laboratorio UTB respondió HTTP "
-            f"{resp.status_code}: {resp.text[:1200]}"
-        )
-    texto = _extraer_contenido_chat(resp.json())
-    return _extraer_json(texto)
-
-
+    return data
 def _lista_strings(data: dict, key: str) -> list[str]:
     """Normaliza listas semánticas devueltas por el modelo.
 
@@ -2478,7 +2562,7 @@ def generalizar_correccion_exitosa(
     ):
         if not str(data.get(key) or "").strip():
             raise RuntimeError(
-                f"Gemma no devolvió un valor válido en '{key}'."
+                f"El proveedor IA no devolvió un valor válido en '{key}'."
             )
 
     knowledge = RemediationKnowledge(
