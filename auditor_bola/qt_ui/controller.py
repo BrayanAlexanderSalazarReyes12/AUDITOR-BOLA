@@ -2160,8 +2160,12 @@ class AuditorController(QObject):
             )
             return
 
+        target_relative = (
+            proposal.archivo_objetivo
+            or self.ai_source_relative
+        )
         source = (
-            self.target_root / self.ai_source_relative
+            self.target_root / target_relative
         ).resolve()
         root = self.target_root.resolve()
         if (
@@ -2179,14 +2183,17 @@ class AuditorController(QObject):
             return
 
         current_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        expected_hash = self.ai_source_hashes.get(
+            target_relative
+        )
         if (
-            self.ai_source_hash
-            and current_hash != self.ai_source_hash
+            expected_hash
+            and current_hash != expected_hash
         ):
             self.error_message.emit(
                 "El archivo cambió",
                 (
-                    f"{self.ai_source_relative} cambió después de que la IA "
+                    f"{target_relative} cambió después de que la IA "
                     "lo cargó. Por seguridad Aegis no aplicará una receta "
                     "generada sobre una versión distinta. Regenera las "
                     "propuestas sobre el archivo actual."
@@ -2197,7 +2204,7 @@ class AuditorController(QObject):
         correction = propuesta_a_correccion(
             proposal,
             control_id=row["id"],
-            source_relative=self.ai_source_relative,
+            source_relative=target_relative,
         )
 
         # Sustituir sólo la receta del control actual en memoria.
@@ -2217,14 +2224,17 @@ class AuditorController(QObject):
             # Segunda comprobación inmediatamente antes del parcheo para
             # impedir aplicar una receta si el archivo cambió entre el clic
             # del usuario y la ejecución del worker.
-            if self.ai_source_hash:
+            expected_live_hash = self.ai_source_hashes.get(
+                target_relative
+            )
+            if expected_live_hash:
                 live_source = (
-                    self.target_root / self.ai_source_relative
+                    self.target_root / target_relative
                 ).resolve()
                 live_hash = hashlib.sha256(
                     live_source.read_bytes()
                 ).hexdigest()
-                if live_hash != self.ai_source_hash:
+                if live_hash != expected_live_hash:
                     raise RuntimeError(
                         "El archivo del hallazgo cambió antes del parcheo; "
                         "regenera las recetas IA sobre la versión actual."
