@@ -1188,9 +1188,23 @@ class AutoProfileDialog(AegisDialog):
                 f"Manifiestos: {', '.join(meta.get('manifiestos') or []) or '-'}",
                 f"Endpoints candidatos: {len(meta.get('endpoints_candidatos') or [])}",
                 f"Cuentas detectadas/configuradas: {len(self.draft.get('cuentas') or [])}",
+                (
+                    "Controles activos inferidos: "
+                    + str(
+                        len(self.draft.get("endpoints") or [])
+                        * len(self.draft.get("cuentas") or [])
+                        + len(self.draft.get("chequeos_acceso") or [])
+                        + len(self.draft.get("chequeos_agente") or [])
+                        + len(self.draft.get("chequeos_pilar2") or [])
+                    )
+                ),
                 "",
-                "El perfil generado queda abierto para completar cuentas, "
-                "roles y controles específicos antes de una auditoría productiva.",
+                (
+                    "Aegis agregó automáticamente solo controles que puede "
+                    "comprobar sin inventar semántica. BOLA/RBAC que requieran "
+                    "propietario o permisos esperados deben declararse o "
+                    "confirmarse explícitamente."
+                ),
             ]
             self.summary.setText("\n".join(lines))
             self.preview.setPlainText(
