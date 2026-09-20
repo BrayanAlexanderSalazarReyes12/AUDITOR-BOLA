@@ -22,13 +22,20 @@ def diagnosticar(
     progress_callback: ProgressCallback | None = None,
 ) -> dict:
     """Ejecuta P1 + P2 e informa avance real por control completado."""
-    total = (
+    configured_total = (
         len(cfg.endpoints) * len(cfg.cuentas)
         + len(cfg.chequeos_acceso)
         + len(cfg.chequeos_agente)
         + len(cfg.chequeos_pilar2)
     )
-    total = max(1, total)
+    if configured_total == 0:
+        raise RuntimeError(
+            "El perfil contiene 0 controles activos. "
+            "endpoints_detectados/metadata_detectada son inventario, no "
+            "pruebas de seguridad ejecutables. Regenera el perfil o agrega "
+            "controles P1/P2 antes de interpretar el resultado."
+        )
+    total = configured_total
     completed = 0
 
     def report(message: str, *, force: int | None = None) -> None:
@@ -91,6 +98,8 @@ def diagnosticar(
         },
         "pilar2": [item.as_dict() for item in pilar2],
         "resumen": {
+            "controles_configurados": configured_total,
+            "controles_ejecutados": completed,
             "bola_confirmados": sum(item.confirmado_bola for item in bola),
             "acceso_vulnerable": sum(item.vulnerable for item in acceso),
             "agente_vulnerable": sum(item.resultado.vulnerable for item in agente),
