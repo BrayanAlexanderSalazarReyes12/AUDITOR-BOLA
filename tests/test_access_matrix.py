@@ -40,7 +40,9 @@ def test_matriz_prueba_cada_endpoint_con_cada_usuario(monkeypatch):
     rows = auditar_matriz_acceso(cfg)
 
     assert len(rows) == 4
-    assert len(calls) == 4
+    # Solo GET se ejecuta sin evidencia adicional. POST queda registrado como
+    # NO_EJECUTABLE hasta disponer de un payload de prueba seguro.
+    assert len(calls) == 2
     assert {
         (row.metodo, row.endpoint_detectado, row.cuenta)
         for row in rows
@@ -60,11 +62,10 @@ def test_matriz_prueba_cada_endpoint_con_cada_usuario(monkeypatch):
         and row.clasificacion == "DENEGADO"
         for row in rows
     )
-    assert all(
-        body == {}
-        for method, _url, _user, body in calls
-        if method == "POST"
-    )
+    post_rows = [row for row in rows if row.metodo == "POST"]
+    assert len(post_rows) == 2
+    assert all(row.clasificacion == "NO_EJECUTABLE" for row in post_rows)
+    assert all("payload de prueba seguro" in row.detalle for row in post_rows)
 
 
 def test_matriz_materializa_endpoint_parametrizado_con_id_bola(
