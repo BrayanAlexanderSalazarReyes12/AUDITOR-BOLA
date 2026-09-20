@@ -3664,7 +3664,7 @@ def _infer_agent_scope_checks(
                 )
 
         alias_names = re.findall(
-            rf"""(?im)^\s*([A-Za-z_]\w*)\s*=\s*
+            rf"""(?imx)^\s*([A-Za-z_]\w*)\s*=\s*
             {var}\.get_json\s*\(\s*\)\s*$""",
             source_text,
         )
