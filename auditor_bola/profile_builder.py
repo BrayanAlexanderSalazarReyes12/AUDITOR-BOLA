@@ -2879,6 +2879,147 @@ def _slug(value: str) -> str:
     return ascii_value.strip("-._") or "aplicacion"
 
 
+def _infer_automatic_p2_checks(
+    detection: ProjectDetection,
+    endpoint_inventory: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Genera controles P2 solo cuando hay evidencia suficientemente fuerte.
+
+    Los endpoints detectados por sí solos no son controles de seguridad. Esta
+    función se limita a propiedades que Aegis puede comprobar sin inventar
+    propietario, rol esperado ni credenciales: CORS, secretos por defecto y
+    usuario efectivo de Docker.
+    """
+    root = detection.root
+    checks: list[dict[str, Any]] = []
+
+    # Una petición GET estable para comprobar CORS. Preferimos health/api y
+    # evitamos convertir rutas parametrizadas en una prueba inválida.
+    get_routes = [
+        str(item.get("ruta") or "")
+        for item in endpoint_inventory
+        if str(item.get("metodo") or "").upper() == "GET"
+        and "<" not in str(item.get("ruta") or "")
+        and "{" not in str(item.get("ruta") or "")
+    ]
+    cors_route = next(
+        (route for route in get_routes if route == "/health"),
+        next(
+            (route for route in get_routes if route.startswith("/api/")),
+            next(iter(get_routes), "/"),
+        ),
+    )
+
+    cors_source: str | None = None
+    secret_match: tuple[str, str] | None = None
+
+    secret_pattern = re.compile(
+        r"""(?im)^\s*[^\n#]*SECRET(?:_KEY)?\s*=\s*
+        os\.(?:getenv|environ\.get)\(
+        [^,\n]+,\s*[^)\n]+\)
+        """,
+        re.X,
+    )
+
+    for path, relative in _iter_source_files(root, max_files=4000):
+        if path.suffix.lower() not in {
+            ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx",
+            ".java", ".kt", ".php", ".cs", ".rb", ".go",
+            ".properties", ".env", ".cfg", ".conf",
+        }:
+            continue
+        text = _read_text(path, limit=MAX_TEXT_SCAN_BYTES)
+        if not text:
+            continue
+
+        lower = text.lower()
+        if (
+            cors_source is None
+            and "access-control-allow-origin" in lower
+            and "origin" in lower
+            and "access-control-allow-credentials" in lower
+        ):
+            cors_source = relative.as_posix()
+
+        if secret_match is None:
+            match = secret_pattern.search(text)
+            if match:
+                literal = match.group(0).strip()
+                # Un fallback explícito None/null no demuestra por sí mismo un
+                # secreto de desarrollo reutilizable.
+                if not re.search(
+                    r",\s*(?:none|null)\s*\)\s*$",
+                    literal,
+                    re.I,
+                ):
+                    secret_match = (
+                        relative.as_posix(),
+                        literal,
+                    )
+
+    if cors_source:
+        checks.append(
+            {
+                "id_control": "P2-AUTO-CORS-001",
+                "nombre": (
+                    "CORS no debe reflejar orígenes arbitrarios "
+                    "con credenciales"
+                ),
+                "tipo": "cors_reflection",
+                "metodo": "GET",
+                "ruta": cors_route,
+                "headers": {
+                    "Origin": "https://origen-no-autorizado.example"
+                },
+                "archivos_fuente": [cors_source],
+                "pistas_codigo": [
+                    "Access-Control-Allow-Origin",
+                    "Access-Control-Allow-Credentials",
+                ],
+            }
+        )
+
+    if secret_match:
+        relative, literal = secret_match
+        checks.append(
+            {
+                "id_control": "P2-AUTO-SECRET-001",
+                "nombre": (
+                    "El secreto de aplicación no debe usar "
+                    "un valor por defecto inseguro"
+                ),
+                "tipo": "source_contains",
+                "archivo": relative,
+                "patron_inseguro": literal,
+                "patron_seguro": None,
+                "archivos_fuente": [relative],
+                "pistas_codigo": [
+                    "SECRET_KEY",
+                    "getenv",
+                    "valor por defecto",
+                ],
+            }
+        )
+
+    dockerfile = root / "Dockerfile"
+    if dockerfile.exists():
+        checks.append(
+            {
+                "id_control": "P2-AUTO-DOCKER-001",
+                "nombre": (
+                    "El contenedor debe ejecutar con usuario "
+                    "no privilegiado"
+                ),
+                "tipo": "docker_non_root",
+                "archivo": "Dockerfile",
+                "archivos_fuente": ["Dockerfile"],
+                "pistas_codigo": ["USER"],
+            }
+        )
+
+    return checks
+
+
 def build_profile_draft(
     detection: ProjectDetection,
     *,
@@ -2898,6 +3039,10 @@ def build_profile_draft(
 
     endpoint_inventory = _build_endpoint_inventory(
         detection.routes
+    )
+    inferred_p2_checks = _infer_automatic_p2_checks(
+        detection,
+        endpoint_inventory,
     )
 
     profile = {
@@ -2922,7 +3067,7 @@ def build_profile_draft(
         "endpoints_detectados": endpoint_inventory,
         "chequeos_agente": [],
         "chequeos_acceso": [],
-        "chequeos_pilar2": [],
+        "chequeos_pilar2": inferred_p2_checks,
         "correcciones": [],
         "metadata_detectada": {
             "nombre_proyecto": detection.name,
@@ -2942,6 +3087,15 @@ def build_profile_draft(
             "cuentas_candidatas": list(detection.account_sources),
             "archivos_cuentas_escaneados": True,
             "perfil_generado_automaticamente": True,
+            "controles_inferidos_automaticamente": [
+                {
+                    "id_control": item.get("id_control"),
+                    "nombre": item.get("nombre"),
+                    "tipo": item.get("tipo"),
+                }
+                for item in inferred_p2_checks
+            ],
+            "total_controles_activos": len(inferred_p2_checks),
             "entorno_ejecucion": {
                 "docker_instalado": _docker_available_on_host(),
                 "runtime_principal": detection.runtime.get("nombre"),
