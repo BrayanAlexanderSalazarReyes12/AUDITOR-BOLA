@@ -1369,6 +1369,7 @@ def discover_pilar2_profile(
     *,
     languages: list[str] | None = None,
     frameworks: list[str] | None = None,
+    accounts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Descubre candidatos y controles P2 sin memorizar una aplicación.
 
@@ -1387,6 +1388,45 @@ def discover_pilar2_profile(
         )
         checks.extend(detector_checks)
         candidates.extend(detector_candidates)
+
+    # Una prueba CORS puede necesitar autenticación. Si el perfil ya descubrió
+    # identidades, reutilizamos una de ellas en vez de asumir que la ruta es
+    # pública. Las credenciales permanecen en la cuenta del perfil y no se
+    # copian al control.
+    discovered_accounts = [
+        item
+        for item in (accounts or [])
+        if isinstance(item, dict) and str(item.get("username") or "").strip()
+    ]
+    preferred_account = (
+        str(discovered_accounts[0].get("username"))
+        if discovered_accounts
+        else None
+    )
+    if preferred_account:
+        for check in checks:
+            if (
+                check.get("tipo") == "cors_policy"
+                and not check.get("cuenta")
+            ):
+                check["cuenta"] = preferred_account
+
+    # Los candidatos LIMIT conservan qué identidades/roles existen para que
+    # la fase de construcción de prueba pueda armar comparación diferencial
+    # sin inventar usuarios.
+    identity_context = [
+        {
+            "username": item.get("username"),
+            "role": item.get("role"),
+        }
+        for item in discovered_accounts
+    ]
+    if identity_context:
+        for candidate in candidates:
+            if candidate.familia == "LIMIT_BYPASS":
+                candidate.prueba_sugerida[
+                    "identidades_disponibles"
+                ] = identity_context
 
     unique_checks: list[dict[str, Any]] = []
     seen_checks: set[str] = set()
