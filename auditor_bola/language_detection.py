@@ -200,3 +200,31 @@ def detect_language_context(
         "frameworks_contexto": frameworks,
         "archivos_relacionados": related,
     }
+
+
+# Cambios de estos tipos alteran código/configuración que un proceso en
+# ejecución puede haber cargado ya. Aegis no debe verificar un parche contra
+# el proceso anterior.
+_RESTART_EXTENSIONS = {
+    ".py", ".pyw", ".java", ".kt", ".kts", ".js", ".mjs", ".cjs",
+    ".ts", ".tsx", ".jsx", ".cs", ".php", ".go", ".rs", ".rb",
+    ".c", ".cc", ".cpp", ".cxx", ".swift", ".dart", ".scala",
+    ".groovy", ".jsp", ".jspx", ".vue", ".svelte",
+    ".xml", ".json", ".yaml", ".yml", ".toml", ".properties", ".env",
+}
+_RESTART_NAMES = {
+    "dockerfile", "docker-compose.yml", "docker-compose.yaml",
+    "compose.yml", "compose.yaml", "pom.xml", "build.gradle",
+    "build.gradle.kts", "package.json",
+}
+
+
+def requires_service_restart(relative_paths: list[str] | tuple[str, ...]) -> bool:
+    """Indica si el parche debe cargarse reiniciando/recargando el servicio."""
+    for raw in relative_paths:
+        path = Path(str(raw))
+        if path.name.lower() in _RESTART_NAMES:
+            return True
+        if path.suffix.lower() in _RESTART_EXTENSIONS:
+            return True
+    return False
