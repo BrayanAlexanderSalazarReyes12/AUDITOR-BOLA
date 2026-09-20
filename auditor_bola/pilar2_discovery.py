@@ -785,14 +785,49 @@ def _discover_limit_bypass(
                 guarded = any(hint in guard for hint in _AUTH_HINTS)
                 line = _line_number(text, match.start())
                 parameter = match.group(0)
-                key = (relative, line, parameter)
+
+                branch_matches = list(
+                    re.finditer(
+                        r"(?im)^\s*(?:if|when|case)\b[^\n]{0,240}",
+                        window,
+                    )
+                )
+                nearest_branch = (
+                    min(
+                        branch_matches,
+                        key=lambda item: abs(
+                            (start + item.start()) - match.start()
+                        ),
+                    )
+                    if branch_matches
+                    else None
+                )
+                branch_offset = (
+                    start + nearest_branch.start()
+                    if nearest_branch
+                    else match.start()
+                )
+                branch_line = _line_number(text, branch_offset)
+                branch_signature = (
+                    re.sub(
+                        r"\s+",
+                        " ",
+                        nearest_branch.group(0).strip().lower(),
+                    )
+                    if nearest_branch
+                    else parameter.lower()
+                )
+                key = (relative, branch_line, branch_signature)
                 if key in seen:
                     continue
                 seen.add(key)
                 routes = _routes_for_source(endpoint_inventory, relative)
                 fp = _stable_digest(
-                    "LIMIT_BYPASS", relative, line, parameter,
-                    "autorizacion_excepcion_limites"
+                    "LIMIT_BYPASS",
+                    relative,
+                    branch_line,
+                    branch_signature,
+                    "autorizacion_excepcion_limites",
                 )
                 candidates.append(
                     _candidate(
@@ -807,15 +842,16 @@ def _discover_limit_bypass(
                         state="por_confirmar" if not guarded else "candidato",
                         component=relative,
                         file=relative,
-                        line=line,
+                        line=branch_line,
                         parameter=parameter,
                         endpoints=routes,
                         evidence=[
                             {
                                 "tipo": "flujo_estatico",
                                 "archivo": relative,
-                                "linea": line,
+                                "linea": branch_line,
                                 "parametro_o_rama": parameter,
+                                "rama_normalizada": branch_signature,
                                 "entrada_http_cercana": True,
                                 "limite_cercano": True,
                                 "guardia_autorizacion_cercana": guarded,
