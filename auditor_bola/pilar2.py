@@ -58,9 +58,9 @@ def _preparar_cuerpo(chequeo: ChequeoPilar2) -> dict | None:
 
 
 def _familia(chequeo: ChequeoPilar2) -> str:
-    control_id = str(chequeo.id_control or "").upper()
-    tipo = str(chequeo.tipo or "").lower()
-    nombre = str(chequeo.nombre or "").lower()
+    control_id = str(chequeo.id_control or "")
+    tipo = str(chequeo.tipo or "")
+    nombre = str(chequeo.nombre or "")
     joined = f"{control_id} {tipo} {nombre}".lower()
 
     if "cors" in joined:
@@ -73,12 +73,17 @@ def _familia(chequeo: ChequeoPilar2) -> str:
         return "DEBUG"
     if any(token in joined for token in ("cookie", "session", "sesion")):
         return "SESSION"
-    if any(token in joined for token in ("bypass", "limit", "limite", "quota", "cuota")):
+    if any(
+        token in joined
+        for token in ("bypass", "limit", "limite", "quota", "cuota")
+    ):
         return "LIMIT_BYPASS"
     return "GENERIC"
 
 
-def _metadata_hallazgo(chequeo: ChequeoPilar2) -> tuple[str, str, str, str]:
+def _metadata_hallazgo(
+    chequeo: ChequeoPilar2,
+) -> tuple[str, str, str, str]:
     family = _familia(chequeo)
     data = {
         "CORS": (
@@ -124,7 +129,10 @@ def _metadata_hallazgo(chequeo: ChequeoPilar2) -> tuple[str, str, str, str]:
             "verificar que el control queda efectivo.",
         ),
     }
-    severity, root_cause, recommendation = data.get(family, data["GENERIC"])
+    severity, root_cause, recommendation = data.get(
+        family,
+        data["GENERIC"],
+    )
     return family, severity, root_cause, recommendation
 
 
@@ -138,7 +146,9 @@ def _resultado(
     evidencia: list[dict[str, Any]] | None = None,
     confianza: str = "alta",
 ) -> ResultadoPilar2:
-    family, severity, root_cause, recommendation = _metadata_hallazgo(chequeo)
+    family, severity, root_cause, recommendation = _metadata_hallazgo(
+        chequeo
+    )
     return ResultadoPilar2(
         sistema=cfg.sistema,
         id_control=chequeo.id_control,
@@ -161,9 +171,15 @@ def _resultado(
     )
 
 
-def _cors(cfg: ConfigObjetivo, chequeo: ChequeoPilar2) -> ResultadoPilar2:
+def _cors(
+    cfg: ConfigObjetivo,
+    chequeo: ChequeoPilar2,
+) -> ResultadoPilar2:
     headers = dict(chequeo.headers)
-    origen = headers.setdefault("Origin", "https://origen-no-autorizado.example")
+    origen = headers.setdefault(
+        "Origin",
+        "https://origen-no-autorizado.example",
+    )
     cuenta = _cuenta(cfg, chequeo.cuenta)
     resp = request_http(
         chequeo.metodo,
@@ -174,7 +190,10 @@ def _cors(cfg: ConfigObjetivo, chequeo: ChequeoPilar2) -> ResultadoPilar2:
         timeout=10,
     )
     acao = resp.headers.get("Access-Control-Allow-Origin")
-    cred = resp.headers.get("Access-Control-Allow-Credentials", "").lower()
+    cred = resp.headers.get(
+        "Access-Control-Allow-Credentials",
+        "",
+    ).lower()
     vulnerable = acao == origen and cred == "true"
     detalle = (
         f"Origin no autorizado enviado={origen}; ACAO observado={acao!r}; "
@@ -201,7 +220,8 @@ def _cors(cfg: ConfigObjetivo, chequeo: ChequeoPilar2) -> ResultadoPilar2:
 
 
 def _http_status_policy(
-    cfg: ConfigObjetivo, chequeo: ChequeoPilar2
+    cfg: ConfigObjetivo,
+    chequeo: ChequeoPilar2,
 ) -> ResultadoPilar2:
     cuenta = _cuenta(cfg, chequeo.cuenta)
     resp = request_http(
@@ -215,7 +235,8 @@ def _http_status_policy(
     safe_codes = list(chequeo.codigos_seguros)
     vulnerable = resp.status_code not in chequeo.codigos_seguros
     detalle = (
-        f"HTTP observado={resp.status_code}; códigos seguros esperados={safe_codes}"
+        f"HTTP observado={resp.status_code}; códigos seguros esperados="
+        f"{safe_codes}"
     )
     return _resultado(
         cfg,
@@ -238,7 +259,9 @@ def _line_number(text: str, offset: int) -> int:
 
 
 def _source_contains(
-    cfg: ConfigObjetivo, chequeo: ChequeoPilar2, source_root: Path | None
+    cfg: ConfigObjetivo,
+    chequeo: ChequeoPilar2,
+    source_root: Path | None,
 ) -> ResultadoPilar2:
     if source_root is None:
         raise ValueError(
@@ -248,8 +271,12 @@ def _source_contains(
         raise ValueError(
             f"{chequeo.id_control}: archivo/patron_inseguro son obligatorios"
         )
+
     ruta = source_root / chequeo.archivo
-    texto = ruta.read_text(encoding="utf-8", errors="ignore")
+    texto = ruta.read_text(
+        encoding="utf-8",
+        errors="ignore",
+    )
     insecure_offset = texto.find(chequeo.patron_inseguro)
     safe_offset = (
         texto.find(chequeo.patron_seguro)
@@ -259,14 +286,24 @@ def _source_contains(
     inseguro = insecure_offset >= 0
     seguro = safe_offset >= 0
     vulnerable = inseguro and not seguro
-    insecure_line = _line_number(texto, insecure_offset) if inseguro else None
-    safe_line = _line_number(texto, safe_offset) if seguro else None
+
+    insecure_line = (
+        _line_number(texto, insecure_offset)
+        if inseguro
+        else None
+    )
+    safe_line = (
+        _line_number(texto, safe_offset)
+        if seguro
+        else None
+    )
     detalle = (
         f"archivo={chequeo.archivo}; patrón inseguro presente={inseguro}"
         + (f" en línea {insecure_line}" if insecure_line else "")
         + f"; patrón seguro presente={seguro}"
         + (f" en línea {safe_line}" if safe_line else "")
     )
+
     return _resultado(
         cfg,
         chequeo,
@@ -300,7 +337,10 @@ def _source_regex(
         )
 
     ruta = source_root / chequeo.archivo
-    texto = ruta.read_text(encoding="utf-8", errors="ignore")
+    texto = ruta.read_text(
+        encoding="utf-8",
+        errors="ignore",
+    )
 
     try:
         insecure_match = re.search(
@@ -325,6 +365,7 @@ def _source_regex(
     inseguro = insecure_match is not None
     seguro = safe_match is not None
     vulnerable = inseguro and not seguro
+
     insecure_line = (
         _line_number(texto, insecure_match.start())
         if insecure_match
@@ -341,6 +382,7 @@ def _source_regex(
         + f"; regex segura presente={seguro}"
         + (f" en línea {safe_line}" if safe_line else "")
     )
+
     return _resultado(
         cfg,
         chequeo,
@@ -360,23 +402,39 @@ def _source_regex(
 
 
 def _docker_non_root(
-    cfg: ConfigObjetivo, chequeo: ChequeoPilar2, source_root: Path | None
+    cfg: ConfigObjetivo,
+    chequeo: ChequeoPilar2,
+    source_root: Path | None,
 ) -> ResultadoPilar2:
     if source_root is None:
         raise ValueError(
             f"{chequeo.id_control} requiere --target-root para inspección estática"
         )
+
     archivo = chequeo.archivo or "Dockerfile"
-    texto = (source_root / archivo).read_text(encoding="utf-8", errors="ignore")
-    usuarios = re.findall(r"(?im)^\s*USER\s+([^\s#]+)", texto)
-    imagenes = re.findall(r"(?im)^\s*FROM\s+([^\s]+)", texto)
+    texto = (source_root / archivo).read_text(
+        encoding="utf-8",
+        errors="ignore",
+    )
+    usuarios = re.findall(
+        r"(?im)^\s*USER\s+([^\s#]+)",
+        texto,
+    )
+    imagenes = re.findall(
+        r"(?im)^\s*FROM\s+([^\s]+)",
+        texto,
+    )
     usuario = usuarios[-1] if usuarios else None
     imagen = imagenes[-1] if imagenes else None
-    vulnerable = usuario is None or usuario.lower() in {"root", "0"}
+    vulnerable = (
+        usuario is None
+        or usuario.lower() in {"root", "0"}
+    )
     detalle = (
         f"archivo={archivo}; imagen efectiva={imagen!r}; "
         f"USER efectivo declarado={usuario!r}"
     )
+
     return _resultado(
         cfg,
         chequeo,
@@ -398,3 +456,83 @@ def _docker_non_root(
 def auditar_pilar2(
     cfg: ConfigObjetivo,
     source_root: str | Path | None = None,
+    progress_callback: Callable[[str], None] | None = None,
+) -> list[ResultadoPilar2]:
+    root = Path(source_root).resolve() if source_root else None
+    resultados: list[ResultadoPilar2] = []
+
+    for chequeo in cfg.chequeos_pilar2:
+        try:
+            if chequeo.tipo == "cors_reflection":
+                resultado = _cors(
+                    cfg,
+                    chequeo,
+                )
+            elif chequeo.tipo == "http_status_policy":
+                resultado = _http_status_policy(
+                    cfg,
+                    chequeo,
+                )
+            elif chequeo.tipo == "source_contains":
+                resultado = _source_contains(
+                    cfg,
+                    chequeo,
+                    root,
+                )
+            elif chequeo.tipo == "source_regex":
+                resultado = _source_regex(
+                    cfg,
+                    chequeo,
+                    root,
+                )
+            elif chequeo.tipo == "docker_non_root":
+                resultado = _docker_non_root(
+                    cfg,
+                    chequeo,
+                    root,
+                )
+            else:
+                raise ValueError(
+                    f"tipo de control no soportado: {chequeo.tipo}"
+                )
+        except Exception as exc:
+            (
+                family,
+                severity,
+                root_cause,
+                recommendation,
+            ) = _metadata_hallazgo(chequeo)
+            resultado = ResultadoPilar2(
+                sistema=cfg.sistema,
+                id_control=chequeo.id_control,
+                nombre=chequeo.nombre,
+                tipo=chequeo.tipo,
+                vulnerable=False,
+                estado="ERROR",
+                detalle=str(exc),
+                http_status=None,
+                ts=_ts(),
+                familia=family,
+                severidad=severity,
+                confianza="baja",
+                causa_raiz=root_cause,
+                evidencia=[
+                    {
+                        "tipo": "error_ejecucion",
+                        "error": exc.__class__.__name__,
+                    }
+                ],
+                recomendacion=recommendation,
+                archivo=chequeo.archivo,
+                ruta=chequeo.ruta,
+                metodo=str(chequeo.metodo or "").upper() or None,
+            )
+
+        resultados.append(resultado)
+        if progress_callback:
+            progress_callback(
+                "Pilar 2 · "
+                f"{chequeo.nombre} · {resultado.estado}"
+            )
+
+    return resultados
