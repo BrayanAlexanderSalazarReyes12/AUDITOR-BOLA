@@ -1,4 +1,4 @@
-# live-p1-resolution-release: v1.1.19
+# semantic-evidence-engine-release: v1.1.20
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.19' \
+            'Version: 1.1.20' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-19:
-    name: Publicar Release v1.1.19
+  release-v1-1-20:
+    name: Publicar Release v1.1.20
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.19]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.20]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,11 +253,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.19
+          # Aegis Auditor v1.1.20
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.19
+          ## Novedades de v1.1.20
           - Corrige la versión de la aplicación analizada: ya no se asigna
             `1.0.0` por defecto.
           - Detecta la versión real desde package.json, pom.xml, Gradle,
@@ -333,6 +333,14 @@ jobs:
           - El resolvedor P1 consulta colecciones autenticadas con GET, identifica pares objeto-propietario y persiste los controles resueltos en `chequeos_pilar1`.
           - El descubrimiento P1 en vivo no ejecuta PATCH, PUT ni DELETE para evitar modificar datos reales durante la auto-configuración.
           - Se añaden pruebas de regresión para resolución BOLA en vivo y para impedir inferencias cuando la API no expone propietario.
+          - Se incorpora un motor semántico genérico para inferir identificadores y propiedad desde nombres de campo y estructuras anidadas, sin depender de términos propios de Tramitia.
+          - La reconstrucción de BOLA usa aliases semánticos como id/uuid/code/codigo y owner/author/creator/created_by, incluyendo objetos anidados y parámetros de ruta de distintos frameworks.
+          - Los contratos HTTP de tests se extraen de Python y JavaScript/TypeScript para reconstruir RBAC/ABAC y cuerpos de prueba con mayor cobertura.
+          - RBAC/ABAC se deriva de tests de seguridad con identidad y status esperado aunque la ruta no contenga palabras como admin o audit.
+          - La reconstrucción de Agent Scope deriva campos de steps/tool/count desde las aserciones del test, evitando nombres fijos como pasos/herramienta/devueltas.
+          - Pilar 2 agrega controles source_regex y auto-detección de debug explícito, cookies de sesión Secure=false, secretos con fallback y posibles bypasses de límites/cuotas sin guardia de autorización.
+          - Los candidatos P1 también se descubren por semántica de autorización en el código fuente, no solo por el nombre de la ruta.
+          - El JSON registra metadata_detectada.motor_evidencia con fuentes, capacidades y política de confianza del motor semántico.
 
           ## Descargas
 
@@ -381,16 +389,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.19" >/dev/null 2>&1; then
-            gh release upload "v1.1.19" "${files[@]}" --clobber
-            gh release edit "v1.1.19" \
-              --title "Aegis Auditor v1.1.19" \
+          if gh release view "v1.1.20" >/dev/null 2>&1; then
+            gh release upload "v1.1.20" "${files[@]}" --clobber
+            gh release edit "v1.1.20" \
+              --title "Aegis Auditor v1.1.20" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.19" "${files[@]}" \
+            gh release create "v1.1.20" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.19" \
+              --title "Aegis Auditor v1.1.20" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
