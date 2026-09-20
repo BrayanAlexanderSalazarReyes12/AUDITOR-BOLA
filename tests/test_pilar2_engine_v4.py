@@ -345,3 +345,75 @@ def test_runner_separa_controles_hallazgos_y_duplicados_p2(tmp_path):
     assert result["resumen"]["pilar2_vulnerabilidades_confirmadas"] == 2
     assert result["resumen"]["pilar2_hallazgos_unicos"] == 1
     assert result["resumen"]["pilar2_duplicados_consolidados"] == 1
+
+
+def test_literal_secreto_es_candidato_y_no_vulnerabilidad_por_texto(tmp_path):
+    (tmp_path / "config.py").write_text(
+        'API_KEY = "live-looking-value-987654"\n',
+        encoding="utf-8",
+    )
+
+    discovery = discover_pilar2_profile(tmp_path, [])
+
+    secret_candidates = [
+        item for item in discovery["candidates"]
+        if item.get("familia") == "SECRET"
+    ]
+    secret_checks = [
+        item for item in discovery["checks"]
+        if item.get("familia") == "SECRET"
+    ]
+
+    assert secret_candidates
+    assert secret_candidates[0]["estado"] == "candidato"
+    assert secret_candidates[0]["confianza"] == "media"
+    assert not secret_checks
+    serialized = repr(secret_candidates[0])
+    assert "live-looking-value-987654" not in serialized
+
+
+def test_secret_fallback_node_se_detecta_sin_depender_de_python(tmp_path):
+    (tmp_path / "config.js").write_text(
+        'const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-node";\n',
+        encoding="utf-8",
+    )
+
+    discovery = discover_pilar2_profile(tmp_path, [])
+
+    secret_checks = [
+        item for item in discovery["checks"]
+        if item.get("familia") == "SECRET"
+    ]
+    assert secret_checks
+    assert secret_checks[0]["tipo"] == "secret_fallback"
+    assert secret_checks[0]["archivo"] == "config.js"
+
+
+def test_motor_p2_no_contiene_referencias_del_benchmark():
+    import auditor_bola.pilar2 as runtime_module
+    import auditor_bola.pilar2_discovery as discovery_module
+    from pathlib import Path
+
+    source = (
+        Path(runtime_module.__file__).read_text(encoding="utf-8").lower()
+        + Path(discovery_module.__file__).read_text(encoding="utf-8").lower()
+    )
+    forbidden = (
+        "tramitia",
+        "p2-cors-001",
+        "p2-secret-002",
+        "p2-limit-003",
+        "p2-docker-004",
+        "/api/solicitudes",
+    )
+
+    assert all(token not in source for token in forbidden)
+
+
+def test_descubrimiento_expone_registro_extensible_de_detectores(tmp_path):
+    discovery = discover_pilar2_profile(tmp_path, [])
+
+    registered = set(discovery["detectores_registrados"])
+    assert {"CORS", "SECRET", "LIMIT_BYPASS", "CONTAINER"}.issubset(
+        registered
+    )
