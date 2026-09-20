@@ -1042,3 +1042,42 @@ def test_receta_python_rechaza_import_local_inexistente():
         "COORDINADOR" in error and "no existe" in error
         for error in result.errores_validacion
     )
+
+
+
+def test_propuesta_incluye_preview_rojo_verde_base_y_lenguaje_python():
+    proposal = ai.AIRecipeProposal(
+        id="IA-1",
+        titulo="Cerrar endpoint",
+        enfoque="MINIMA",
+        explicacion="Aplica autorización antes de responder.",
+        riesgo="BAJO",
+        cambios=[
+            {
+                "archivo": "app.py",
+                "estrategia": "replace_exact",
+                "buscar": "return audit_data",
+                "reemplazar": "return secure_audit_data",
+            }
+        ],
+    )
+
+    result = ai.validar_propuestas_contextuales(
+        [proposal],
+        source_relative="app.py",
+        source_text=(
+            "def auditoria():\n"
+            "    audit_data = {}\n"
+            "    secure_audit_data = {}\n"
+            "    return audit_data\n"
+        ),
+    )[0]
+
+    assert result.validacion_ok is True
+    assert result.lenguaje_objetivo == "Python"
+    assert len(result.preview_cambios) == 1
+    preview = result.preview_cambios[0]
+    assert preview["archivo"] == "app.py"
+    assert preview["lenguaje"] == "Python"
+    assert "-    return audit_data" in preview["diff"]
+    assert "+    return secure_audit_data" in preview["diff"]
