@@ -251,6 +251,9 @@ jobs:
           - La barra y el modal reciben el avance del motor en segundo plano sin congelar la interfaz.
           - La fase de inicio del objetivo muestra ahora el progreso real del runtime: selección, preparación, lanzamiento y estabilización.
           - Se corrige el bloqueo visual en 92% durante el inicio de la aplicación objetivo.
+          - Antes de levantar cualquier objetivo, Aegis limpia instancias anteriores que hayan quedado activas por un cierre forzado.
+          - En runtimes de servicio ejecuta primero el comando de parada; en procesos locales libera el puerto objetivo y termina el árbol huérfano cuando corresponde.
+          - La limpieza previa se registra en la consola para indicar si se detuvo un servicio, se cerraron procesos huérfanos o el puerto ya estaba libre.
 
           ## Descargas
 
