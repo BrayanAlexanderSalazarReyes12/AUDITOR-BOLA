@@ -4679,6 +4679,7 @@ def build_profile_draft(
         "endpoints": inferred_endpoints,
         "endpoints_detectados": endpoint_inventory,
         "probar_todos_endpoints_con_todos_usuarios": True,
+        "candidatos_pilar1": inferred_p1_candidates,
         "chequeos_agente": inferred_agent_checks,
         "chequeos_acceso": inferred_access_checks,
         "chequeos_pilar2": inferred_p2_checks,
