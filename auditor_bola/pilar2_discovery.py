@@ -217,7 +217,7 @@ _CORS_SIGNAL_PATTERNS = (
 
 _CORS_SUSPICIOUS_PATTERNS = (
     r"access-control-allow-origin[^\n]{0,180}(?:request|origin)",
-    r"(?:allow[_-]?origins?|allowedorigins?)[^\n]{0,180}[\[({]\s*["']\*["']",
+    r"""(?:allow[_-]?origins?|allowedorigins?)[^\n]{0,180}[\[({]\s*["']\*["']""",
     r"origin\s*[:=]\s*true",
     r"allow[_-]?credentials\s*[:=]\s*true",
     r"setallowcredentials\s*\(\s*true\s*\)",
