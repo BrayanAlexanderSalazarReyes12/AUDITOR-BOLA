@@ -1,3 +1,4 @@
+# ai-profiles-release: v1.1.9
 name: Build desktop executables
 
 on:
@@ -260,6 +261,10 @@ jobs:
           - Se admite configuración persistente propia de Aegis, variables AEGIS_AI_* e importación opcional desde OpenCode.
           - La barra de progreso ya puede mostrar el 100% real durante el arranque y no queda retenida visualmente en 99%.
           - Aegis conserva temporalmente el PID del objetivo para recuperar y cerrar procesos que sobrevivan a un cierre forzado del auditor.
+          - Aegis ahora administra múltiples perfiles IA y permite crear, editar, duplicar, eliminar y seleccionar el proveedor activo desde Configuración.
+          - Cada perfil IA conserva nombre, URL base, modelo y su clave local; cambiar de perfil no obliga a reescribir los demás proveedores.
+          - La configuración IA antigua de un solo proveedor se migra automáticamente al nuevo formato de perfiles.
+          - OpenCode puede importarse como un perfil adicional y deja de ser una dependencia para seleccionar proveedores ya guardados en Aegis.
 
           ## Descargas
 
