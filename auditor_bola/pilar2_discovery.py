@@ -1207,6 +1207,61 @@ def _discover_simple_config(
     return checks, candidates
 
 
+DiscoveryResult = tuple[list[dict[str, Any]], list[Pilar2Candidate]]
+DiscoveryDetector = Callable[[Path, list[dict[str, Any]]], DiscoveryResult]
+_DISCOVERY_DETECTORS: dict[str, DiscoveryDetector] = {}
+
+
+def register_pilar2_detector(name: str):
+    """Registra una familia/detector sin acoplarla al orquestador."""
+
+    def decorator(func: DiscoveryDetector) -> DiscoveryDetector:
+        _DISCOVERY_DETECTORS[name] = func
+        return func
+
+    return decorator
+
+
+@register_pilar2_detector("CORS")
+def _plugin_cors(
+    root: Path,
+    endpoint_inventory: list[dict[str, Any]],
+) -> DiscoveryResult:
+    return _discover_cors(root, endpoint_inventory)
+
+
+@register_pilar2_detector("SECRET")
+def _plugin_secret(
+    root: Path,
+    _endpoint_inventory: list[dict[str, Any]],
+) -> DiscoveryResult:
+    return _discover_secrets(root)
+
+
+@register_pilar2_detector("LIMIT_BYPASS")
+def _plugin_limit(
+    root: Path,
+    endpoint_inventory: list[dict[str, Any]],
+) -> DiscoveryResult:
+    return [], _discover_limit_bypass(root, endpoint_inventory)
+
+
+@register_pilar2_detector("CONTAINER")
+def _plugin_container(
+    root: Path,
+    _endpoint_inventory: list[dict[str, Any]],
+) -> DiscoveryResult:
+    return _discover_container(root)
+
+
+@register_pilar2_detector("BASELINE_CONFIG")
+def _plugin_baseline_config(
+    root: Path,
+    _endpoint_inventory: list[dict[str, Any]],
+) -> DiscoveryResult:
+    return _discover_simple_config(root)
+
+
 def discover_pilar2_profile(
     root: str | Path,
     endpoint_inventory: list[dict[str, Any]],
@@ -1224,23 +1279,13 @@ def discover_pilar2_profile(
     checks: list[dict[str, Any]] = []
     candidates: list[Pilar2Candidate] = []
 
-    cors_checks, cors_candidates = _discover_cors(target, endpoint_inventory)
-    checks.extend(cors_checks)
-    candidates.extend(cors_candidates)
-
-    secret_checks, secret_candidates = _discover_secrets(target)
-    checks.extend(secret_checks)
-    candidates.extend(secret_candidates)
-
-    candidates.extend(_discover_limit_bypass(target, endpoint_inventory))
-
-    container_checks, container_candidates = _discover_container(target)
-    checks.extend(container_checks)
-    candidates.extend(container_candidates)
-
-    simple_checks, simple_candidates = _discover_simple_config(target)
-    checks.extend(simple_checks)
-    candidates.extend(simple_candidates)
+    for _name, detector in _DISCOVERY_DETECTORS.items():
+        detector_checks, detector_candidates = detector(
+            target,
+            endpoint_inventory,
+        )
+        checks.extend(detector_checks)
+        candidates.extend(detector_candidates)
 
     unique_checks: list[dict[str, Any]] = []
     seen_checks: set[str] = set()
@@ -1273,6 +1318,7 @@ def discover_pilar2_profile(
                 if item.get("familia")
             }
         ),
+        "detectores_registrados": list(_DISCOVERY_DETECTORS),
         "lenguajes": list(languages or []),
         "frameworks": list(frameworks or []),
         "principios": [
