@@ -26,10 +26,14 @@ from ..ai_recipes import (
 )
 from ..app_paths import default_config_dir, default_evidence_dir
 from ..config import (
+    ChequeoAcceso,
+    ChequeoAgente,
     ChequeoPilar2,
     ConfigObjetivo,
+    Endpoint,
     RuntimeConfig,
     cargar_config,
+    construir_registro_pilar1,
 )
 from ..cycle import (
     ciclo_correctivo,
@@ -411,13 +415,11 @@ class AuditorController(QObject):
         self._persist_runtime_plan()
 
     def _augment_controls_from_target(self) -> None:
-        """Añade controles inferibles sin pisar controles declarados.
+        """Completa perfiles antiguos con controles P1/P2 inferibles.
 
-        Los perfiles generados por versiones anteriores podían contener muchos
-        endpoints detectados pero cero controles ejecutables. Para esos
-        perfiles, Aegis vuelve a analizar el código y agrega únicamente
-        controles P2 de alta confianza que no requieren inventar propietario,
-        rol esperado o credenciales.
+        P1 se reconstruye desde rutas + contratos expresados en tests,
+        fixtures y datos semilla. P2 conserva las inferencias estáticas de
+        alta confianza. Nunca se eliminan controles manuales existentes.
         """
         if not self.cfg or not self.target_root:
             return
@@ -433,18 +435,166 @@ class AuditorController(QObject):
             )
             return
 
-        inferred = list(draft.get("chequeos_pilar2") or [])
-        existing = {
+        added_p1: list[str] = []
+        added_p2: list[str] = []
+
+        # --------------------------------------------------------------
+        # Pilar 1: materializar las vistas ejecutables legacy y mantener
+        # chequeos_pilar1 como registro canónico visible en el JSON.
+        # --------------------------------------------------------------
+        endpoint_keys = {
+            (
+                item.id_control or "P1-BOLA",
+                item.metodo.upper(),
+                item.ruta,
+                str(item.id_prueba),
+                item.propietario_esperado,
+            )
+            for item in self.cfg.endpoints
+        }
+        for raw in draft.get("endpoints") or []:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                item = dict(raw)
+                if "codigos_permitidos" in item:
+                    item["codigos_permitidos"] = tuple(
+                        item["codigos_permitidos"]
+                    )
+                endpoint = Endpoint(**item)
+            except (TypeError, ValueError):
+                continue
+            key = (
+                endpoint.id_control or "P1-BOLA",
+                endpoint.metodo.upper(),
+                endpoint.ruta,
+                str(endpoint.id_prueba),
+                endpoint.propietario_esperado,
+            )
+            if key in endpoint_keys:
+                continue
+            self.cfg.endpoints.append(endpoint)
+            endpoint_keys.add(key)
+            added_p1.append(
+                endpoint.id_control or "P1-BOLA"
+            )
+
+        access_keys = {
+            (
+                item.id_control,
+                item.cuenta,
+                item.metodo.upper(),
+                item.ruta,
+            )
+            for item in self.cfg.chequeos_acceso
+        }
+        for raw in draft.get("chequeos_acceso") or []:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                item = dict(raw)
+                if "codigos_permitidos" in item:
+                    item["codigos_permitidos"] = tuple(
+                        item["codigos_permitidos"]
+                    )
+                check = ChequeoAcceso(**item)
+            except (TypeError, ValueError):
+                continue
+            key = (
+                check.id_control,
+                check.cuenta,
+                check.metodo.upper(),
+                check.ruta,
+            )
+            if key in access_keys:
+                continue
+            self.cfg.chequeos_acceso.append(check)
+            access_keys.add(key)
+            added_p1.append(check.id_control)
+
+        agent_keys = {
+            (
+                item.id_control,
+                item.cuenta,
+                item.direct_ruta,
+                item.agent_ruta,
+            )
+            for item in self.cfg.chequeos_agente
+        }
+        for raw in draft.get("chequeos_agente") or []:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                check = ChequeoAgente(**dict(raw))
+            except (TypeError, ValueError):
+                continue
+            key = (
+                check.id_control,
+                check.cuenta,
+                check.direct_ruta,
+                check.agent_ruta,
+            )
+            if key in agent_keys:
+                continue
+            self.cfg.chequeos_agente.append(check)
+            agent_keys.add(key)
+            added_p1.append(check.id_control)
+
+        registry = list(self.cfg.chequeos_pilar1 or [])
+        registry_keys = {
+            (
+                str(item.get("tipo") or ""),
+                str(item.get("id_control") or ""),
+                str(
+                    item.get("ruta")
+                    or item.get("direct_ruta")
+                    or ""
+                ),
+                str(item.get("cuenta") or ""),
+                str(item.get("metodo") or ""),
+            )
+            for item in registry
+            if isinstance(item, dict)
+        }
+        for raw in draft.get("chequeos_pilar1") or []:
+            if not isinstance(raw, dict):
+                continue
+            key = (
+                str(raw.get("tipo") or ""),
+                str(raw.get("id_control") or ""),
+                str(
+                    raw.get("ruta")
+                    or raw.get("direct_ruta")
+                    or ""
+                ),
+                str(raw.get("cuenta") or ""),
+                str(raw.get("metodo") or ""),
+            )
+            if key in registry_keys:
+                continue
+            registry.append(dict(raw))
+            registry_keys.add(key)
+
+        if not registry:
+            registry = construir_registro_pilar1(
+                self.cfg.endpoints,
+                self.cfg.chequeos_acceso,
+                self.cfg.chequeos_agente,
+            )
+        self.cfg.chequeos_pilar1 = registry
+
+        # --------------------------------------------------------------
+        # Pilar 2.
+        # --------------------------------------------------------------
+        existing_p2 = {
             item.id_control
             for item in self.cfg.chequeos_pilar2
         }
-        added: list[str] = []
-
-        for raw in inferred:
+        for raw in draft.get("chequeos_pilar2") or []:
             if not isinstance(raw, dict):
                 continue
             control_id = str(raw.get("id_control") or "").strip()
-            if not control_id or control_id in existing:
+            if not control_id or control_id in existing_p2:
                 continue
             try:
                 check = ChequeoPilar2(**raw)
@@ -454,41 +604,74 @@ class AuditorController(QObject):
                 )
                 continue
             self.cfg.chequeos_pilar2.append(check)
-            existing.add(control_id)
-            added.append(control_id)
+            existing_p2.add(control_id)
+            added_p2.append(control_id)
 
-        if not added:
-            return
-
+        # Persistir también cuando no hubo controles nuevos: así un perfil
+        # legacy obtiene chequeos_pilar1 como registro canónico.
         if self.config_path and self.config_path.exists():
             try:
                 payload = json.loads(
                     self.config_path.read_text(encoding="utf-8")
                 )
                 if isinstance(payload, dict):
+                    payload["chequeos_pilar1"] = list(
+                        self.cfg.chequeos_pilar1
+                    )
+                    payload["endpoints"] = [
+                        asdict(item)
+                        for item in self.cfg.endpoints
+                    ]
+                    payload["chequeos_acceso"] = [
+                        asdict(item)
+                        for item in self.cfg.chequeos_acceso
+                    ]
+                    payload["chequeos_agente"] = [
+                        asdict(item)
+                        for item in self.cfg.chequeos_agente
+                    ]
                     payload["chequeos_pilar2"] = [
                         asdict(item)
                         for item in self.cfg.chequeos_pilar2
                     ]
+
                     metadata = dict(
                         payload.get("metadata_detectada") or {}
                     )
-                    metadata["controles_inferidos_automaticamente"] = [
-                        {
-                            "id_control": item.id_control,
-                            "nombre": item.nombre,
-                            "tipo": item.tipo,
-                        }
-                        for item in self.cfg.chequeos_pilar2
-                        if item.id_control.startswith("P2-AUTO-")
+                    draft_meta = dict(
+                        draft.get("metadata_detectada") or {}
+                    )
+                    metadata["candidatos_pilar1"] = list(
+                        draft_meta.get("candidatos_pilar1") or []
+                    )
+                    metadata["total_candidatos_pilar1"] = len(
+                        metadata["candidatos_pilar1"]
+                    )
+                    metadata[
+                        "controles_pilar1_inferidos_automaticamente"
+                    ] = [
+                        item
+                        for item in (
+                            draft_meta.get(
+                                "controles_pilar1_inferidos_automaticamente"
+                            )
+                            or []
+                        )
                     ]
-                    metadata["total_controles_activos"] = (
-                        len(self.cfg.endpoints) * len(self.cfg.cuentas)
+                    metadata["total_controles_pilar1_activos"] = (
+                        len(self.cfg.endpoints)
                         + len(self.cfg.chequeos_acceso)
                         + len(self.cfg.chequeos_agente)
-                        + len(self.cfg.chequeos_pilar2)
+                    )
+                    metadata["total_controles_pilar2_activos"] = len(
+                        self.cfg.chequeos_pilar2
+                    )
+                    metadata["total_controles_activos"] = (
+                        metadata["total_controles_pilar1_activos"]
+                        + metadata["total_controles_pilar2_activos"]
                     )
                     payload["metadata_detectada"] = metadata
+
                     self.config_path.write_text(
                         json.dumps(
                             payload,
@@ -500,14 +683,20 @@ class AuditorController(QObject):
                     )
             except (OSError, json.JSONDecodeError) as exc:
                 self.log_message.emit(
-                    "No se pudo guardar los controles inferidos: "
+                    "No se pudieron guardar los controles inferidos: "
                     f"{exc}"
                 )
 
-        self.log_message.emit(
-            "Controles de seguridad inferidos automáticamente: "
-            + ", ".join(added)
-        )
+        if added_p1:
+            self.log_message.emit(
+                "Pilar 1 reconstruido automáticamente: "
+                + ", ".join(dict.fromkeys(added_p1))
+            )
+        if added_p2:
+            self.log_message.emit(
+                "Pilar 2 inferido automáticamente: "
+                + ", ".join(added_p2)
+            )
 
     def _enforce_profile_base_url(self) -> None:
         """Sincroniza runtimes con la IP/puerto autorizados por config JSON."""
