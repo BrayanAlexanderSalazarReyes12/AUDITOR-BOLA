@@ -29,7 +29,7 @@ from .remediation_knowledge import (
 
 DEFAULT_PROVIDER_ID = "llmlab"
 DEFAULT_MODEL_ID = "lab-coder"
-DEFAULT_MAX_OUTPUT_TOKENS = 4096
+DEFAULT_MAX_OUTPUT_TOKENS = 8192
 
 
 @dataclass
@@ -664,14 +664,18 @@ class AIRecipeProposal:
     enfoque: str
     explicacion: str
     riesgo: str
-    estrategia: str
-    buscar: str
-    reemplazar: str
-    requiere_reinicio: bool
-    consideraciones: str
+    estrategia: str = ""
+    buscar: str = ""
+    reemplazar: str = ""
+    requiere_reinicio: bool = False
+    consideraciones: str = ""
     archivo_objetivo: str = ""
     hipotesis_id: str = ""
     estrategia_conceptual: str = ""
+    # Plan multiarchivo opcional. Cada cambio usa:
+    # {"archivo": "...", "estrategia": "replace_exact|regex_replace",
+    #  "buscar": "...", "reemplazar": "..."}
+    cambios: list[dict] = field(default_factory=list)
     validacion_ok: bool = True
     errores_validacion: list[str] = field(default_factory=list)
 
@@ -809,6 +813,20 @@ def recortar_codigo(
 
 
 def _json_schema() -> dict:
+    change = {
+        "type": "object",
+        "properties": {
+            "archivo": {"type": "string"},
+            "estrategia": {
+                "type": "string",
+                "enum": ["replace_exact", "regex_replace"],
+            },
+            "buscar": {"type": "string"},
+            "reemplazar": {"type": "string"},
+        },
+        "required": ["archivo", "estrategia", "buscar", "reemplazar"],
+        "additionalProperties": False,
+    }
     propuesta = {
         "type": "object",
         "properties": {
@@ -825,24 +843,24 @@ def _json_schema() -> dict:
             },
             "estrategia": {
                 "type": "string",
-                "enum": ["replace_exact", "regex_replace"],
+                "enum": ["", "replace_exact", "regex_replace"],
             },
             "buscar": {"type": "string"},
             "reemplazar": {"type": "string"},
             "requiere_reinicio": {"type": "boolean"},
             "consideraciones": {"type": "string"},
+            "archivo_objetivo": {"type": "string"},
+            "hipotesis_id": {"type": "string"},
+            "estrategia_conceptual": {"type": "string"},
+            "cambios": {
+                "type": "array",
+                "items": change,
+            },
         },
         "required": [
-            "id",
-            "titulo",
-            "enfoque",
-            "explicacion",
-            "riesgo",
-            "estrategia",
-            "buscar",
-            "reemplazar",
-            "requiere_reinicio",
-            "consideraciones",
+            "id", "titulo", "enfoque", "explicacion", "riesgo",
+            "requiere_reinicio", "consideraciones",
+            "hipotesis_id", "estrategia_conceptual", "cambios",
         ],
         "additionalProperties": False,
     }
@@ -857,8 +875,6 @@ def _json_schema() -> dict:
         "required": ["propuestas"],
         "additionalProperties": False,
     }
-
-
 def _extraer_contenido_chat(response_json: dict) -> str:
     choices = response_json.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -919,7 +935,38 @@ def _validar_propuestas(data: dict) -> list[AIRecipeProposal]:
             "La IA debe devolver exactamente tres propuestas de receta."
         )
 
-    propuestas = [AIRecipeProposal(**item) for item in items]
+    normalized: list[dict] = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            raise RuntimeError("Cada propuesta debe ser un objeto JSON.")
+        item = dict(raw)
+        changes = [
+            dict(change)
+            for change in (item.get("cambios") or [])
+            if isinstance(change, dict)
+        ]
+        if changes:
+            first = changes[0]
+            item.setdefault("archivo_objetivo", first.get("archivo") or "")
+            item.setdefault("estrategia", first.get("estrategia") or "")
+            item.setdefault("buscar", first.get("buscar") or "")
+            item.setdefault("reemplazar", first.get("reemplazar") or "")
+            item["cambios"] = changes
+        else:
+            legacy_file = str(item.get("archivo_objetivo") or "").strip()
+            legacy_strategy = str(item.get("estrategia") or "").strip()
+            if legacy_file and legacy_strategy:
+                item["cambios"] = [{
+                    "archivo": legacy_file,
+                    "estrategia": legacy_strategy,
+                    "buscar": str(item.get("buscar") or ""),
+                    "reemplazar": str(item.get("reemplazar") or ""),
+                }]
+            else:
+                item["cambios"] = []
+        normalized.append(item)
+
+    propuestas = [AIRecipeProposal(**item) for item in normalized]
     enfoques = {item.enfoque for item in propuestas}
     if enfoques != {"MINIMA", "ESTRUCTURAL", "ALTERNATIVA"}:
         raise RuntimeError(
