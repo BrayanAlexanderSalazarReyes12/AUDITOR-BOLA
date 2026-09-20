@@ -203,11 +203,59 @@ class AuditorController(QObject):
                         current.origen = str(
                             candidate.get("origen") or ""
                         )
-                    if not current.base_url:
-                        current.base_url = str(
-                            candidate.get("base_url")
+
+                    detected_base = str(
+                        candidate.get("base_url")
+                        or detected_url
+                        or ""
+                    ).rstrip("/")
+                    previous_base = str(current.base_url or "").rstrip("/")
+                    auto_origins = {
+                        "python-project",
+                        "package.json",
+                        "java-project",
+                        "dotnet-project",
+                        "composer.json",
+                        "Cargo.toml",
+                        "go.mod",
+                        "mix.exs",
+                        "Package.swift",
+                        "compose.yml",
+                        "compose.yaml",
+                        "docker-compose.yml",
+                        "docker-compose.yaml",
+                    }
+                    origin = str(
+                        current.origen
+                        or candidate.get("origen")
+                        or ""
+                    )
+
+                    # Perfiles antiguos podían guardar 127.0.0.1:8080 de forma
+                    # genérica para Docker aunque el proyecto publicara otro
+                    # puerto. Si el runtime fue autodetectado y sigue siendo la
+                    # misma estrategia, refrescamos esa URL sin obligar al
+                    # usuario a regenerar el perfil.
+                    if (
+                        detected_base
+                        and origin in auto_origins
+                        and detected_base != previous_base
+                    ):
+                        if (
+                            not self.cfg.base_url
+                            or str(self.cfg.base_url).rstrip("/")
+                            == previous_base
+                        ):
+                            self.cfg.base_url = detected_base
+                        current.base_url = detected_base
+                        self.log_message.emit(
+                            "Base URL del runtime actualizada por detección: "
+                            f"{previous_base or '-'} → {detected_base}"
+                        )
+                    elif not current.base_url:
+                        current.base_url = (
+                            detected_base
                             or self.cfg.base_url
-                            or detected_url
                             or ""
                         )
                 continue
