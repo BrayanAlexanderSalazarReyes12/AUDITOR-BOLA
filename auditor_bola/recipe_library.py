@@ -20,7 +20,7 @@ from .ai_preview import preview_recipe
 from .config import Correccion
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _ts() -> str:
@@ -44,6 +44,7 @@ def _fingerprint(correccion: Correccion) -> str:
     payload = {
         "control_id": correccion.control_id,
         "operaciones": correccion.operaciones,
+        "cambios": correccion.cambios,
         "requiere_reinicio": correccion.requiere_reinicio,
     }
     canonical = json.dumps(
@@ -159,6 +160,7 @@ def guardar_receta_biblioteca(
         "descripcion": correccion.descripcion,
         "requiere_reinicio": correccion.requiere_reinicio,
         "operaciones": correccion.operaciones,
+        "cambios": correccion.cambios,
         "extension_origen": Path(correccion.archivo).suffix.lower(),
         "verificada": bool(existing.get("verificada")) or verificada,
         "creada_en": existing.get("creada_en") or now,
@@ -241,13 +243,43 @@ def buscar_recetas_compatibles(
             if data.get("control_id") != control_id:
                 continue
 
-            correction = Correccion(
-                control_id=control_id,
-                archivo=archivo,
-                operaciones=list(data.get("operaciones") or []),
-                descripcion=data.get("descripcion") or data.get("titulo"),
-                requiere_reinicio=bool(data.get("requiere_reinicio", False)),
-            )
+            stored_changes = [
+                dict(item)
+                for item in (data.get("cambios") or [])
+                if isinstance(item, dict)
+            ]
+            if stored_changes:
+                # Una receta multiarchivo solo se ofrece si todos los archivos
+                # concretos que verificó originalmente existen en este target.
+                if not all(
+                    (
+                        Path(target) / str(item.get("archivo") or "")
+                    ).is_file()
+                    for item in stored_changes
+                ):
+                    continue
+                correction = Correccion(
+                    control_id=control_id,
+                    archivo=str(
+                        stored_changes[0].get("archivo") or archivo
+                    ),
+                    operaciones=list(
+                        stored_changes[0].get("operaciones") or []
+                    ),
+                    cambios=stored_changes,
+                    descripcion=data.get("descripcion") or data.get("titulo"),
+                    requiere_reinicio=bool(
+                        data.get("requiere_reinicio", False)
+                    ),
+                )
+            else:
+                correction = Correccion(
+                    control_id=control_id,
+                    archivo=archivo,
+                    operaciones=list(data.get("operaciones") or []),
+                    descripcion=data.get("descripcion") or data.get("titulo"),
+                    requiere_reinicio=bool(data.get("requiere_reinicio", False)),
+                )
             preview = preview_recipe(correction, target)
             if not preview.get("cambia_archivo"):
                 continue
