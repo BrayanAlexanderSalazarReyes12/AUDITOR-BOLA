@@ -1369,7 +1369,7 @@ def _detect_compose_published_port(path: Path) -> int | None:
     long_match = re.search(
         r"(?ms)^\s*-\s*target\s*:\s*\d+\s*$"
         r".{0,250}?"
-        r"^\s*published\s*:\s*["']?(\d{2,5})["']?\s*$",
+        r"""^\s*published\s*:\s*["']?(\d{2,5})["']?\s*$""",
         text,
     )
     if long_match:
