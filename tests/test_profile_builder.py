@@ -970,3 +970,35 @@ def test_autoperfil_infiere_controles_p2_de_alta_confianza(tmp_path):
     assert checks["P2-AUTO-SECRET-001"]["archivo"] == "app.py"
     assert "P2-AUTO-DOCKER-001" in checks
     assert profile["metadata_detectada"]["total_controles_activos"] == 3
+
+
+
+def test_autoperfil_expone_candidatos_pilar1(tmp_path):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text(
+        "from flask import Flask\n"
+        "app = Flask(__name__)\n"
+        "@app.get('/api/items/<int:item_id>')\n"
+        "def item(item_id): return {'id': item_id}\n"
+        "@app.get('/api/admin/auditoria')\n"
+        "def audit(): return {'ok': True}\n"
+        "@app.post('/api/asistente/ejecutar')\n"
+        "def assistant(): return {'pasos': []}\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    meta = profile["metadata_detectada"]
+    candidates = meta["candidatos_pilar1"]
+    families = {item["familia"] for item in candidates}
+
+    assert "BOLA" in families
+    assert "RBAC_ABAC" in families
+    assert "AGENT_SCOPE" in families
+    assert meta["total_candidatos_pilar1"] >= 3
+    assert profile["endpoints"] == []
+    assert profile["chequeos_acceso"] == []
+    assert profile["chequeos_agente"] == []
