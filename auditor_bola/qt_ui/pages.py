@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -327,6 +329,67 @@ class HomePage(QWidget):
         meta = c.detected_metadata()
         languages = ", ".join(meta.get("lenguajes") or []) or "-"
         frameworks = ", ".join(meta.get("frameworks") or []) or "-"
+
+        runtime_name = "-"
+        runtime_mode = "-"
+        start_text = "-"
+        fallback_text = "-"
+        policy_text = "-"
+
+        if c.cfg:
+            runtime = c.cfg.runtime
+            runtime_name = runtime.nombre or runtime.modo
+            runtime_mode = runtime.modo
+
+            platform_key = (
+                "windows"
+                if os.name == "nt"
+                else ("macos" if sys.platform == "darwin" else "linux")
+            )
+            command = (
+                runtime.comando_inicio_por_so.get(platform_key)
+                or runtime.comando_inicio_por_so.get("default")
+                or runtime.comando_inicio
+                or []
+            )
+            start_text = " ".join(str(item) for item in command) or "-"
+
+            alternatives = []
+            for item in runtime.alternativas or []:
+                if not isinstance(item, dict):
+                    continue
+                alt_command = (
+                    (item.get("comando_inicio_por_so") or {}).get(
+                        platform_key
+                    )
+                    or (item.get("comando_inicio_por_so") or {}).get(
+                        "default"
+                    )
+                    or item.get("comando_inicio")
+                    or []
+                )
+                alternatives.append(
+                    f"{item.get('nombre') or item.get('modo') or 'local'}"
+                    + (
+                        " → " + " ".join(str(part) for part in alt_command)
+                        if alt_command
+                        else ""
+                    )
+                )
+            fallback_text = (
+                " | ".join(alternatives)
+                if alternatives
+                else "Sin alternativa declarada"
+            )
+            policy_text = (
+                f"{runtime.preferencia_arranque or 'auto'} · "
+                + (
+                    "fallback local habilitado"
+                    if runtime.permitir_fallback_local
+                    else "fallback local deshabilitado"
+                )
+            )
+
         self.project_info.setText(
             "\n".join(
                 [
@@ -335,7 +398,10 @@ class HomePage(QWidget):
                     f"Lenguaje      {languages}",
                     f"Framework     {frameworks}",
                     f"Base URL      {c.cfg.base_url if c.cfg else '-'}",
-                    f"Runtime       {c.cfg.runtime.modo if c.cfg else '-'}",
+                    f"Runtime       {runtime_name} ({runtime_mode})",
+                    f"Inicio        {start_text}",
+                    f"Política      {policy_text}",
+                    f"Alternativas  {fallback_text}",
                 ]
             )
         )
