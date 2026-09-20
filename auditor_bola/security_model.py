@@ -439,16 +439,23 @@ def consolidate_hypotheses(items: Iterable[dict[str, Any]]) -> list[dict[str, An
         key = _group_key(item)
         group = groups.get(key)
         if group is None:
-            family = item["familia"]
+            (
+                family,
+                semantic_endpoint,
+                semantic_method,
+                semantic_resource,
+                semantic_component,
+                semantic_root,
+            ) = key
             group = {
                 "familia": family,
                 "id_hallazgo": stable_finding_id(
                     family,
-                    endpoint=item.get("endpoint"),
-                    method=item.get("metodo"),
-                    component=item.get("componente"),
-                    resource=item.get("recurso"),
-                    root_cause=item.get("causa_raiz"),
+                    endpoint=semantic_endpoint,
+                    method=semantic_method,
+                    component=semantic_component,
+                    resource=semantic_resource,
+                    root_cause=semantic_root,
                 ),
                 "estado": item.get("estado") or "candidato",
                 "confianza": item.get("confianza") or "media",
