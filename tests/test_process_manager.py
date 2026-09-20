@@ -4,6 +4,7 @@ import signal
 
 import pytest
 
+import auditor_bola.process_manager as process_manager
 from auditor_bola.config import RuntimeConfig
 from auditor_bola.process_manager import LocalTargetProcess
 
@@ -599,3 +600,41 @@ def test_limpieza_previa_cierra_procesos_del_proyecto_antes_del_puerto(tmp_path)
         "4444" in note
         for note in manager.runtime_status()["limpieza_previa"]
     )
+
+
+
+def test_windows_runtime_usa_create_no_window(monkeypatch):
+    monkeypatch.setattr(
+        process_manager,
+        "_is_windows",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        process_manager.subprocess,
+        "CREATE_NO_WINDOW",
+        0x08000000,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        process_manager.subprocess,
+        "CREATE_NEW_PROCESS_GROUP",
+        0x00000200,
+        raising=False,
+    )
+
+    kwargs = process_manager._windows_hidden_subprocess_kwargs(
+        new_process_group=True,
+    )
+
+    assert kwargs["creationflags"] & 0x08000000
+    assert kwargs["creationflags"] & 0x00000200
+
+
+def test_no_aplica_flags_ocultos_fuera_de_windows(monkeypatch):
+    monkeypatch.setattr(
+        process_manager,
+        "_is_windows",
+        lambda: False,
+    )
+
+    assert process_manager._windows_hidden_subprocess_kwargs() == {}
