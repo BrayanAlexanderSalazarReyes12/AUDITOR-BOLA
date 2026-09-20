@@ -1303,3 +1303,68 @@ def test_autoperfil_reconstruye_scope_desde_test_javascript(
     assert checks[0]["tool_field"] == "tool"
     assert checks[0]["count_field"] == "returned"
     assert checks[0]["tool_name"] == "list_items"
+
+
+
+def test_autoperfil_infiere_debug_cookie_y_bypass_genericos(tmp_path):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "run.py").write_text(
+        "from app import app\napp.run(port=5050, debug=True)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "settings.py").write_text(
+        "SESSION_COOKIE_SECURE = False\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "api.py").write_text(
+        "def handle(data, user):\n"
+        "    urgent = bool(data.get('urgent'))\n"
+        "    budget = 100\n"
+        "    if urgent:\n"
+        "        budget = 10000\n"
+        "    return budget\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    ids = {
+        item["id_control"]
+        for item in profile["chequeos_pilar2"]
+    }
+
+    assert "P2-AUTO-DEBUG-001" in ids
+    assert "P2-AUTO-COOKIE-001" in ids
+    assert any(
+        item.startswith("P2-AUTO-BYPASS-")
+        for item in ids
+    )
+
+
+def test_autoperfil_no_marca_bypass_si_hay_guardia_de_permiso(tmp_path):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "api.py").write_text(
+        "def handle(data, user):\n"
+        "    urgent = bool(data.get('urgent'))\n"
+        "    budget = 100\n"
+        "    if urgent and user.role == 'admin':\n"
+        "        budget = 10000\n"
+        "    return budget\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    ids = {
+        item["id_control"]
+        for item in profile["chequeos_pilar2"]
+    }
+
+    assert not any(
+        item.startswith("P2-AUTO-BYPASS-")
+        for item in ids
+    )
