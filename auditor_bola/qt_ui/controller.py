@@ -43,6 +43,7 @@ from ..cycle import (
     corregir_controles,
     verificar_control,
 )
+from ..language_detection import detect_language_context
 from ..process_manager import LocalTargetProcess
 from ..p1_resolver import resolve_live_bola_candidates
 from ..profile_builder import (
@@ -2016,6 +2017,28 @@ class AuditorController(QObject):
                 f"{exc}"
             )
 
+        language_context = detect_language_context(
+            relative,
+            source_text,
+            related_sources,
+        )
+        principal_language = (
+            language_context.get("principal") or {}
+        )
+        frameworks = language_context.get(
+            "frameworks_contexto"
+        ) or []
+        self.log_message.emit(
+            "Lenguaje detectado para el parche: "
+            f"{principal_language.get('language') or 'desconocido'} "
+            f"(confianza={principal_language.get('confidence') or 'baja'})"
+            + (
+                " · framework/contexto=" + ", ".join(frameworks)
+                if frameworks
+                else ""
+            )
+        )
+
         failures = list(
             self.ai_failed_attempts.get(row["id"], [])
         )
@@ -2044,6 +2067,7 @@ class AuditorController(QObject):
         reusable = knowledge[0].public_dict() if knowledge else None
 
         metadata = dict(row)
+        metadata["lenguaje_detectado"] = language_context
         metadata["archivo_cargado_ia"] = {
             "archivo": relative,
             "sha256": source_hash,
