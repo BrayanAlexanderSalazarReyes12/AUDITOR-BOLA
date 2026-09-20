@@ -1,5 +1,7 @@
+import pytest
 from auditor_bola.config import ChequeoPilar2, ConfigObjetivo
 from auditor_bola.pilar2 import auditar_pilar2
+from auditor_bola.runner import diagnosticar
 
 
 def _cfg(checks):
@@ -43,3 +45,16 @@ def test_docker_non_root_pasa(tmp_path):
     )
     result = auditar_pilar2(_cfg([check]), tmp_path)[0]
     assert result.estado == "SIN_HALLAZGO"
+
+
+
+def test_diagnostico_no_declara_cero_hallazgos_si_no_hay_controles(tmp_path):
+    cfg = ConfigObjetivo(
+        sistema="sin-controles",
+        base_url="http://127.0.0.1:5050",
+        cuentas=[],
+        endpoints=[],
+    )
+
+    with pytest.raises(RuntimeError, match="0 controles activos"):
+        diagnosticar(cfg, tmp_path)
