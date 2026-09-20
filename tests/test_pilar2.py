@@ -95,3 +95,23 @@ def test_diagnostico_p1_p2_exige_ambos_pilares(tmp_path):
             tmp_path,
             require_both_pillars=True,
         )
+
+
+
+def test_source_regex_detecta_configuracion_insegura(tmp_path):
+    (tmp_path / "settings.py").write_text(
+        "DEBUG = True\n",
+        encoding="utf-8",
+    )
+    check = ChequeoPilar2(
+        id_control="P2-REGEX-001",
+        nombre="debug",
+        tipo="source_regex",
+        archivo="settings.py",
+        patron_inseguro=r"(?m)^\s*DEBUG\s*=\s*True\s*$",
+    )
+
+    result = auditar_pilar2(_cfg([check]), tmp_path)[0]
+
+    assert result.estado == "HALLAZGO"
+    assert "regex insegura presente=True" in result.detalle
