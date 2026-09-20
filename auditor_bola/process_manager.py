@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import errno
+import hashlib
+import json
 import os
 import shutil
 import signal
@@ -535,6 +537,155 @@ class LocalTargetProcess:
                 f"(código {completed.returncode}).\n\n{detail}"
             )
 
+    def _runtime_state_file(self) -> Path:
+        """PID persistente del objetivo para recuperarlo tras cierres forzados."""
+        digest = hashlib.sha256(
+            str(self.root).lower().encode("utf-8", errors="ignore")
+        ).hexdigest()[:20]
+        folder = Path(tempfile.gettempdir()) / "aegis-auditor-runtime"
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder / f"{digest}.json"
+
+    def _write_runtime_state(self, command: list[str]) -> None:
+        if self.process is None:
+            return
+        payload = {
+            "pid": int(self.process.pid),
+            "root": str(self.root),
+            "command": [str(item) for item in command],
+            "port": self._local_port_from_runtime(),
+        }
+        try:
+            self._runtime_state_file().write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    def _read_runtime_state(self) -> dict:
+        path = self._runtime_state_file()
+        if not path.exists():
+            return {}
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    def _clear_runtime_state(self) -> None:
+        try:
+            self._runtime_state_file().unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _process_command_line_by_pid(self, pid: int) -> str:
+        if _is_windows():
+            powershell = (
+                shutil.which("powershell.exe")
+                or shutil.which("pwsh.exe")
+                or shutil.which("pwsh")
+            )
+            if not powershell:
+                return ""
+            script = (
+                "$p=Get-CimInstance Win32_Process -Filter "
+                f"\"ProcessId={pid}\" -ErrorAction SilentlyContinue; "
+                "if($p){$p.CommandLine}"
+            )
+            try:
+                completed = subprocess.run(
+                    [powershell, "-NoProfile", "-Command", script],
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return ""
+            return (completed.stdout or "").strip()
+
+        try:
+            completed = subprocess.run(
+                ["ps", "-o", "command=", "-p", str(pid)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        if completed.returncode != 0:
+            return ""
+        return (completed.stdout or "").strip()
+
+    def _recorded_pid_matches_target(self, state: dict, pid: int) -> bool:
+        recorded_root = os.path.normcase(
+            os.path.normpath(str(state.get("root") or ""))
+        )
+        if recorded_root != os.path.normcase(os.path.normpath(str(self.root))):
+            return False
+
+        port = state.get("port")
+        try:
+            port_number = int(port) if port is not None else None
+        except (TypeError, ValueError):
+            port_number = None
+
+        if port_number is not None:
+            listeners = (
+                self._windows_listener_pids(port_number)
+                if _is_windows()
+                else self._posix_listener_pids(port_number)
+            )
+            if pid in listeners:
+                return True
+
+        command_line = self._process_command_line_by_pid(pid)
+        if not command_line:
+            return False
+
+        haystack = os.path.normcase(command_line)
+        stored = [
+            str(item).strip()
+            for item in (state.get("command") or [])
+            if str(item).strip()
+        ]
+        significant: list[str] = []
+        for item in stored:
+            if item.startswith("-"):
+                continue
+            name = Path(item).name
+            if name:
+                significant.append(os.path.normcase(name))
+
+        # El PID fue escrito por Aegis para este proyecto. Antes de matarlo
+        # exigimos que al menos un componente real de su comando siga presente,
+        # mitigando una posible reutilización del PID.
+        return any(token in haystack for token in significant)
+
+    def _terminate_recorded_target_process(self) -> list[int]:
+        state = self._read_runtime_state()
+        try:
+            pid = int(state.get("pid"))
+        except (TypeError, ValueError):
+            self._clear_runtime_state()
+            return []
+
+        if pid <= 4 or pid == os.getpid():
+            self._clear_runtime_state()
+            return []
+
+        if not self._recorded_pid_matches_target(state, pid):
+            self._clear_runtime_state()
+            return []
+
+        killed = (
+            [pid]
+            if self._terminate_pid_tree_by_id(pid)
+            else []
+        )
+        self._clear_runtime_state()
+        return killed
+
     def _target_process_markers(self) -> list[str]:
         """Marcadores específicos para reconocer procesos del proyecto."""
         markers = [str(self.root)]
@@ -904,7 +1055,10 @@ class LocalTargetProcess:
         mode = self._modo()
         stop_command = self._command_for("detener")
 
-        killed_target_pids = self._terminate_all_previous_target_processes()
+        killed_target_pids = self._terminate_recorded_target_process()
+        for pid in self._terminate_all_previous_target_processes():
+            if pid not in killed_target_pids:
+                killed_target_pids.append(pid)
         if killed_target_pids:
             self._cleanup_notes.append(
                 "Se cerraron procesos anteriores del mismo proyecto: "
@@ -1076,6 +1230,7 @@ class LocalTargetProcess:
                 command,
                 **popen_kwargs,
             )
+            self._write_runtime_state(command)
         except FileNotFoundError as exc:
             self._close_output_buffer()
             self.process = None
@@ -1096,6 +1251,7 @@ class LocalTargetProcess:
             return_code = self.process.returncode
             detail = self.runtime_output_tail()
             self.process = None
+            self._clear_runtime_state()
             self._close_output_buffer()
 
             message = (
@@ -1232,6 +1388,7 @@ class LocalTargetProcess:
             self.process = None
 
         self._close_output_buffer()
+        self._clear_runtime_state()
 
         if self._started_successfully and stop_command:
             self._run_control_command(
