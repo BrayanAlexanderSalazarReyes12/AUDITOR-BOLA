@@ -1,4 +1,4 @@
-# semantic-evidence-engine-release: v1.1.20
+# coverage-regression-fix-release: v1.1.21
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.20' \
+            'Version: 1.1.21' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-20:
-    name: Publicar Release v1.1.20
+  release-v1-1-21:
+    name: Publicar Release v1.1.21
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.20]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.21]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,11 +253,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.20
+          # Aegis Auditor v1.1.21
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.20
+          ## Novedades de v1.1.21
           - Corrige la versión de la aplicación analizada: ya no se asigna
             `1.0.0` por defecto.
           - Detecta la versión real desde package.json, pom.xml, Gradle,
@@ -341,6 +341,13 @@ jobs:
           - Pilar 2 agrega controles source_regex y auto-detección de debug explícito, cookies de sesión Secure=false, secretos con fallback y posibles bypasses de límites/cuotas sin guardia de autorización.
           - Los candidatos P1 también se descubren por semántica de autorización en el código fuente, no solo por el nombre de la ruta.
           - El JSON registra metadata_detectada.motor_evidencia con fuentes, capacidades y política de confianza del motor semántico.
+          - Se corrige una regresión de cobertura introducida al generalizar el motor semántico: Aegis vuelve a detectar más controles reales sin volver a depender de reglas específicas de Tramitia.
+          - La resolución BOLA en vivo reutiliza evidencia GET de propiedad para activar también variantes PATCH seguras cuando puede construir una prueba no destructiva.
+          - RBAC vuelve a cubrir rutas fuertemente privilegiadas de priorización/administración para identidades de menor privilegio.
+          - Agent Scope reconoce respuestas Flask mediante `get_json()` y aliases locales como `payload = response.get_json()`.
+          - La detección de secretos vuelve a reconocer defaults simbólicos como `DEFAULT_SECRET` usados como fallback de variables de entorno.
+          - La detección de bypass de límites ya no se descarta por menciones lejanas de roles; exige una guardia de autorización realmente cercana a la rama de escape.
+          - Se añaden pruebas de regresión para evitar que futuras generalizaciones reduzcan cobertura de BOLA, RBAC, Agent Scope, secretos o bypass de límites.
 
           ## Descargas
 
@@ -389,16 +396,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.20" >/dev/null 2>&1; then
-            gh release upload "v1.1.20" "${files[@]}" --clobber
-            gh release edit "v1.1.20" \
-              --title "Aegis Auditor v1.1.20" \
+          if gh release view "v1.1.21" >/dev/null 2>&1; then
+            gh release upload "v1.1.21" "${files[@]}" --clobber
+            gh release edit "v1.1.21" \
+              --title "Aegis Auditor v1.1.21" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.20" "${files[@]}" \
+            gh release create "v1.1.21" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.20" \
+              --title "Aegis Auditor v1.1.21" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
