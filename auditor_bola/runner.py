@@ -142,6 +142,11 @@ def diagnosticar(
             ],
         },
         "pilar2": [item.as_dict() for item in pilar2],
+        "pilar2_candidatos": [
+            dict(item)
+            for item in (cfg.candidatos_pilar2 or [])
+            if isinstance(item, dict)
+        ],
         "resumen": {
             "controles_configurados": configured_total,
             "controles_pilar1": p1_total,
@@ -183,11 +188,57 @@ def diagnosticar(
             "bola_confirmados": sum(item.confirmado_bola for item in bola),
             "acceso_vulnerable": sum(item.vulnerable for item in acceso),
             "agente_vulnerable": sum(item.resultado.vulnerable for item in agente),
-            "pilar2_hallazgos": sum(item.estado == "HALLAZGO" for item in pilar2),
+            "pilar2_hallazgos": sum(
+                item.estado == "HALLAZGO" for item in pilar2
+            ),
+            "pilar2_controles_ejecutados": len(pilar2),
+            "pilar2_candidatos": len(cfg.candidatos_pilar2 or []),
+            "pilar2_vulnerabilidades_confirmadas": sum(
+                item.estado == "HALLAZGO" for item in pilar2
+            ),
+            "pilar2_seguros": sum(
+                item.estado == "SIN_HALLAZGO" for item in pilar2
+            ),
+            "pilar2_por_confirmar": sum(
+                item.estado == "POR_CONFIRMAR" for item in pilar2
+            ),
+            "pilar2_no_ejecutables": sum(
+                item.estado == "NO_EJECUTABLE" for item in pilar2
+            ),
+            "pilar2_no_aplicables": sum(
+                item.estado == "NO_APLICABLE" for item in pilar2
+            ),
+            "pilar2_errores": sum(
+                item.estado == "ERROR" for item in pilar2
+            ),
             "errores": sum(item.estado == "ERROR" for item in pilar2),
         },
     }
     resultado = attach_runtime_consolidation(resultado)
+
+    p2_control_ids = {
+        item.id_control
+        for item in pilar2
+        if item.estado == "HALLAZGO"
+    }
+    p2_unique_findings = [
+        finding
+        for finding in resultado.get("hallazgos_consolidados", [])
+        if p2_control_ids.intersection(
+            set(finding.get("relacionado_con") or [])
+        )
+    ]
+    raw_p2_findings = resultado["resumen"][
+        "pilar2_vulnerabilidades_confirmadas"
+    ]
+    resultado["resumen"]["pilar2_hallazgos_unicos"] = len(
+        p2_unique_findings
+    )
+    resultado["resumen"]["pilar2_duplicados_consolidados"] = max(
+        0,
+        raw_p2_findings - len(p2_unique_findings),
+    )
+
     report("Diagnóstico Pilar 1 + Pilar 2 completado.", force=100)
     return resultado
 
@@ -342,8 +393,60 @@ def filas_gui(resultado: dict) -> list[dict]:
                 "causa_raiz": item.get("causa_raiz"),
                 "evidencia": item.get("evidencia") or [],
                 "recomendacion": item.get("recomendacion"),
+                "estado_control": item.get("estado_control"),
+                "fingerprint": item.get("fingerprint"),
+                "componente": item.get("componente"),
+                "autogenerado": item.get("autogenerado", False),
+                "estrategia_correccion": (
+                    item.get("estrategia_correccion") or {}
+                ),
+                "verificacion": item.get("verificacion") or {},
                 "metodo": item.get("metodo"),
                 "ruta": item.get("ruta"),
+            }
+        )
+
+    # Los candidatos forman parte de la trazabilidad del Pilar 2, pero nunca
+    # se muestran como vulnerabilidades confirmadas hasta que una prueba los
+    # promueva a HALLAZGO.
+    for item in resultado.get("pilar2_candidatos", []):
+        candidate_state = str(item.get("estado") or "candidato")
+        display_state = (
+            "POR_CONFIRMAR"
+            if candidate_state in {
+                "por_confirmar",
+                "prueba_preparada",
+            }
+            else "OBSERVADO"
+        )
+        filas.append(
+            {
+                "pilar": "P2",
+                "id": item.get("candidate_id") or "P2-CANDIDATE",
+                "control": (
+                    item.get("motivo")
+                    or f"Candidato {item.get('familia') or 'P2'}"
+                ),
+                "cuenta": "-",
+                "estado": display_state,
+                "detalle": (
+                    f"familia={item.get('familia') or 'GENERIC'} · "
+                    f"confianza={item.get('confianza') or 'baja'} · "
+                    f"causa={item.get('causa_raiz') or 'por determinar'}"
+                ),
+                "tipo_control": "candidato_pilar2",
+                "familia": item.get("familia"),
+                "confianza": item.get("confianza"),
+                "causa_raiz": item.get("causa_raiz"),
+                "fingerprint": item.get("fingerprint"),
+                "evidencia": item.get("evidencia") or [],
+                "autogenerado": item.get("autogenerado", True),
+                "metodo": None,
+                "ruta": (
+                    (item.get("endpoints") or [None])[0]
+                    if isinstance(item.get("endpoints"), list)
+                    else None
+                ),
             }
         )
 
