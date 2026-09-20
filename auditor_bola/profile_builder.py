@@ -1409,6 +1409,89 @@ def _detect_compose_published_port(path: Path) -> int | None:
     return None
 
 
+def _detect_project_http_base_url(root: Path) -> str | None:
+    """Busca una URL local explícita fuera de Docker.
+
+    Se usa como evidencia para el runtime nativo cuando el launcher no tiene
+    un port=N literal. Priorizamos launchers/configuración y luego
+    documentación operativa. No se toma el mapeo de Docker como autoridad.
+    """
+    preferred_names = (
+        "run.py",
+        ".env",
+        ".env.local",
+        ".env.development",
+        "config.py",
+        "settings.py",
+        "application.properties",
+        "application.yml",
+        "application.yaml",
+        "README.md",
+        "README.txt",
+    )
+    candidates: list[tuple[int, str]] = []
+    seen: set[str] = set()
+
+    def scan(path: Path, score: int) -> None:
+        try:
+            relative = path.relative_to(root).as_posix()
+        except ValueError:
+            relative = path.as_posix()
+        if relative in seen:
+            return
+        seen.add(relative)
+        text = _read_text(path, limit=MAX_TEXT_SCAN_BYTES)
+        if not text:
+            return
+
+        for match in re.finditer(
+            r"https?://(?:127\.0\.0\.1|localhost|0\.0\.0\.0)"
+            r"(?::(\d{2,5}))?",
+            text,
+            re.I,
+        ):
+            port = match.group(1)
+            url = (
+                f"http://127.0.0.1:{port}"
+                if port
+                else "http://127.0.0.1"
+            )
+            candidates.append((score, url))
+
+        for match in re.finditer(
+            r"(?im)^\s*(?:PORT|APP_PORT|HTTP_PORT|SERVER_PORT)"
+            r"\s*[=:]\s*["']?(\d{2,5})["']?\s*$",
+            text,
+        ):
+            port = int(match.group(1))
+            if 1 <= port <= 65535:
+                candidates.append(
+                    (score - 2, f"http://127.0.0.1:{port}")
+                )
+
+    for name in preferred_names:
+        path = root / name
+        if path.is_file():
+            scan(path, 100 if name == "run.py" else 90)
+
+    for path, relative in _iter_source_files(root, max_files=1500):
+        if relative.as_posix() in seen:
+            continue
+        lower = relative.as_posix().lower()
+        if (
+            lower.startswith("docs/")
+            or "operacion" in lower
+            or "operation" in lower
+            or path.suffix.lower() in {".env", ".ini", ".cfg", ".conf"}
+        ):
+            scan(path, 70)
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1]
+
+
 def _detect_python_run_port(path: Path) -> int | None:
     """Detecta app.run(... port=N) en launchers Flask sencillos."""
     text = _read_text(path)
@@ -1556,6 +1639,10 @@ def _detect_native_runtime(
                 base["base_url"] = (
                     f"http://127.0.0.1:{explicit_port}"
                 )
+            else:
+                detected_url = _detect_project_http_base_url(root)
+                if detected_url:
+                    base["base_url"] = detected_url
         elif (root / "manage.py").exists():
             base["comando_inicio"] = [
                 "python",
@@ -1895,6 +1982,18 @@ def _account_from_mapping(
         None,
     )
     if not username:
+        return None
+
+    # Evita falsos positivos extraídos de prosa/código como "usuario,".
+    # Los usernames reales pueden incluir letras, números, punto, guion,
+    # guion bajo, @ y +, pero no deben terminar en puntuación de frase.
+    if (
+        len(username) > 160
+        or not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._@+\-]{0,159}",
+            username,
+        )
+    ):
         return None
 
     password = next(
