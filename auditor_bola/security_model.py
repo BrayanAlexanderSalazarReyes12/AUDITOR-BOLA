@@ -127,7 +127,7 @@ DEFAULT_FAMILIES = FamilyRegistry(
         ),
         FamilyDefinition(
             "LIMIT_BYPASS",
-            "P1",
+            "P2",
             "Bypass de límites u opciones excepcionales",
             ("parametro_o_rama", "limite", "identidad", "autorizacion"),
             "Comparar operación normal, opción especial con bajo privilegio y "
@@ -267,15 +267,22 @@ def _family_from_control(raw: dict[str, Any]) -> str:
         return "AGENT_SCOPE"
     if "CORS" in control_id or tipo.startswith("cors"):
         return "CORS"
-    if "SECRET" in control_id:
+    if "SECRET" in control_id or tipo == "secret_fallback":
         return "SECRET"
-    if "DOCKER" in control_id or tipo == "docker_non_root":
+    if (
+        "DOCKER" in control_id
+        or tipo in {"docker_non_root", "container_security"}
+    ):
         return "CONTAINER"
     if "DEBUG" in control_id:
         return "DEBUG"
     if "COOKIE" in control_id or "SESSION" in control_id:
         return "SESSION"
-    if "BYPASS" in control_id or "LIMIT" in control_id:
+    if (
+        "BYPASS" in control_id
+        or "LIMIT" in control_id
+        or tipo == "limit_differential"
+    ):
         return "LIMIT_BYPASS"
     return "GENERIC"
 
@@ -410,10 +417,19 @@ def _group_key(item: dict[str, Any]) -> tuple[str, ...]:
     resource = str(item.get("recurso") or "")
     component = str(item.get("componente") or "")
     root = str(item.get("causa_raiz") or _root_cause(family))
+    fingerprint = str(item.get("fingerprint") or "").strip()
 
-    # Configuraciones globales como CORS deben consolidarse aunque hayan sido
-    # probadas contra varias rutas.
-    if family == "CORS":
+    # Cuando el detector conoce la causa raíz con suficiente contexto, su
+    # fingerprint semántico gobierna la consolidación. No depende del ID del
+    # control y permite que varias pruebas terminen en un único hallazgo.
+    if fingerprint:
+        endpoint = ""
+        method = ""
+        resource = ""
+        component = f"fingerprint:{fingerprint}"
+    # CORS suele ser configuración global del servicio: diferentes endpoints
+    # son evidencias de la misma política mientras compartan componente/causa.
+    elif family == "CORS":
         endpoint = ""
         method = ""
         resource = ""
@@ -478,6 +494,10 @@ def consolidate_hypotheses(items: Iterable[dict[str, Any]]) -> list[dict[str, An
                 "causa_raiz": item.get("causa_raiz") or _root_cause(family),
                 "severidad": item.get("severidad"),
                 "recomendacion": item.get("recomendacion"),
+                "fingerprint": item.get("fingerprint"),
+                "estrategia_correccion": item.get("estrategia_correccion") or {},
+                "verificacion": item.get("verificacion") or {},
+                "estado_control": item.get("estado_control"),
                 "evidencias": [],
                 "casos_prueba": [],
                 "relacionado_con": [],
@@ -494,6 +514,17 @@ def consolidate_hypotheses(items: Iterable[dict[str, Any]]) -> list[dict[str, An
             group["severidad"] = item.get("severidad")
         if not group.get("recomendacion") and item.get("recomendacion"):
             group["recomendacion"] = item.get("recomendacion")
+        if not group.get("fingerprint") and item.get("fingerprint"):
+            group["fingerprint"] = item.get("fingerprint")
+        if (
+            not group.get("estrategia_correccion")
+            and item.get("estrategia_correccion")
+        ):
+            group["estrategia_correccion"] = item.get("estrategia_correccion")
+        if not group.get("verificacion") and item.get("verificacion"):
+            group["verificacion"] = item.get("verificacion")
+        if not group.get("estado_control") and item.get("estado_control"):
+            group["estado_control"] = item.get("estado_control")
 
         for evidence in item.get("evidencia") or []:
             if evidence not in group["evidencias"]:
@@ -502,6 +533,9 @@ def consolidate_hypotheses(items: Iterable[dict[str, Any]]) -> list[dict[str, An
         case = item.get("caso_prueba")
         if case and case not in group["casos_prueba"]:
             group["casos_prueba"].append(case)
+        for extra_case in item.get("casos_prueba") or []:
+            if extra_case not in group["casos_prueba"]:
+                group["casos_prueba"].append(extra_case)
 
         control_id = item.get("id_control")
         if control_id and control_id not in group["relacionado_con"]:
@@ -761,8 +795,8 @@ def enrich_profile(profile: dict[str, Any]) -> dict[str, Any]:
     engine = dict(metadata.get("motor_evidencia") or {})
     engine.update(
         {
-            "version": 3,
-            "modo": "evidencia-correlacionada-iterativa",
+            "version": 4,
+            "modo": "descubrimiento-correlacion-prueba-evidencia",
             "separa_hallazgo_evidencia_caso": True,
             "deduplicacion_semantica": True,
             "ids_hallazgo_dinamicos": True,
@@ -777,6 +811,11 @@ def enrich_profile(profile: dict[str, Any]) -> dict[str, Any]:
                 "actualizar_modelo",
                 "generar_pruebas_adicionales",
                 "consolidar",
+                "generar_correccion_contextual",
+                "aplicar",
+                "reprobar",
+                "regresion",
+                "aprender_receta",
             ],
         }
     )
@@ -806,6 +845,11 @@ def _runtime_item(
     severity: str | None = None,
     recommendation: str | None = None,
     root_cause: str | None = None,
+    fingerprint: str | None = None,
+    remediation_strategy: dict[str, Any] | None = None,
+    verification: dict[str, Any] | None = None,
+    test_cases: list[dict[str, Any]] | None = None,
+    control_state: str | None = None,
 ) -> dict[str, Any]:
     return {
         "familia": family,
@@ -826,7 +870,12 @@ def _runtime_item(
         "causa_raiz": root_cause or _root_cause(family),
         "severidad": severity,
         "recomendacion": recommendation,
+        "fingerprint": fingerprint,
+        "estrategia_correccion": dict(remediation_strategy or {}),
+        "verificacion": dict(verification or {}),
+        "estado_control": control_state,
         "evidencia": [{"tipo": "runtime", **evidence}],
+        "casos_prueba": list(test_cases or []),
         "caso_prueba": {
             "id_control": control_id,
             "familia": family,
@@ -957,6 +1006,8 @@ def consolidate_runtime_results(result: dict[str, Any]) -> list[dict[str, Any]]:
 
     for raw in result.get("pilar2") or []:
         if str(raw.get("estado") or "").upper() != "HALLAZGO":
+            # Los candidatos/por-confirmar se conservan en Pilar 2 pero no se
+            # promueven a vulnerabilidad consolidada sin evidencia suficiente.
             continue
         family = _family_from_control(raw)
         structured_evidence = raw.get("evidencia") or []
@@ -970,16 +1021,27 @@ def consolidate_runtime_results(result: dict[str, Any]) -> list[dict[str, Any]]:
                 account=raw.get("cuenta"),
                 role=None,
                 detail=raw.get("detalle") or raw.get("nombre"),
-                component=raw.get("archivo"),
+                component=raw.get("componente") or raw.get("archivo"),
                 confidence=raw.get("confianza"),
                 severity=raw.get("severidad"),
                 recommendation=raw.get("recomendacion"),
                 root_cause=raw.get("causa_raiz"),
+                fingerprint=raw.get("fingerprint"),
+                remediation_strategy=raw.get("estrategia_correccion"),
+                verification=raw.get("verificacion"),
+                test_cases=raw.get("casos_prueba") or [],
+                control_state=raw.get("estado_control"),
                 evidence={
                     "tipo_control": raw.get("tipo"),
                     "detalle": raw.get("detalle"),
                     "severidad": raw.get("severidad"),
                     "confianza": raw.get("confianza"),
+                    "fingerprint": raw.get("fingerprint"),
+                    "archivos_fuente": raw.get("archivos_fuente") or [],
+                    "endpoints_afectados": raw.get("endpoints_afectados") or [],
+                    "configuracion_detectada": raw.get(
+                        "configuracion_detectada"
+                    ) or {},
                     "evidencia_estructurada": structured_evidence,
                 },
             )

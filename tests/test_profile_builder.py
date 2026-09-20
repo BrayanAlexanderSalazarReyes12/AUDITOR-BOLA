@@ -959,17 +959,21 @@ def test_autoperfil_infiere_controles_p2_de_alta_confianza(tmp_path):
     )
 
     profile = build_profile_draft(detect_project(tmp_path))
-    checks = {
-        item["id_control"]: item
-        for item in profile["chequeos_pilar2"]
+    checks = profile["chequeos_pilar2"]
+    by_family = {
+        item["familia"]: item
+        for item in checks
     }
 
-    assert "P2-AUTO-CORS-001" in checks
-    assert checks["P2-AUTO-CORS-001"]["ruta"] == "/health"
-    assert "P2-AUTO-SECRET-001" in checks
-    assert checks["P2-AUTO-SECRET-001"]["archivo"] == "app.py"
-    assert "P2-AUTO-DOCKER-001" in checks
+    assert by_family["CORS"]["ruta"] == "/health"
+    assert by_family["CORS"]["autogenerado"] is True
+    assert by_family["SECRET"]["archivo"] == "app.py"
+    assert by_family["SECRET"]["confianza"] == "media-alta"
+    assert by_family["CONTAINER"]["tipo"] == "container_security"
     assert profile["metadata_detectada"]["total_controles_activos"] == 3
+    assert profile["metadata_detectada"]["descubrimiento_pilar2"][
+        "version_motor"
+    ] == 4
 
 
 
@@ -1330,17 +1334,19 @@ def test_autoperfil_infiere_debug_cookie_y_bypass_genericos(tmp_path):
     )
 
     profile = build_profile_draft(detect_project(tmp_path))
-    ids = {
-        item["id_control"]
+    families = {
+        item.get("familia")
         for item in profile["chequeos_pilar2"]
     }
+    candidate_families = {
+        item.get("familia")
+        for item in profile["candidatos_pilar2"]
+    }
 
-    assert "P2-AUTO-DEBUG-001" in ids
-    assert "P2-AUTO-COOKIE-001" in ids
-    assert any(
-        item.startswith("P2-AUTO-BYPASS-")
-        for item in ids
-    )
+    assert "DEBUG" in families
+    assert "SESSION" in families
+    assert "LIMIT_BYPASS" in candidate_families
+    assert "LIMIT_BYPASS" not in families
 
 
 def test_autoperfil_no_marca_bypass_si_hay_guardia_de_permiso(tmp_path):
@@ -1359,14 +1365,28 @@ def test_autoperfil_no_marca_bypass_si_hay_guardia_de_permiso(tmp_path):
     )
 
     profile = build_profile_draft(detect_project(tmp_path))
-    ids = {
-        item["id_control"]
+    active_limit_checks = [
+        item
         for item in profile["chequeos_pilar2"]
-    }
+        if item.get("familia") == "LIMIT_BYPASS"
+    ]
+    limit_candidates = [
+        item
+        for item in profile["candidatos_pilar2"]
+        if item.get("familia") == "LIMIT_BYPASS"
+    ]
 
-    assert not any(
-        item.startswith("P2-AUTO-BYPASS-")
-        for item in ids
+    # La rama especial se conserva como evidencia de baja confianza, pero la
+    # guardia de rol impide convertirla en control/hallazgo activo.
+    assert not active_limit_checks
+    assert limit_candidates
+    assert all(
+        item["confianza"] == "baja"
+        for item in limit_candidates
+    )
+    assert all(
+        item["evidencia"][0]["guardia_autorizacion_cercana"] is True
+        for item in limit_candidates
     )
 
 
@@ -1502,12 +1522,14 @@ def test_autoperfil_detecta_secret_con_constante_default_simbolica(
     )
 
     profile = build_profile_draft(detect_project(tmp_path))
-    ids = {
-        item["id_control"]
+    secret_checks = [
+        item
         for item in profile["chequeos_pilar2"]
-    }
+        if item.get("familia") == "SECRET"
+    ]
 
-    assert "P2-AUTO-SECRET-001" in ids
+    assert secret_checks
+    assert secret_checks[0]["archivo"] == "app.py"
 
 
 def test_autoperfil_bypass_no_se_suprime_por_rol_lejano(
@@ -1534,12 +1556,11 @@ def test_autoperfil_bypass_no_se_suprime_por_rol_lejano(
     )
 
     profile = build_profile_draft(detect_project(tmp_path))
-    ids = {
-        item["id_control"]
-        for item in profile["chequeos_pilar2"]
-    }
+    limit_candidates = [
+        item
+        for item in profile["candidatos_pilar2"]
+        if item.get("familia") == "LIMIT_BYPASS"
+    ]
 
-    assert any(
-        item.startswith("P2-AUTO-BYPASS-")
-        for item in ids
-    )
+    assert limit_candidates
+    assert limit_candidates[0]["estado"] == "por_confirmar"

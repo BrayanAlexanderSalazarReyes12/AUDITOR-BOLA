@@ -234,3 +234,35 @@ def test_fallback_verificado_siempre_puede_guardarse(tmp_path):
     serializado = json.dumps(data, ensure_ascii=False)
     assert '"buscar"' not in serializado
     assert '"reemplazar"' not in serializado
+
+
+def test_p2_auto_aprende_receta_por_familia_y_no_por_parche_literal(tmp_path):
+    root = tmp_path / "conocimiento"
+    knowledge = crear_conocimiento_respaldo_verificado(
+        control_id="P2-AUTO-CORS-A1B2C3D4-01",
+        descripcion="Origin externo reflejado con credenciales",
+        tipo_control="cors_policy",
+        extension=".java",
+    )
+
+    assert knowledge.familia_control == "P2-CORS"
+    strategy = " ".join(knowledge.estrategia_general).lower()
+    assert "allowlist" in strategy
+    assert "middleware" in strategy or "cors" in strategy
+
+    path = guardar_conocimiento(
+        knowledge,
+        caso_exitoso={
+            "familia": "CORS",
+            "extension": ".java",
+            "verificacion": "origin externo rechazado",
+        },
+        root=root,
+    )
+    data = json.loads(path.read_text(encoding="utf-8"))
+    serialized = json.dumps(data, ensure_ascii=False).lower()
+
+    assert data["familia_control"] == "P2-CORS"
+    assert "operaciones" not in data
+    assert "replace_exact" not in serialized
+    assert "/api/" not in serialized

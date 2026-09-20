@@ -74,6 +74,13 @@ class ChequeoAcceso:
 
 @dataclass
 class ChequeoPilar2:
+    """Caso de prueba ejecutable del Pilar 2.
+
+    Un control es una prueba, no una vulnerabilidad. Los campos semánticos
+    permiten relacionar varios controles con un único hallazgo por causa raíz
+    sin depender de IDs históricos ni de una aplicación concreta.
+    """
+
     id_control: str
     nombre: str
     tipo: str
@@ -91,6 +98,17 @@ class ChequeoPilar2:
     patron_seguro: str | None = None
     archivos_fuente: list[str] = field(default_factory=list)
     pistas_codigo: list[str] = field(default_factory=list)
+    familia: str | None = None
+    autogenerado: bool = False
+    confianza: str | None = None
+    causa_raiz: str | None = None
+    fingerprint: str | None = None
+    componente: str | None = None
+    parametro: str | None = None
+    entorno: str | None = None
+    metadata: dict = field(default_factory=dict)
+    estrategia_correccion: dict = field(default_factory=dict)
+    verificacion: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -176,6 +194,9 @@ class ConfigObjetivo:
     # observaciones dinámicas en hallazgos cuando existe una expectativa de
     # seguridad inferible (por ejemplo RBAC de bajo privilegio).
     candidatos_pilar1: list[dict] = field(default_factory=list)
+    # Hipótesis P2 que todavía no tienen evidencia suficiente para convertirse
+    # en vulnerabilidades confirmadas. Se conservan para pruebas posteriores.
+    candidatos_pilar2: list[dict] = field(default_factory=list)
 
     def cuenta_por_username(self, username: str) -> Cuenta | None:
         for cuenta in self.cuentas:
@@ -540,6 +561,20 @@ def cargar_config(path: str | Path) -> ConfigObjetivo:
                     )
                     else {}
                 ).get("candidatos_pilar1", [])
+            )
+            if isinstance(item, dict)
+        ],
+        candidatos_pilar2=[
+            dict(item)
+            for item in (
+                datos.get("candidatos_pilar2")
+                or (
+                    datos.get("metadata_detectada", {})
+                    if isinstance(
+                        datos.get("metadata_detectada"), dict
+                    )
+                    else {}
+                ).get("candidatos_pilar2", [])
             )
             if isinstance(item, dict)
         ],

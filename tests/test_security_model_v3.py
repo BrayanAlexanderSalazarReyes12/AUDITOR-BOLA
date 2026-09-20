@@ -28,7 +28,7 @@ def test_perfil_explica_controles_y_separa_hallazgo_de_casos(tmp_path):
     assert "familias_controles" in profile
     assert "controles_explicados" in profile
     assert "hallazgos_modelados" in profile
-    assert profile["metadata_detectada"]["motor_evidencia"]["version"] == 3
+    assert profile["metadata_detectada"]["motor_evidencia"]["version"] == 4
     assert profile["metadata_detectada"]["motor_evidencia"][
         "deduplicacion_semantica"
     ] is True
