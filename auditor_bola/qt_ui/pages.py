@@ -879,7 +879,7 @@ class AIPage(QWidget):
         self.provider_label = QLabel("IA: comprobando…")
         self.provider_label.setObjectName("Muted")
 
-        choose = QPushButton("Elegir archivo")
+        choose = QPushButton("Cambiar archivo")
         choose.clicked.connect(self._choose_source)
         generate = PrimaryButton("Generar 3 recetas")
         generate.clicked.connect(self._generate)
@@ -944,9 +944,43 @@ class AIPage(QWidget):
 
     def set_target(self, row: dict):
         self.target_row = dict(row)
+        self.source_path = None
+        self.proposals = []
+        self.list.clear()
+        self.detail.clear()
         self.control_label.setText(
             f"{row.get('id')} · {row.get('control')}"
         )
+
+        resolution = self.controller.resolve_ai_source(row)
+        resolved = resolution.get("path")
+        if resolved:
+            self.source_path = Path(str(resolved))
+            recipe_state = (
+                "receta existente"
+                if resolution.get("tiene_receta")
+                else "sin receta local; listo para buscar con IA"
+            )
+            self.source_label.setText(
+                "Archivo cargado automáticamente: "
+                f"{resolution.get('archivo')} · "
+                f"{recipe_state} · "
+                f"confianza {resolution.get('confianza')} · "
+                f"{resolution.get('origen')}"
+            )
+        else:
+            candidates = resolution.get("candidatos") or []
+            hint = ""
+            if candidates:
+                hint = (
+                    " · candidato: "
+                    f"{candidates[0].get('archivo')}"
+                )
+            self.source_label.setText(
+                "Archivo: no localizado automáticamente"
+                + hint
+                + " · usa Cambiar archivo"
+            )
 
     def _choose_source(self):
         initial = (
@@ -964,11 +998,15 @@ class AIPage(QWidget):
             self.source_label.setText(f"Archivo: {selected}")
 
     def _generate(self):
-        if self.target_row and self.source_path:
-            self.controller.generate_ai(
-                self.target_row,
-                self.source_path,
-            )
+        if not self.target_row:
+            return
+        # Si el archivo ya fue resuelto al seleccionar el hallazgo se envía
+        # directamente. Si no, el controlador vuelve a intentar resolverlo y
+        # solo entonces solicita selección manual.
+        self.controller.generate_ai(
+            self.target_row,
+            self.source_path,
+        )
 
     def set_proposals(self, proposals: list[dict]) -> None:
         self.proposals = list(proposals)
@@ -1528,4 +1566,3 @@ class SettingsPage(QWidget):
             "La API key de cada perfil se guarda localmente y nunca se "
             "muestra en pantalla ni se incorpora a evidencias o releases."
         )
-
