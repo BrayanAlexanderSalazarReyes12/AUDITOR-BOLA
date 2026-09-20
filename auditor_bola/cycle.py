@@ -351,6 +351,15 @@ def ciclo_correctivo(
         "estrategia": estrategia,
         "hipotesis": hipotesis,
         "rollback": False,
+        "reinicio_servicio": {
+            "requerido": None,
+            "intentado": False,
+            "exitoso": False,
+        },
+        "reescaneo_seguridad": {
+            "ejecutado": False,
+            "estado": None,
+        },
         "evidencia": str(evidence.root),
     }
 
@@ -378,6 +387,9 @@ def ciclo_correctivo(
 
     correccion: CorrectionResult | None = None
     receta = cfg.correccion_por_control(control_id)
+    manifest["reinicio_servicio"]["requerido"] = bool(
+        receta and receta.requiere_reinicio
+    )
 
     try:
         correccion = apply_correction(cfg, control_id, target_root, evidence)
@@ -480,12 +492,23 @@ def ciclo_correctivo(
             return manifest
 
         if reiniciar:
+            manifest["reinicio_servicio"]["intentado"] = True
             reiniciar()
+            manifest["reinicio_servicio"]["exitoso"] = True
+            evidence.write_json(
+                "verification/restart.json",
+                manifest["reinicio_servicio"],
+            )
 
+        # Reescaneo inmediato del mismo hallazgo después de que el proceso
+        # ejecuta el código ya parchado. Esta verificación tiene prioridad
+        # sobre la suite funcional del proyecto.
         verificacion = diagnosticar(cfg, target_root)
+        manifest["reescaneo_seguridad"]["ejecutado"] = True
         evidence.write_json("verification/resultados.json", verificacion)
         estado_despues = estado_control(verificacion, control_id, selector)
         estado_global_despues = estado_control(verificacion, control_id)
+        manifest["reescaneo_seguridad"]["estado"] = estado_despues
         regresiones = regresiones_control(
             baseline,
             verificacion,
