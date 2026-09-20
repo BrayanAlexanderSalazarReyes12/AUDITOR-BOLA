@@ -1,4 +1,4 @@
-# matrix-policy-evaluation-release: v1.2.0
+# matrix-policy-evaluation-release: v1.2.1
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.2.0' \
+            'Version: 1.2.1' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-2-0:
-    name: Publicar Release v1.2.0
+  release-v1-2-1:
+    name: Publicar Release v1.2.1
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.0]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.1]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,7 +253,7 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.2.0
+          # Aegis Auditor v1.2.1
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
@@ -267,11 +267,11 @@ jobs:
           - IDs semánticos y estables generados dinámicamente; no dependen de IDs históricos de otros proyectos.
           - Deduplicación por familia, endpoint/componente, recurso y causa raíz para evitar contar varias pruebas como vulnerabilidades distintas.
           - Matriz **endpoint × identidad** enriquecida con forma de respuesta JSON, conteo de objetos, IDs observados y firma semántica.
-          - Las diferencias entre respuestas de usuarios se conservan como evidencia y no se convierten por sí solas en vulnerabilidad.
+          - Las diferencias entre respuestas de usuarios se conservan como evidencia; cuando la matriz determina `vulnerable=true`, el resultado se promueve y consolida como **HALLAZGO**.
           - POST/PUT/PATCH solo se ejecutan cuando existe un payload de prueba seguro derivado de evidencia; de lo contrario quedan como **NO_EJECUTABLE**.
           - DELETE continúa protegido para evitar acciones destructivas durante el barrido automático.
           - Mejor correlación de propiedad de objetos mediante aliases de identidad como `user_id`, `account_id`, `cliente_id` y equivalentes.
-          - Consolidación runtime de hallazgos únicos manteniendo todos los casos de prueba relacionados.
+          - Consolidación runtime de hallazgos únicos manteniendo todos los casos de prueba relacionados.\n          - Pilar 2 enriquecido con familia, severidad, confianza, causa raíz, evidencia estructurada, archivo/línea cuando aplica y recomendación de corrección.\n          - Los hallazgos vulnerables descubiertos por la matriz endpoint × identidad se contabilizan como hallazgos P1 y reciben IDs semánticos estables cuando no existe un control previo.
           - Se conserva la detección real de versiones, runtimes locales/Docker, documentación, cuentas, endpoints, recetas verificables y fallbacks de ejecución.
           - Validación automatizada en Python 3.11 y 3.12, Qt y CustomTkinter.
 
@@ -321,16 +321,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.2.0" >/dev/null 2>&1; then
-            gh release upload "v1.2.0" "${files[@]}" --clobber
-            gh release edit "v1.2.0" \
-              --title "Aegis Auditor v1.2.0" \
+          if gh release view "v1.2.1" >/dev/null 2>&1; then
+            gh release upload "v1.2.1" "${files[@]}" --clobber
+            gh release edit "v1.2.1" \
+              --title "Aegis Auditor v1.2.1" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.2.0" "${files[@]}" \
+            gh release create "v1.2.1" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.2.0" \
+              --title "Aegis Auditor v1.2.1" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
