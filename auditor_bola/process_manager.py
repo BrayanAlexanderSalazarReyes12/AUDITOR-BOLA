@@ -11,7 +11,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Callable
 
 from .config import RuntimeConfig
 
@@ -44,6 +44,12 @@ class LocalTargetProcess:
         self._runtime_selected = False
         self._started_successfully = False
         self._selection_notes: list[str] = []
+        self._progress_callback: Callable[[int, str], None] | None = None
+
+    def _emit_progress(self, value: int, message: str) -> None:
+        callback = self._progress_callback
+        if callback is not None:
+            callback(max(0, min(100, int(value))), message)
 
     def _modo(self) -> str:
         return self._runtime_mode(self.runtime)
@@ -213,6 +219,7 @@ class LocalTargetProcess:
                 )
 
     def _select_runtime_if_needed(self) -> None:
+        self._emit_progress(10, "Evaluando estrategias de arranque disponibles…")
         if self._runtime_selected:
             return
 
@@ -249,6 +256,11 @@ class LocalTargetProcess:
 
             self.runtime = candidate
             self._runtime_selected = True
+            self._emit_progress(
+                20,
+                "Runtime seleccionado: "
+                f"{self._runtime_label(candidate)}",
+            )
             self._selection_notes = problems
             return
 
@@ -522,21 +534,29 @@ class LocalTargetProcess:
 
     def _prepare_if_needed(self) -> None:
         if not self.runtime.preparar_automaticamente or self._prepared:
+            self._emit_progress(35, "Dependencias listas.")
             return
 
         commands = self._preparation_commands()
         if not commands:
             self._prepared = True
+            self._emit_progress(35, "No se requiere preparación adicional.")
             return
 
         total = len(commands)
         for index, command in enumerate(commands, start=1):
+            command_text = " ".join(str(item) for item in command)
+            self._emit_progress(
+                25 + int(((index - 1) / max(1, total)) * 30),
+                f"Preparando dependencias ({index}/{total}): {command_text}",
+            )
             self._run_control_command(
                 command,
                 action_name=f"preparar ({index}/{total})",
             )
 
         self._prepared = True
+        self._emit_progress(55, "Preparación del proyecto completada.")
 
     def _reset_output_buffer(self) -> None:
         self._close_output_buffer()
@@ -565,8 +585,14 @@ class LocalTargetProcess:
 
         return raw.decode("utf-8", errors="replace").strip()
 
-    def start(self) -> dict[str, object]:
+    def start(
+        self,
+        progress_callback: Callable[[int, str], None] | None = None,
+    ) -> dict[str, object]:
+        self._progress_callback = progress_callback
+        self._emit_progress(5, "Iniciando aplicación objetivo…")
         if self.is_running():
+            self._emit_progress(100, "La aplicación objetivo ya está en ejecución.")
             return self.runtime_status()
 
         self._select_runtime_if_needed()
@@ -590,13 +616,16 @@ class LocalTargetProcess:
             )
 
         if mode == "service":
+            self._emit_progress(65, "Iniciando servicio objetivo…")
             self._run_control_command(
                 start_command,
                 action_name="iniciar",
             )
             self._service_running = True
             self._started_successfully = True
+            self._emit_progress(85, "Esperando estabilización del servicio…")
             time.sleep(self.runtime.espera_inicio)
+            self._emit_progress(100, "Aplicación objetivo iniciada.")
             return self.runtime_status()
 
         cwd, env = self._context()
@@ -606,6 +635,7 @@ class LocalTargetProcess:
             raw=start_command,
         )
 
+        self._emit_progress(65, "Lanzando proceso de la aplicación…")
         self._reset_output_buffer()
 
         try:
@@ -642,6 +672,7 @@ class LocalTargetProcess:
                 command[0],
             ) from exc
 
+        self._emit_progress(85, "Esperando que la aplicación quede estable…")
         time.sleep(self.runtime.espera_inicio)
 
         if self.process.poll() is not None:
@@ -664,6 +695,7 @@ class LocalTargetProcess:
             raise RuntimeError(message)
 
         self._started_successfully = True
+        self._emit_progress(100, "Aplicación objetivo iniciada.")
         return self.runtime_status()
 
     def _terminate_process_tree(self) -> None:
