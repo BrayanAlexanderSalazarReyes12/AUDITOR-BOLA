@@ -55,7 +55,8 @@ def test_detecta_flask_y_runtime_python(tmp_path):
 
     assert "python" in detection.languages
     assert "flask" in detection.frameworks
-    assert profile["base_url"] == "http://127.0.0.1:5000"
+    assert profile["base_url"] == ""
+    assert profile["runtime"]["base_url"] == ""
     assert profile["runtime"]["comando_inicio"] == ["python", "run.py"]
     assert any(
         item["ruta"] == "/health"
@@ -803,3 +804,24 @@ def test_perfil_json_expone_plan_de_ejecucion_local(tmp_path):
         "python",
         "run.py",
     ]
+
+
+
+def test_flask_run_py_sin_puerto_no_inventa_5000(tmp_path):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "run.py").write_text(
+        "from app import app\n"
+        "from config import PORT\n"
+        "app.run(port=PORT)\n",
+        encoding="utf-8",
+    )
+
+    runtime, base_url = detect_runtime_profile(tmp_path)
+
+    assert runtime["nombre"] == "Python"
+    assert runtime["comando_inicio"] == ["python", "run.py"]
+    assert runtime["base_url"] == ""
+    assert base_url == ""
