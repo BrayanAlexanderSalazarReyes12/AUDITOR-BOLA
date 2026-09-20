@@ -796,3 +796,91 @@ def test_validacion_local_rechaza_python_invalido():
         "Python inválido" in error
         for error in proposals[0].errores_validacion
     )
+
+
+
+def test_presupuesto_lab_coder_no_supera_ventana_contexto():
+    system_prompt = "s" * 3000
+    user_content = "x" * 33000
+
+    max_tokens = ai._max_tokens_seguro(
+        system_prompt,
+        user_content,
+        requested=8192,
+    )
+
+    estimated_input = (
+        ai._estimate_tokens(system_prompt)
+        + ai._estimate_tokens(user_content)
+    )
+    assert max_tokens <= ai.DEFAULT_MAX_OUTPUT_TOKENS
+    assert (
+        estimated_input
+        + max_tokens
+        + ai.TOKEN_SAFETY_MARGIN
+        <= ai.LLMLAB_CONTEXT_WINDOW
+    )
+
+
+def test_context_window_400_reintenta_con_menos_contexto(monkeypatch):
+    provider = ai.AIProviderConfig(
+        provider_id="llmlab",
+        provider_name="Laboratorio UTB",
+        model_id="lab-coder",
+        model_name="lab-coder",
+        base_url="https://lab.example/v1",
+        api_key="x",
+        config_path="test",
+    )
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, status_code, payload=None, text=""):
+            self.status_code = status_code
+            self._payload = payload or {}
+            self.text = text
+
+        def json(self):
+            return self._payload
+
+    def fake_post(url, headers, json, timeout):
+        calls.append(json)
+        if len(calls) == 1:
+            return FakeResponse(
+                400,
+                text=(
+                    "ContextWindowExceededError: maximum context length "
+                    "is 20480 tokens; input_tokens=12289"
+                ),
+            )
+        return FakeResponse(
+            200,
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"ok": true}'
+                        }
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(ai.requests, "post", fake_post)
+
+    data = ai._post_chat_json(
+        provider,
+        system_prompt="diagnostico",
+        user_content="x" * 45000,
+        temperature=0.1,
+        timeout=20,
+    )
+
+    assert data == {"ok": True}
+    assert len(calls) == 2
+    assert calls[0]["max_tokens"] <= 4096
+    assert calls[1]["max_tokens"] <= 2048
+    assert (
+        len(calls[1]["messages"][1]["content"])
+        < len(calls[0]["messages"][1]["content"])
+    )
