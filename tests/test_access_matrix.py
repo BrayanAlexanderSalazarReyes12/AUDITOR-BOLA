@@ -346,3 +346,42 @@ def test_matriz_compara_forma_conteo_e_ids_sin_inventar_vulnerabilidad(
     # promociona automáticamente a vulnerabilidad.
     assert by_user["ana"].vulnerable is None
     assert by_user["bob"].vulnerable is None
+
+
+def test_matriz_vulnerable_se_presenta_como_hallazgo():
+    resultado = {
+        "pilar1": {
+            "bola": [],
+            "acceso": [],
+            "alcance_agente": [],
+            "matriz_acceso": [
+                {
+                    "cuenta": "ana",
+                    "rol": "member",
+                    "endpoint_detectado": "/api/admin",
+                    "endpoint_ejecutado": "/api/admin",
+                    "metodo": "GET",
+                    "http_status": 200,
+                    "acceso_real": True,
+                    "acceso_esperado": False,
+                    "vulnerable": True,
+                    "clasificacion": "POSIBLE_HALLAZGO",
+                    "fuente_politica": "candidato_rbac",
+                    "confianza": "media",
+                    "id_control_referencia": None,
+                    "detalle": "acceso permitido a identidad no autorizada",
+                }
+            ],
+        },
+        "pilar2": [],
+    }
+
+    filas = filas_gui(resultado)
+    row = next(item for item in filas if item["tipo_control"] == "matriz_acceso")
+
+    assert row["estado"] == "HALLAZGO"
+    assert row["vulnerable"] is True
+    assert row["familia"] == "RBAC_ABAC"
+    assert row["id"].startswith("P1-RBAC-")
+    assert "POSIBLE_HALLAZGO" in row["detalle"]
+    assert "confianza=media" in row["detalle"]
