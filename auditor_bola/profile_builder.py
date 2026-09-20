@@ -2879,6 +2879,119 @@ def _slug(value: str) -> str:
     return ascii_value.strip("-._") or "aplicacion"
 
 
+def _infer_p1_candidates(
+    detection: ProjectDetection,
+    endpoint_inventory: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Detecta candidatos de Pilar 1 sin inventar la política de acceso.
+
+    BOLA/RBAC dependen de semántica que el código por sí solo no siempre
+    permite afirmar (propietario real, rol permitido, objeto de prueba).
+    Por eso estos elementos quedan como candidatos confirmables y no como
+    hallazgos ejecutables hasta completar sus campos de seguridad.
+    """
+    candidates: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    sensitive_tokens = (
+        "admin", "administr", "audit", "auditoria", "auditoría",
+        "role", "rol", "permission", "permiso", "priorizar",
+        "priorit", "manage", "gestion", "gestión", "config",
+    )
+    agent_tokens = (
+        "assistant", "asistente", "agent", "agente", "chat",
+        "herramienta", "tool",
+    )
+
+    for item in endpoint_inventory:
+        method = str(item.get("metodo") or "").upper()
+        route = str(item.get("ruta") or "")
+        source_files = list(item.get("archivos") or [])
+        lower_route = route.lower()
+
+        has_object_parameter = (
+            "<" in route
+            or "{" in route
+            or re.search(
+                r"/(?::|\$\{)?(?:id|\w+_id)(?:\}|$|/)",
+                lower_route,
+            )
+            is not None
+        )
+        if has_object_parameter and method in {
+            "GET", "PATCH", "PUT", "DELETE"
+        }:
+            key = ("bola", method, route)
+            if key not in seen:
+                seen.add(key)
+                candidates.append(
+                    {
+                        "familia": "BOLA",
+                        "tipo_control": "bola",
+                        "metodo": method,
+                        "ruta_detectada": route,
+                        "archivos_fuente": source_files,
+                        "requiere_confirmacion": [
+                            "ruta_ejecutable",
+                            "id_prueba",
+                            "propietario_esperado",
+                        ],
+                        "motivo": (
+                            "Endpoint orientado a objeto con identificador "
+                            "en la ruta."
+                        ),
+                    }
+                )
+
+        if any(token in lower_route for token in sensitive_tokens):
+            key = ("rbac", method, route)
+            if key not in seen:
+                seen.add(key)
+                candidates.append(
+                    {
+                        "familia": "RBAC_ABAC",
+                        "tipo_control": "acceso",
+                        "metodo": method,
+                        "ruta_detectada": route,
+                        "archivos_fuente": source_files,
+                        "requiere_confirmacion": [
+                            "cuenta",
+                            "acceso_esperado",
+                        ],
+                        "motivo": (
+                            "Ruta con semántica administrativa, de auditoría "
+                            "o de operación privilegiada."
+                        ),
+                    }
+                )
+
+        if any(token in lower_route for token in agent_tokens):
+            key = ("scope", method, route)
+            if key not in seen:
+                seen.add(key)
+                candidates.append(
+                    {
+                        "familia": "AGENT_SCOPE",
+                        "tipo_control": "alcance_agente",
+                        "metodo": method,
+                        "ruta_detectada": route,
+                        "archivos_fuente": source_files,
+                        "requiere_confirmacion": [
+                            "cuenta",
+                            "direct_ruta",
+                            "agent_cuerpo",
+                            "campos_json",
+                        ],
+                        "motivo": (
+                            "Endpoint asociado a asistente/agente/herramienta "
+                            "que puede ampliar el alcance de la identidad."
+                        ),
+                    }
+                )
+
+    return candidates
+
+
 def _infer_automatic_p2_checks(
     detection: ProjectDetection,
     endpoint_inventory: list[dict[str, Any]],
@@ -3040,6 +3153,10 @@ def build_profile_draft(
     endpoint_inventory = _build_endpoint_inventory(
         detection.routes
     )
+    inferred_p1_candidates = _infer_p1_candidates(
+        detection,
+        endpoint_inventory,
+    )
     inferred_p2_checks = _infer_automatic_p2_checks(
         detection,
         endpoint_inventory,
@@ -3087,6 +3204,8 @@ def build_profile_draft(
             "cuentas_candidatas": list(detection.account_sources),
             "archivos_cuentas_escaneados": True,
             "perfil_generado_automaticamente": True,
+            "candidatos_pilar1": inferred_p1_candidates,
+            "total_candidatos_pilar1": len(inferred_p1_candidates),
             "controles_inferidos_automaticamente": [
                 {
                     "id_control": item.get("id_control"),
