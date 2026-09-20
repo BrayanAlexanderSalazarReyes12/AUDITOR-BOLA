@@ -1001,3 +1001,73 @@ def test_fallback_cambia_de_qwen_a_gemini_si_principal_falla(
     assert calls[1][1] == "gemini-2.5-flash"
     assert trace[0]["status"] == "error"
     assert trace[-1]["status"] == "ok"
+
+
+
+def test_context_window_400_reintenta_con_contexto_mas_pequeno(monkeypatch):
+    provider = ai.AIProviderConfig(
+        provider_id="llmlab",
+        provider_name="Laboratorio UTB",
+        model_id="lab-coder",
+        model_name="lab-coder",
+        base_url="https://lab.example/v1",
+        api_key="x",
+        config_path="test",
+        role="fallback",
+        context_window=20480,
+        max_output_tokens=4096,
+    )
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, status_code, payload=None, text=""):
+            self.status_code = status_code
+            self._payload = payload or {}
+            self.text = text
+
+        def json(self):
+            return self._payload
+
+    def fake_post(url, headers, json, timeout):
+        calls.append(json)
+        if len(calls) == 1:
+            return FakeResponse(
+                400,
+                text=(
+                    "ContextWindowExceededError: maximum context length "
+                    "is 20480 tokens"
+                ),
+            )
+        return FakeResponse(
+            200,
+            {
+                "choices": [
+                    {"message": {"content": '{"ok": true}'}}
+                ]
+            },
+        )
+
+    monkeypatch.setattr(ai.requests, "post", fake_post)
+
+    data, telemetry = ai._request_json_provider(
+        provider,
+        system_prompt="sistema",
+        user_payload={
+            "codigo": "x" * 25000,
+            "historial": [
+                {"detalle": "y" * 5000}
+                for _ in range(8)
+            ],
+        },
+        timeout=20,
+        requested_output=4096,
+    )
+
+    assert data == {"ok": True}
+    assert len(calls) == 2
+    assert calls[1]["max_tokens"] <= 2048
+    assert (
+        len(calls[1]["messages"][1]["content"])
+        < len(calls[0]["messages"][1]["content"])
+    )
+    assert telemetry["context_retry"] is True
