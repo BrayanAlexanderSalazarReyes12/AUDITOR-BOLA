@@ -168,7 +168,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.8' \
+            'Version: 1.1.9' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -197,13 +197,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-8:
-    name: Publicar Release v1.1.8
+  release-v1-1-9:
+    name: Publicar Release v1.1.9
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.8]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.9]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -221,11 +221,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.8
+          # Aegis Auditor v1.1.9
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.8
+          ## Novedades de v1.1.9
           - Corrige la versión de la aplicación analizada: ya no se asigna
             `1.0.0` por defecto.
           - Detecta la versión real desde package.json, pom.xml, Gradle,
@@ -256,6 +256,10 @@ jobs:
           - La limpieza previa se registra en la consola para indicar si se detuvo un servicio, se cerraron procesos huérfanos o el puerto ya estaba libre.
           - Antes de cualquier nuevo arranque, Aegis busca y termina todos los procesos anteriores asociados al mismo proyecto objetivo, no solo el proceso que ocupa el puerto.
           - La detección se limita al proyecto cargado y a sus rutas/comandos para no cerrar procesos ajenos del sistema.
+          - La IA puede configurarse directamente dentro de Aegis; OpenCode deja de ser un requisito para usar el asistente en otro PC.
+          - Se admite configuración persistente propia de Aegis, variables AEGIS_AI_* e importación opcional desde OpenCode.
+          - La barra de progreso ya puede mostrar el 100% real durante el arranque y no queda retenida visualmente en 99%.
+          - Aegis conserva temporalmente el PID del objetivo para recuperar y cerrar procesos que sobrevivan a un cierre forzado del auditor.
 
           ## Descargas
 
@@ -304,16 +308,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.8" >/dev/null 2>&1; then
-            gh release upload "v1.1.8" "${files[@]}" --clobber
-            gh release edit "v1.1.8" \
-              --title "Aegis Auditor v1.1.8" \
+          if gh release view "v1.1.9" >/dev/null 2>&1; then
+            gh release upload "v1.1.9" "${files[@]}" --clobber
+            gh release edit "v1.1.9" \
+              --title "Aegis Auditor v1.1.9" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.8" "${files[@]}" \
+            gh release create "v1.1.9" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.8" \
+              --title "Aegis Auditor v1.1.9" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
