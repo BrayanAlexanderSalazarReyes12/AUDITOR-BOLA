@@ -17,6 +17,7 @@ from typing import Iterable
 
 import requests
 
+from .app_paths import default_ai_config_path
 from .config import ConfigObjetivo, Correccion
 from .remediation_knowledge import (
     RemediationKnowledge,
@@ -142,6 +143,179 @@ def cargar_configuracion_opencode(
         api_key=api_key,
         config_path=str(path),
     )
+
+
+def cargar_configuracion_aegis_ai(
+    path: str | Path | None = None,
+) -> AIProviderConfig:
+    """Carga el proveedor IA guardado directamente por Aegis."""
+    config_path = (
+        Path(path).expanduser().resolve()
+        if path is not None
+        else default_ai_config_path().resolve()
+    )
+    if not config_path.exists():
+        raise RuntimeError(
+            "Aegis no tiene un proveedor IA configurado localmente."
+        )
+
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"No fue posible leer la configuración IA de Aegis: {config_path}"
+        ) from exc
+
+    base_url = str(data.get("base_url") or "").strip().rstrip("/")
+    model_id = str(data.get("model_id") or DEFAULT_MODEL_ID).strip()
+    api_key_value = str(data.get("api_key") or "").strip()
+
+    if not base_url:
+        raise RuntimeError(
+            "La configuración IA de Aegis no declara base_url."
+        )
+    if api_key_value:
+        match = _ENV_REF.match(api_key_value)
+        if match:
+            variable = match.group(1)
+            api_key_value = str(os.getenv(variable) or "").strip()
+            if not api_key_value:
+                raise RuntimeError(
+                    f"La configuración IA usa {variable}, pero esa variable "
+                    "no está definida en este equipo."
+                )
+
+    return AIProviderConfig(
+        provider_id=str(
+            data.get("provider_id") or DEFAULT_PROVIDER_ID
+        ).strip(),
+        provider_name=str(
+            data.get("provider_name") or "Proveedor IA"
+        ).strip(),
+        model_id=model_id,
+        model_name=str(
+            data.get("model_name") or model_id
+        ).strip(),
+        base_url=base_url,
+        api_key=api_key_value,
+        config_path=str(config_path),
+    )
+
+
+def guardar_configuracion_aegis_ai(
+    *,
+    base_url: str,
+    model_id: str = DEFAULT_MODEL_ID,
+    api_key: str | None = None,
+    provider_id: str = DEFAULT_PROVIDER_ID,
+    provider_name: str = "Laboratorio UTB",
+    model_name: str | None = None,
+) -> AIProviderConfig:
+    """Guarda la configuración IA en los datos locales del usuario.
+
+    La clave nunca se incorpora al perfil del proyecto, evidencias o release.
+    Si api_key llega vacía y ya existe una configuración, conserva la clave
+    local anterior.
+    """
+    clean_url = str(base_url or "").strip().rstrip("/")
+    clean_model = str(model_id or DEFAULT_MODEL_ID).strip()
+    if not clean_url:
+        raise ValueError("La URL base del proveedor IA es obligatoria.")
+    if not clean_model:
+        raise ValueError("El modelo IA es obligatorio.")
+
+    path = default_ai_config_path().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    previous: dict = {}
+    if path.exists():
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            previous = {}
+
+    clean_key = (
+        str(api_key).strip()
+        if api_key is not None and str(api_key).strip()
+        else str(previous.get("api_key") or "").strip()
+    )
+
+    payload = {
+        "provider_id": str(provider_id or DEFAULT_PROVIDER_ID).strip(),
+        "provider_name": str(provider_name or "Proveedor IA").strip(),
+        "model_id": clean_model,
+        "model_name": str(model_name or clean_model).strip(),
+        "base_url": clean_url,
+        "api_key": clean_key,
+    }
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+    return cargar_configuracion_aegis_ai(path)
+
+
+def importar_configuracion_opencode_a_aegis() -> AIProviderConfig:
+    """Copia a Aegis el proveedor ya disponible en OpenCode."""
+    provider = cargar_configuracion_opencode()
+    return guardar_configuracion_aegis_ai(
+        base_url=provider.base_url,
+        model_id=provider.model_id,
+        api_key=provider.api_key,
+        provider_id=provider.provider_id,
+        provider_name=provider.provider_name,
+        model_name=provider.model_name,
+    )
+
+
+def cargar_configuracion_ia() -> AIProviderConfig:
+    """Resuelve IA sin exigir que OpenCode esté instalado en el equipo.
+
+    Prioridad:
+    1. Variables AEGIS_AI_*.
+    2. Configuración persistente propia de Aegis.
+    3. OpenCode como compatibilidad/importación automática.
+    """
+    env_url = str(os.getenv("AEGIS_AI_BASE_URL") or "").strip().rstrip("/")
+    if env_url:
+        model_id = str(
+            os.getenv("AEGIS_AI_MODEL") or DEFAULT_MODEL_ID
+        ).strip()
+        return AIProviderConfig(
+            provider_id=str(
+                os.getenv("AEGIS_AI_PROVIDER_ID") or DEFAULT_PROVIDER_ID
+            ).strip(),
+            provider_name=str(
+                os.getenv("AEGIS_AI_PROVIDER_NAME") or "Proveedor IA"
+            ).strip(),
+            model_id=model_id,
+            model_name=str(
+                os.getenv("AEGIS_AI_MODEL_NAME") or model_id
+            ).strip(),
+            base_url=env_url,
+            api_key=str(os.getenv("AEGIS_AI_API_KEY") or "").strip(),
+            config_path="variables de entorno AEGIS_AI_*",
+        )
+
+    try:
+        return cargar_configuracion_aegis_ai()
+    except Exception as local_error:
+        try:
+            provider = cargar_configuracion_opencode()
+        except Exception as opencode_error:
+            raise RuntimeError(
+                "La IA no está configurada en este equipo. Abre "
+                "Configuración > Inteligencia artificial en Aegis y registra "
+                "la URL del proveedor, el modelo y la API key. También puedes "
+                "usar AEGIS_AI_BASE_URL/AEGIS_AI_API_KEY/AEGIS_AI_MODEL. "
+                f"Detalle local: {local_error}. OpenCode: {opencode_error}"
+            ) from opencode_error
+        return provider
 
 
 @dataclass
@@ -475,7 +649,7 @@ def generar_tres_recetas(
     timeout: int = 120,
 ) -> tuple[list[AIRecipeProposal], dict, AIProviderConfig]:
     """Solicita tres recetas a llmlab/lab-coder vía chat/completions."""
-    provider = provider or cargar_configuracion_opencode()
+    provider = provider or cargar_configuracion_ia()
 
     contexto = _construir_contexto(
         cfg,
@@ -584,12 +758,13 @@ def generar_tres_recetas(
         "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
     }
 
+    headers = {"Content-Type": "application/json"}
+    if provider.api_key:
+        headers["Authorization"] = f"Bearer {provider.api_key}"
+
     resp = requests.post(
         endpoint,
-        headers={
-            "Authorization": f"Bearer {provider.api_key}",
-            "Content-Type": "application/json",
-        },
+        headers=headers,
         json=payload,
         timeout=timeout,
     )
