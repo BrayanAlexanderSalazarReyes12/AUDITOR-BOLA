@@ -22,19 +22,31 @@ def diagnosticar(
     progress_callback: ProgressCallback | None = None,
 ) -> dict:
     """Ejecuta P1 + P2 e informa avance real por control completado."""
-    configured_total = (
+    p1_total = (
         len(cfg.endpoints) * len(cfg.cuentas)
         + len(cfg.chequeos_acceso)
         + len(cfg.chequeos_agente)
-        + len(cfg.chequeos_pilar2)
     )
-    if configured_total == 0:
+    p2_total = len(cfg.chequeos_pilar2)
+    configured_total = p1_total + p2_total
+
+    missing: list[str] = []
+    if p1_total == 0:
+        missing.append("Pilar 1 (Identidad y Control de Acceso)")
+    if p2_total == 0:
+        missing.append("Pilar 2 (Arquitectura y Configuración)")
+
+    if missing:
         raise RuntimeError(
-            "El perfil contiene 0 controles activos. "
-            "endpoints_detectados/metadata_detectada son inventario, no "
-            "pruebas de seguridad ejecutables. Regenera el perfil o agrega "
-            "controles P1/P2 antes de interpretar el resultado."
+            "La auditoría P1 + P2 está incompleta: no hay controles activos "
+            "para "
+            + " y ".join(missing)
+            + ". Los endpoints detectados son inventario y los candidatos "
+            "P1 requieren confirmar semántica de seguridad antes de "
+            "ejecutarse. No se informará '0 hallazgos' como si ambos pilares "
+            "hubieran sido evaluados."
         )
+
     total = configured_total
     completed = 0
 
@@ -99,6 +111,8 @@ def diagnosticar(
         "pilar2": [item.as_dict() for item in pilar2],
         "resumen": {
             "controles_configurados": configured_total,
+            "controles_pilar1": p1_total,
+            "controles_pilar2": p2_total,
             "controles_ejecutados": completed,
             "bola_confirmados": sum(item.confirmado_bola for item in bola),
             "acceso_vulnerable": sum(item.vulnerable for item in acceso),
