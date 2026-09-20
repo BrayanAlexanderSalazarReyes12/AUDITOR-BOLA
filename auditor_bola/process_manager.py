@@ -171,18 +171,74 @@ class LocalTargetProcess:
             )
         return mode
 
-    def _runtime_options(self) -> list[RuntimeConfig]:
-        options = [self._configured_runtime]
+    @staticmethod
+    def _is_container_runtime(runtime: RuntimeConfig) -> bool:
+        origin = str(runtime.origen or "").lower()
+        command = list(runtime.comando_inicio or [])
+        executable = (
+            Path(str(command[0])).name.lower()
+            if command
+            else ""
+        )
+        if executable in {
+            "docker",
+            "docker.exe",
+            "podman",
+            "podman.exe",
+        }:
+            return True
+        return any(
+            token in origin
+            for token in (
+                "compose.yml",
+                "compose.yaml",
+                "docker-compose.yml",
+                "docker-compose.yaml",
+                "dockerfile",
+            )
+        )
 
-        for raw in self._configured_runtime.alternativas or []:
-            if not isinstance(raw, dict):
-                continue
-            data = dict(raw)
-            data["alternativas"] = []
-            try:
-                options.append(RuntimeConfig(**data))
-            except TypeError:
-                continue
+    def _runtime_options(self) -> list[RuntimeConfig]:
+        configured = self._configured_runtime
+        options = [configured]
+
+        if configured.permitir_fallback_local:
+            for raw in configured.alternativas or []:
+                if not isinstance(raw, dict):
+                    continue
+                data = dict(raw)
+                data["alternativas"] = []
+                data.setdefault(
+                    "preferencia_arranque",
+                    configured.preferencia_arranque,
+                )
+                data.setdefault(
+                    "permitir_fallback_local",
+                    configured.permitir_fallback_local,
+                )
+                try:
+                    options.append(RuntimeConfig(**data))
+                except TypeError:
+                    continue
+
+        preference = str(
+            configured.preferencia_arranque or "auto"
+        ).strip().lower()
+
+        if preference == "local":
+            options.sort(
+                key=lambda item: (
+                    self._is_container_runtime(item),
+                    self._runtime_mode(item) == "external",
+                )
+            )
+        elif preference in {"contenedor", "container", "docker"}:
+            options.sort(
+                key=lambda item: (
+                    not self._is_container_runtime(item),
+                    self._runtime_mode(item) == "external",
+                )
+            )
 
         return options
 
@@ -341,6 +397,10 @@ class LocalTargetProcess:
             "modo": self._runtime_mode(self.runtime),
             "base_url": self.runtime.base_url,
             "comando_inicio": self._command_for("inicio"),
+            "preferencia_arranque": self.runtime.preferencia_arranque,
+            "permitir_fallback_local": self.runtime.permitir_fallback_local,
+            "descripcion_ejecucion": self.runtime.descripcion_ejecucion,
+            "contenedor": self._is_container_runtime(self.runtime),
             "alternativas_descartadas": list(
                 self._selection_notes
             ),
@@ -574,6 +634,27 @@ class LocalTargetProcess:
             )
 
         requested = raw[0]
+        requested_name = Path(requested).name.lower()
+
+        if requested_name in {
+            "python",
+            "python.exe",
+            "python3",
+            "python3.exe",
+            "py",
+            "py.exe",
+        }:
+            python = self._python_interpreter(env)
+            if not python:
+                raise FileNotFoundError(
+                    errno.ENOENT,
+                    "El proyecto requiere Python local. Aegis buscó primero "
+                    ".venv/venv/env del proyecto y luego Python del sistema, "
+                    "pero no encontró un intérprete disponible.",
+                    requested,
+                )
+            return [python, *raw[1:]]
+
         resolved = self._resolver_ruta_inicial(requested, cwd, env)
 
         if Path(requested).suffix == "" and self._which(requested, env):
