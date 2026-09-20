@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import sys
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
+    QTextEdit,
     QSizePolicy,
     QPushButton,
     QSplitter,
@@ -935,7 +937,32 @@ class AIPage(QWidget):
         )
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
-        right_l.addWidget(self.detail, 1)
+        self.detail.setMaximumHeight(230)
+        right_l.addWidget(self.detail)
+
+        right_l.addWidget(
+            SectionHeader(
+                "Vista previa del código",
+                (
+                    "Rojo = código anterior · Verde = código nuevo. "
+                    "Esta vista es calculada por Aegis sobre el archivo real."
+                ),
+            )
+        )
+        self.diff_view = QTextEdit()
+        self.diff_view.setReadOnly(True)
+        self.diff_view.setObjectName("CodeDiffPreview")
+        self.diff_view.setStyleSheet(
+            "QTextEdit#CodeDiffPreview {"
+            "background:#071723;"
+            "border:1px solid #164765;"
+            "border-radius:10px;"
+            "padding:8px;"
+            "font-family:Consolas, 'Courier New', monospace;"
+            "font-size:12px;"
+            "}"
+        )
+        right_l.addWidget(self.diff_view, 1)
 
         split.addWidget(left)
         split.addWidget(right)
@@ -964,6 +991,7 @@ class AIPage(QWidget):
         self.proposals = []
         self.list.clear()
         self.detail.clear()
+        self.diff_view.clear()
         self.control_label.setText(
             f"{row.get('id')} · {row.get('control')}"
         )
@@ -977,9 +1005,24 @@ class AIPage(QWidget):
                 if resolution.get("tiene_receta")
                 else "sin receta local; listo para buscar con IA"
             )
+            language = self.controller.detect_source_language_info(
+                str(resolution.get("archivo") or "")
+            )
+            language_name = str(
+                (language or {}).get("language") or "desconocido"
+            )
+            frameworks = ", ".join(
+                (language or {}).get("frameworks") or []
+            )
+            framework_text = (
+                f" · {frameworks}"
+                if frameworks
+                else ""
+            )
             self.source_label.setText(
                 "Archivo cargado automáticamente: "
                 f"{resolution.get('archivo')} · "
+                f"{language_name}{framework_text} · "
                 f"{recipe_state} · "
                 f"confianza {resolution.get('confianza')} · "
                 f"{resolution.get('origen')}"
@@ -1104,6 +1147,7 @@ class AIPage(QWidget):
     def _show_proposal(self, index: int):
         if index < 0 or index >= len(self.proposals):
             self.detail.clear()
+            self.diff_view.clear()
             self.apply_btn.setEnabled(False)
             self.apply_btn.setText("Aplicar propuesta y verificar")
             return
@@ -1115,13 +1159,93 @@ class AIPage(QWidget):
             if valid
             else "Propuesta no aplicable"
         )
+        detail_payload = dict(proposal)
+        detail_payload.pop("preview_cambios", None)
         self.detail.setPlainText(
             json.dumps(
-                proposal,
+                detail_payload,
                 ensure_ascii=False,
                 indent=2,
             )
         )
+        self._render_code_preview(proposal)
+
+    def _render_code_preview(self, proposal: dict) -> None:
+        previews = [
+            item
+            for item in proposal.get("preview_cambios") or []
+            if isinstance(item, dict)
+        ]
+        if not previews:
+            self.diff_view.setHtml(
+                "<p style='color:#8AA9BC;'>"
+                "No hay una vista previa determinista disponible para esta "
+                "propuesta."
+                "</p>"
+            )
+            return
+
+        sections: list[str] = []
+        for preview in previews:
+            archivo = html.escape(
+                str(preview.get("archivo") or "archivo")
+            )
+            lenguaje = html.escape(
+                str(preview.get("lenguaje") or "desconocido")
+            )
+            frameworks = ", ".join(
+                str(item)
+                for item in preview.get("frameworks") or []
+            )
+            subtitle = (
+                f" · {html.escape(frameworks)}"
+                if frameworks
+                else ""
+            )
+            rows: list[str] = []
+            diff = str(preview.get("diff") or "")
+            for raw_line in diff.splitlines():
+                escaped = html.escape(raw_line)
+                if raw_line.startswith("---"):
+                    style = "color:#FF7B86;font-weight:700;"
+                elif raw_line.startswith("+++"):
+                    style = "color:#62E6A7;font-weight:700;"
+                elif raw_line.startswith("-"):
+                    style = (
+                        "color:#FF8A94;background:#35161C;"
+                    )
+                elif raw_line.startswith("+"):
+                    style = (
+                        "color:#77F2B8;background:#0D3025;"
+                    )
+                elif raw_line.startswith("@@"):
+                    style = "color:#59C7FF;font-weight:700;"
+                else:
+                    style = "color:#D7E5EE;"
+                rows.append(
+                    f"<span style='{style}'>{escaped}</span>"
+                )
+
+            if not rows:
+                rows.append(
+                    "<span style='color:#8AA9BC;'>"
+                    "La propuesta no cambia este archivo."
+                    "</span>"
+                )
+
+            sections.append(
+                "<div style='margin-bottom:16px;'>"
+                f"<div style='color:#FFFFFF;font-weight:700;'>"
+                f"{archivo}</div>"
+                f"<div style='color:#8AA9BC;margin-bottom:6px;'>"
+                f"{lenguaje}{subtitle}</div>"
+                "<pre style='white-space:pre-wrap;"
+                "font-family:Consolas,"Courier New",monospace;'>"
+                + "\n".join(rows)
+                + "</pre></div>"
+            )
+
+        self.diff_view.setHtml("".join(sections))
 
     def _apply(self):
         index = self.list.currentRow()
