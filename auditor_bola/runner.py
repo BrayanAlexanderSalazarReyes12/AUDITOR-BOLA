@@ -16,6 +16,7 @@ from .engine import (
     auditar_matriz_acceso,
 )
 from .pilar2 import auditar_pilar2
+from .security_model import attach_runtime_consolidation
 
 
 ProgressCallback = Callable[[int, str], None]
@@ -178,6 +179,7 @@ def diagnosticar(
             "errores": sum(item.estado == "ERROR" for item in pilar2),
         },
     }
+    resultado = attach_runtime_consolidation(resultado)
     report("Diagnóstico Pilar 1 + Pilar 2 completado.", force=100)
     return resultado
 
