@@ -3640,21 +3640,50 @@ def _infer_agent_scope_checks(
         var = re.escape(variable)
         fields: list[str] = []
 
-        # Python: response.json['steps'][0]['tool']
-        for match in re.finditer(
-            rf"""(?ix)
-            \b{var}\.(?:json|body)(?:\(\))?
-            ((?:\s*\[\s*["'][^"']+["']\s*\]
-              |\s*\[\s*\d+\s*\]){{1,8}})
-            """,
-            source_text,
-        ):
-            fields.extend(
-                re.findall(
-                    r"""\[\s*["']([^"']+)["']\s*\]""",
-                    match.group(1),
+        # Python: response.json['steps'][0]['tool'],
+        # response.get_json()['steps']... y aliases:
+        # payload = response.get_json(); payload['steps']...
+        python_accessors = (
+            rf"\\b{var}\\.(?:json|body)(?:\\(\\))?",
+            rf"\\b{var}\\.get_json\\s*\\(\\s*\\)",
+        )
+        for accessor in python_accessors:
+            for match in re.finditer(
+                rf"""(?ix)
+                {accessor}
+                ((?:\s*\[\s*["'][^"']+["']\s*\]
+                  |\s*\[\s*\d+\s*\]){{1,8}})
+                """,
+                source_text,
+            ):
+                fields.extend(
+                    re.findall(
+                        r"""\[\s*["']([^"']+)["']\s*\]""",
+                        match.group(1),
+                    )
                 )
-            )
+
+        alias_names = re.findall(
+            rf"""(?im)^\s*([A-Za-z_]\w*)\s*=\s*
+            {var}\.get_json\s*\(\s*\)\s*$""",
+            source_text,
+        )
+        for alias in alias_names:
+            escaped_alias = re.escape(alias)
+            for match in re.finditer(
+                rf"""(?ix)
+                \b{escaped_alias}
+                ((?:\s*\[\s*["'][^"']+["']\s*\]
+                  |\s*\[\s*\d+\s*\]){{1,8}})
+                """,
+                source_text,
+            ):
+                fields.extend(
+                    re.findall(
+                        r"""\[\s*["']([^"']+)["']\s*\]""",
+                        match.group(1),
+                    )
+                )
 
         # JS/TS: response.body.steps[0].tool
         for match in re.finditer(
@@ -3736,17 +3765,29 @@ def _infer_agent_scope_checks(
                 continue
 
             tool_name = ""
-            tool_pattern = re.compile(
+            tool_patterns = (
+                rf"""(?ix)
+                ["']{re.escape(tool_field)}["']
+                \s*\]\s*(?:==|!=)\s*["']([^"']+)["']
+                """,
+                rf"""(?ix)
+                \.{re.escape(tool_field)}
+                \s*\)*
+                \s*\.\s*(?:toBe|toEqual)\s*\(\s*
+                ["']([^"']+)["']
+                """,
                 rf"""(?ix)
                 ["']?{re.escape(tool_field)}["']?
                 .{{0,80}}?
                 (?:==|toBe\s*\(|toEqual\s*\()
                 \s*["']([^"']+)["']
-                """
+                """,
             )
-            tool_match = tool_pattern.search(source_text)
-            if tool_match:
-                tool_name = tool_match.group(1)
+            for pattern in tool_patterns:
+                tool_match = re.search(pattern, source_text)
+                if tool_match:
+                    tool_name = tool_match.group(1)
+                    break
             if not tool_name:
                 # Sin herramienta concreta no podemos filtrar la invocación
                 # correcta con suficiente confianza.
