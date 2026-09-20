@@ -2195,6 +2195,11 @@ class AuditorController(QObject):
             target_relative
         )
         if (
+            expected_hash is None
+            and target_relative == self.ai_source_relative
+        ):
+            expected_hash = self.ai_source_hash
+        if (
             expected_hash
             and current_hash != expected_hash
         ):
@@ -2235,6 +2240,11 @@ class AuditorController(QObject):
             expected_live_hash = self.ai_source_hashes.get(
                 target_relative
             )
+            if (
+                expected_live_hash is None
+                and target_relative == self.ai_source_relative
+            ):
+                expected_live_hash = self.ai_source_hash
             if expected_live_hash:
                 live_source = (
                     self.target_root / target_relative
