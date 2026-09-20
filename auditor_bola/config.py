@@ -167,6 +167,11 @@ class ConfigObjetivo:
     correcciones: list[Correccion] = field(default_factory=list)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     version_objetivo: str | None = None
+    # Inventario completo detectado por el auto-perfil. Se conserva para
+    # ejecutar una matriz endpoint x cuenta además de los controles P1
+    # semánticamente confirmados.
+    endpoints_detectados: list[dict] = field(default_factory=list)
+    probar_todos_endpoints_con_todos_usuarios: bool = True
 
     def cuenta_por_username(self, username: str) -> Cuenta | None:
         for cuenta in self.cuentas:
@@ -509,4 +514,15 @@ def cargar_config(path: str | Path) -> ConfigObjetivo:
         correcciones=correcciones,
         runtime=runtime,
         version_objetivo=datos.get("version_objetivo"),
+        endpoints_detectados=[
+            dict(item)
+            for item in datos.get("endpoints_detectados", [])
+            if isinstance(item, dict)
+        ],
+        probar_todos_endpoints_con_todos_usuarios=bool(
+            datos.get(
+                "probar_todos_endpoints_con_todos_usuarios",
+                True,
+            )
+        ),
     )
