@@ -262,3 +262,313 @@ def construir_registro_pilar1(
                 "cuenta": check.cuenta,
                 "direct_metodo": check.direct_metodo,
                 "direct_ruta": check.direct_ruta,
+                "agent_ruta": check.agent_ruta,
+                "agent_cuerpo": dict(check.agent_cuerpo),
+                "direct_json_path": check.direct_json_path,
+                "steps_json_path": check.steps_json_path,
+                "tool_name": check.tool_name,
+                "tool_field": check.tool_field,
+                "count_field": check.count_field,
+                "id_field": check.id_field,
+                "agent_items_json_path": check.agent_items_json_path,
+                "archivos_fuente": list(check.archivos_fuente),
+                "pistas_codigo": list(check.pistas_codigo),
+            }
+        )
+
+    return registro
+
+
+def _agregar_p1_desde_registro(
+    raw_registry: list,
+    endpoints: list[Endpoint],
+    chequeos_acceso: list[ChequeoAcceso],
+    chequeos_agente: list[ChequeoAgente],
+) -> None:
+    """Materializa chequeos_pilar1 en las estructuras ejecutables legacy."""
+    endpoint_keys = {
+        (
+            item.id_control or "P1-BOLA",
+            item.metodo.upper(),
+            item.ruta,
+            str(item.id_prueba),
+            item.propietario_esperado,
+        )
+        for item in endpoints
+    }
+    access_keys = {
+        (
+            item.id_control,
+            item.cuenta,
+            item.metodo.upper(),
+            item.ruta,
+        )
+        for item in chequeos_acceso
+    }
+    agent_keys = {
+        (
+            item.id_control,
+            item.cuenta,
+            item.direct_ruta,
+            item.agent_ruta,
+        )
+        for item in chequeos_agente
+    }
+
+    for raw in raw_registry:
+        if not isinstance(raw, dict):
+            continue
+        tipo = str(
+            raw.get("tipo")
+            or raw.get("tipo_control")
+            or ""
+        ).strip().lower()
+
+        if tipo in {"bola", "object_access", "object-ownership"}:
+            required = (
+                raw.get("metodo"),
+                raw.get("ruta"),
+                raw.get("id_prueba"),
+                raw.get("propietario_esperado"),
+            )
+            if any(value in (None, "") for value in required):
+                continue
+            item = {
+                key: raw[key]
+                for key in (
+                    "metodo",
+                    "ruta",
+                    "id_prueba",
+                    "propietario_esperado",
+                    "cuerpo_prueba",
+                    "codigos_permitidos",
+                    "id_control",
+                    "descripcion",
+                    "archivos_fuente",
+                    "pistas_codigo",
+                )
+                if key in raw
+            }
+            if "descripcion" not in item and raw.get("nombre"):
+                item["descripcion"] = raw.get("nombre")
+            _tuple_codigos(item, "codigos_permitidos")
+            endpoint = Endpoint(**item)
+            key = (
+                endpoint.id_control or "P1-BOLA",
+                endpoint.metodo.upper(),
+                endpoint.ruta,
+                str(endpoint.id_prueba),
+                endpoint.propietario_esperado,
+            )
+            if key not in endpoint_keys:
+                endpoints.append(endpoint)
+                endpoint_keys.add(key)
+            continue
+
+        if tipo in {"acceso", "rbac", "abac", "rbac_abac"}:
+            required = (
+                raw.get("id_control"),
+                raw.get("cuenta"),
+                raw.get("metodo"),
+                raw.get("ruta"),
+            )
+            if any(value in (None, "") for value in required):
+                continue
+            if "acceso_esperado" not in raw:
+                continue
+            item = {
+                key: raw[key]
+                for key in (
+                    "id_control",
+                    "nombre",
+                    "cuenta",
+                    "metodo",
+                    "ruta",
+                    "acceso_esperado",
+                    "cuerpo",
+                    "codigos_permitidos",
+                    "archivos_fuente",
+                    "pistas_codigo",
+                )
+                if key in raw
+            }
+            item.setdefault(
+                "nombre",
+                str(raw.get("id_control") or "Control de acceso"),
+            )
+            _tuple_codigos(item, "codigos_permitidos")
+            check = ChequeoAcceso(**item)
+            key = (
+                check.id_control,
+                check.cuenta,
+                check.metodo.upper(),
+                check.ruta,
+            )
+            if key not in access_keys:
+                chequeos_acceso.append(check)
+                access_keys.add(key)
+            continue
+
+        if tipo in {
+            "alcance_agente",
+            "agent_scope",
+            "scope",
+        }:
+            required = (
+                raw.get("cuenta"),
+                raw.get("direct_metodo"),
+                raw.get("direct_ruta"),
+                raw.get("agent_ruta"),
+                raw.get("agent_cuerpo"),
+            )
+            if any(value in (None, "") for value in required):
+                continue
+            item = {
+                key: raw[key]
+                for key in (
+                    "nombre",
+                    "cuenta",
+                    "direct_metodo",
+                    "direct_ruta",
+                    "agent_ruta",
+                    "agent_cuerpo",
+                    "direct_json_path",
+                    "steps_json_path",
+                    "tool_name",
+                    "tool_field",
+                    "count_field",
+                    "id_field",
+                    "agent_items_json_path",
+                    "id_control",
+                    "archivos_fuente",
+                    "pistas_codigo",
+                )
+                if key in raw
+            }
+            item.setdefault(
+                "nombre",
+                str(raw.get("id_control") or "Alcance de agente"),
+            )
+            check = ChequeoAgente(**item)
+            key = (
+                check.id_control,
+                check.cuenta,
+                check.direct_ruta,
+                check.agent_ruta,
+            )
+            if key not in agent_keys:
+                chequeos_agente.append(check)
+                agent_keys.add(key)
+
+
+def _tuple_codigos(datos: dict, campo: str) -> None:
+    if campo in datos:
+        datos[campo] = tuple(datos[campo])
+
+
+def cargar_config(path: str | Path) -> ConfigObjetivo:
+    datos = json.loads(Path(path).read_text(encoding="utf-8"))
+
+    cuentas = [Cuenta(**c) for c in datos.get("cuentas", [])]
+
+    endpoints: list[Endpoint] = []
+    for raw in datos.get("endpoints", []):
+        item = dict(raw)
+        _tuple_codigos(item, "codigos_permitidos")
+        endpoints.append(Endpoint(**item))
+
+    chequeos_agente = [
+        ChequeoAgente(**item) for item in datos.get("chequeos_agente", [])
+    ]
+
+    chequeos_acceso: list[ChequeoAcceso] = []
+    for raw in datos.get("chequeos_acceso", []):
+        item = dict(raw)
+        _tuple_codigos(item, "codigos_permitidos")
+        chequeos_acceso.append(ChequeoAcceso(**item))
+
+    raw_pilar1 = [
+        dict(item)
+        for item in datos.get("chequeos_pilar1", [])
+        if isinstance(item, dict)
+    ]
+    _agregar_p1_desde_registro(
+        raw_pilar1,
+        endpoints,
+        chequeos_acceso,
+        chequeos_agente,
+    )
+    registro_pilar1 = (
+        raw_pilar1
+        if raw_pilar1
+        else construir_registro_pilar1(
+            endpoints,
+            chequeos_acceso,
+            chequeos_agente,
+        )
+    )
+
+    chequeos_pilar2: list[ChequeoPilar2] = []
+    for raw in datos.get("chequeos_pilar2", []):
+        item = dict(raw)
+        _tuple_codigos(item, "codigos_seguros")
+        chequeos_pilar2.append(ChequeoPilar2(**item))
+
+    correcciones = [
+        Correccion(**item) for item in datos.get("correcciones", [])
+    ]
+    runtime = RuntimeConfig(**datos.get("runtime", {}))
+
+    return ConfigObjetivo(
+        sistema=datos["sistema"],
+        base_url=datos.get("base_url", "").rstrip("/"),
+        cuentas=cuentas,
+        endpoints=endpoints,
+        roles_privilegiados=datos.get("roles_privilegiados", []),
+        chequeos_agente=chequeos_agente,
+        chequeos_acceso=chequeos_acceso,
+        chequeos_pilar1=registro_pilar1,
+        chequeos_pilar2=chequeos_pilar2,
+        correcciones=correcciones,
+        runtime=runtime,
+        version_objetivo=datos.get("version_objetivo"),
+        endpoints_detectados=[
+            dict(item)
+            for item in datos.get("endpoints_detectados", [])
+            if isinstance(item, dict)
+        ],
+        probar_todos_endpoints_con_todos_usuarios=bool(
+            datos.get(
+                "probar_todos_endpoints_con_todos_usuarios",
+                True,
+            )
+        ),
+        candidatos_pilar1=[
+            dict(item)
+            for item in (
+                datos.get("candidatos_pilar1")
+                or (
+                    datos.get("metadata_detectada", {})
+                    if isinstance(
+                        datos.get("metadata_detectada"), dict
+                    )
+                    else {}
+                ).get("candidatos_pilar1", [])
+            )
+            if isinstance(item, dict)
+        ],
+        candidatos_pilar2=[
+            dict(item)
+            for item in (
+                datos.get("candidatos_pilar2")
+                or (
+                    datos.get("metadata_detectada", {})
+                    if isinstance(
+                        datos.get("metadata_detectada"), dict
+                    )
+                    else {}
+                ).get("candidatos_pilar2", [])
+            )
+            if isinstance(item, dict)
+        ],
+    )
