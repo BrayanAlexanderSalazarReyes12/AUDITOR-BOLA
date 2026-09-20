@@ -184,9 +184,11 @@ class TaskProgressOverlay(QFrame):
         if not self._active:
             return
         self._external_progress = True
-        self._value = max(0, min(99, int(value)))
+        self._value = max(0, min(100, int(value)))
         if text:
             self.status.setText(text)
+        if self._value >= 100:
+            self.status.setText(text or "Finalizando operación…")
         self._render()
 
     def finish(self, text: str = "Tarea completada") -> None:
