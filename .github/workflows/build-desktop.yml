@@ -1,5 +1,5 @@
 # security-patching-release: v1.3.1
-# release-publish-retry: v1.3.1
+# release-publish: v1.3.1
 name: Build desktop executables
 
 on:
@@ -230,7 +230,7 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-3-0:
+  release-v1-3-1:
     name: Publicar Release v1.3.1
     needs:
       - windows-x64
