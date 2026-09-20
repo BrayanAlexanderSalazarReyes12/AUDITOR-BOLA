@@ -30,6 +30,34 @@ from .remediation_knowledge import (
 DEFAULT_PROVIDER_ID = "llmlab"
 DEFAULT_MODEL_ID = "lab-coder"
 DEFAULT_MAX_OUTPUT_TOKENS = 8192
+DEFAULT_CONTEXT_WINDOW = 32768
+MIN_OUTPUT_TOKENS = 1024
+TOKEN_SAFETY_MARGIN = 768
+
+AI_PROVIDER_PRESETS = {
+    "openrouter-qwen3-coder-free": {
+        "name": "Qwen3-Coder Free · OpenRouter",
+        "provider_id": "openrouter",
+        "provider_name": "OpenRouter",
+        "model_id": "qwen/qwen3-coder:free",
+        "model_name": "Qwen3 Coder 480B A35B Free",
+        "base_url": "https://openrouter.ai/api/v1",
+        "role": "coder_primary",
+        "context_window": 1048576,
+        "max_output_tokens": 16384,
+    },
+    "gemini-2.5-flash-free": {
+        "name": "Gemini 2.5 Flash · Google AI",
+        "provider_id": "google-gemini",
+        "provider_name": "Google AI",
+        "model_id": "gemini-2.5-flash",
+        "model_name": "Gemini 2.5 Flash",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "role": "analyst_secondary",
+        "context_window": 1048576,
+        "max_output_tokens": 8192,
+    },
+}
 
 
 @dataclass
@@ -43,6 +71,9 @@ class AIProviderConfig:
     config_path: str
     profile_id: str = ""
     profile_name: str = ""
+    role: str = "generic"
+    context_window: int = DEFAULT_CONTEXT_WINDOW
+    max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS
 
     def public_dict(self) -> dict:
         """Metadatos seguros; nunca incluye la API key."""
@@ -55,7 +86,251 @@ class AIProviderConfig:
             "config_path": self.config_path,
             "profile_id": self.profile_id,
             "profile_name": self.profile_name,
+            "role": self.role,
+            "context_window": self.context_window,
+            "max_output_tokens": self.max_output_tokens,
         }
+
+
+def listar_presets_ia() -> list[dict]:
+    """Presets seguros: nunca incluyen claves API."""
+    return [
+        {"id": preset_id, **dict(data)}
+        for preset_id, data in AI_PROVIDER_PRESETS.items()
+    ]
+
+
+def _provider_defaults(
+    provider_id: str,
+    model_id: str,
+) -> tuple[str, int, int]:
+    provider = str(provider_id or "").lower()
+    model = str(model_id or "").lower()
+
+    if provider == "openrouter" and "qwen3-coder" in model:
+        return "coder_primary", 1048576, 16384
+    if provider in {"google-gemini", "gemini"} or "gemini-2.5-flash" in model:
+        return "analyst_secondary", 1048576, 8192
+    if provider == "llmlab" or model == "lab-coder":
+        # El endpoint UTB observado expone 20.480 tokens de contexto.
+        # Se deja margen suficiente para evitar ContextWindowExceededError.
+        return "fallback", 20480, 4096
+    return "generic", DEFAULT_CONTEXT_WINDOW, 4096
+
+
+def _safe_int(value, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimación conservadora para código + JSON multilingüe."""
+    return max(1, (len(text or "") + 2) // 3)
+
+
+def _dynamic_output_tokens(
+    provider: AIProviderConfig,
+    *,
+    system_prompt: str,
+    user_content: str,
+    requested: int = DEFAULT_MAX_OUTPUT_TOKENS,
+) -> int:
+    estimated_input = _estimate_tokens(system_prompt) + _estimate_tokens(
+        user_content
+    )
+    context_window = max(
+        4096,
+        _safe_int(provider.context_window, DEFAULT_CONTEXT_WINDOW),
+    )
+    provider_cap = max(
+        MIN_OUTPUT_TOKENS,
+        _safe_int(provider.max_output_tokens, DEFAULT_MAX_OUTPUT_TOKENS),
+    )
+    available = context_window - estimated_input - TOKEN_SAFETY_MARGIN
+    if available < MIN_OUTPUT_TOKENS:
+        raise RuntimeError(
+            "El contexto supera la capacidad segura de "
+            f"{provider.model_name or provider.model_id}: "
+            f"entrada estimada={estimated_input}, contexto={context_window}. "
+            "Aegis debe compactar el contexto o usar otro proveedor."
+        )
+    return max(
+        MIN_OUTPUT_TOKENS,
+        min(int(requested), provider_cap, available),
+    )
+
+
+def _clip_text_middle(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    if max_chars < 200:
+        return text[:max_chars]
+    head = max_chars * 2 // 3
+    tail = max_chars - head
+    return (
+        text[:head]
+        + "\n... <CONTEXTO COMPACTADO POR AEGIS> ...\n"
+        + text[-tail:]
+    )
+
+
+def _compact_structure(value, *, max_string: int, max_list: int = 12):
+    if isinstance(value, dict):
+        return {
+            str(key): _compact_structure(
+                item,
+                max_string=max_string,
+                max_list=max_list,
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        items = value[-max_list:] if len(value) > max_list else value
+        return [
+            _compact_structure(
+                item,
+                max_string=max_string,
+                max_list=max_list,
+            )
+            for item in items
+        ]
+    if isinstance(value, tuple):
+        return _compact_structure(
+            list(value),
+            max_string=max_string,
+            max_list=max_list,
+        )
+    if isinstance(value, str):
+        return _clip_text_middle(value, max_string)
+    return value
+
+
+def _compact_payload_for_provider(
+    provider: AIProviderConfig,
+    *,
+    system_prompt: str,
+    user_payload,
+    requested_output: int = DEFAULT_MAX_OUTPUT_TOKENS,
+):
+    """Reduce contexto progresivamente antes de cambiar de proveedor."""
+    raw = (
+        user_payload
+        if isinstance(user_payload, str)
+        else json.dumps(user_payload, ensure_ascii=False, indent=2)
+    )
+    context_window = max(
+        4096,
+        _safe_int(provider.context_window, DEFAULT_CONTEXT_WINDOW),
+    )
+    output_cap = min(
+        int(requested_output),
+        max(MIN_OUTPUT_TOKENS, int(provider.max_output_tokens or 4096)),
+    )
+    safe_input_tokens = max(
+        2048,
+        context_window - output_cap - TOKEN_SAFETY_MARGIN,
+    )
+    safe_chars = safe_input_tokens * 3
+
+    if len(system_prompt) + len(raw) <= safe_chars:
+        return user_payload, False
+
+    # Compactación conservadora: primero limita strings grandes y listas
+    # históricas. Mantiene claves, rutas, errores, hipótesis y extremos del código.
+    budget_for_payload = max(
+        3000,
+        safe_chars - len(system_prompt) - 1000,
+    )
+    if isinstance(user_payload, str):
+        return _clip_text_middle(user_payload, budget_for_payload), True
+
+    max_string = max(1200, min(9000, budget_for_payload // 4))
+    compacted = _compact_structure(
+        user_payload,
+        max_string=max_string,
+        max_list=8,
+    )
+    serialized = json.dumps(compacted, ensure_ascii=False, indent=2)
+    if len(serialized) > budget_for_payload:
+        # Segunda pasada más agresiva para proveedores pequeños como lab-coder.
+        compacted = _compact_structure(
+            compacted,
+            max_string=max(700, max_string // 2),
+            max_list=4,
+        )
+    return compacted, True
+
+
+def _provider_headers(provider: AIProviderConfig) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if provider.api_key:
+        headers["Authorization"] = f"Bearer {provider.api_key}"
+    if provider.provider_id == "openrouter":
+        headers["HTTP-Referer"] = "https://github.com/BrayanAlexanderSalazarReyes12/AUDITOR-BOLA"
+        headers["X-Title"] = "Aegis Auditor"
+    return headers
+
+
+def _providers_from_store() -> list[AIProviderConfig]:
+    config_path, store = _read_ai_store()
+    result: list[AIProviderConfig] = []
+    for item in store.get("profiles", []):
+        try:
+            result.append(_profile_to_provider(item, config_path))
+        except Exception:
+            continue
+    return result
+
+
+def resolver_cadena_proveedores_ia(
+    *,
+    task: str = "patch",
+    preferred: AIProviderConfig | None = None,
+    has_failures: bool = False,
+) -> list[AIProviderConfig]:
+    """Ordena proveedor principal, segunda opinión y fallback.
+
+    patch/diagnóstico inicial: coder_primary -> analyst_secondary -> fallback.
+    diagnóstico tras fallo: analyst_secondary -> coder_primary -> fallback.
+    """
+    providers = _providers_from_store()
+    if preferred is not None:
+        key = (preferred.base_url, preferred.model_id)
+        if all((p.base_url, p.model_id) != key for p in providers):
+            providers.append(preferred)
+
+    if not providers:
+        try:
+            providers = [preferred or cargar_configuracion_ia()]
+        except Exception:
+            return []
+
+    role_order = (
+        ["analyst_secondary", "coder_primary", "fallback", "generic"]
+        if task == "diagnosis" and has_failures
+        else ["coder_primary", "analyst_secondary", "fallback", "generic"]
+    )
+    role_rank = {role: index for index, role in enumerate(role_order)}
+    providers.sort(
+        key=lambda item: (
+            role_rank.get(item.role or "generic", 99),
+            0 if preferred and item.profile_id == preferred.profile_id else 1,
+            item.profile_name or item.model_name,
+        )
+    )
+
+    deduped: list[AIProviderConfig] = []
+    seen: set[tuple[str, str]] = set()
+    for item in providers:
+        key = (item.base_url.rstrip("/"), item.model_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
 
 
 def _opencode_config_path() -> Path:
@@ -140,6 +415,10 @@ def cargar_configuracion_opencode(
     model_data = models.get(model_id) or {}
     model_name = str(model_data.get("name") or model_id)
 
+    role, context_window, max_output = _provider_defaults(
+        provider_id,
+        model_id,
+    )
     return AIProviderConfig(
         provider_id=provider_id,
         provider_name=str(provider.get("name") or provider_id),
@@ -148,12 +427,15 @@ def cargar_configuracion_opencode(
         base_url=base_url,
         api_key=api_key,
         config_path=str(path),
+        role=role,
+        context_window=context_window,
+        max_output_tokens=max_output,
     )
 
 
 def _empty_ai_store() -> dict:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "active_profile_id": None,
         "profiles": [],
     }
@@ -235,7 +517,7 @@ def _read_ai_store(
             "api_key": str(data.get("api_key") or "").strip(),
         }
         store = {
-            "schema_version": 2,
+            "schema_version": 3,
             "active_profile_id": profile_id,
             "profiles": [profile],
         }
@@ -286,15 +568,20 @@ def _profile_to_provider(
 ) -> AIProviderConfig:
     base_url = str(profile.get("base_url") or "").strip().rstrip("/")
     model_id = str(profile.get("model_id") or DEFAULT_MODEL_ID).strip()
+    provider_id = str(
+        profile.get("provider_id") or DEFAULT_PROVIDER_ID
+    ).strip()
+    default_role, default_context, default_output = _provider_defaults(
+        provider_id,
+        model_id,
+    )
     if not base_url:
         raise RuntimeError("El perfil IA no declara base_url.")
     if not model_id:
         raise RuntimeError("El perfil IA no declara model_id.")
 
     return AIProviderConfig(
-        provider_id=str(
-            profile.get("provider_id") or DEFAULT_PROVIDER_ID
-        ).strip(),
+        provider_id=provider_id,
         provider_name=str(
             profile.get("provider_name") or "Proveedor IA"
         ).strip(),
@@ -311,6 +598,15 @@ def _profile_to_provider(
             or profile.get("provider_name")
             or model_id
         ).strip(),
+        role=str(profile.get("role") or default_role).strip(),
+        context_window=_safe_int(
+            profile.get("context_window"),
+            default_context,
+        ),
+        max_output_tokens=_safe_int(
+            profile.get("max_output_tokens"),
+            default_output,
+        ),
     )
 
 
@@ -349,6 +645,24 @@ def listar_perfiles_ia(
                     or DEFAULT_MODEL_ID
                 ),
                 "base_url": str(item.get("base_url") or ""),
+                "role": str(item.get("role") or _provider_defaults(
+                    str(item.get("provider_id") or DEFAULT_PROVIDER_ID),
+                    str(item.get("model_id") or DEFAULT_MODEL_ID),
+                )[0]),
+                "context_window": _safe_int(
+                    item.get("context_window"),
+                    _provider_defaults(
+                        str(item.get("provider_id") or DEFAULT_PROVIDER_ID),
+                        str(item.get("model_id") or DEFAULT_MODEL_ID),
+                    )[1],
+                ),
+                "max_output_tokens": _safe_int(
+                    item.get("max_output_tokens"),
+                    _provider_defaults(
+                        str(item.get("provider_id") or DEFAULT_PROVIDER_ID),
+                        str(item.get("model_id") or DEFAULT_MODEL_ID),
+                    )[2],
+                ),
                 "has_api_key": bool(str(item.get("api_key") or "").strip()),
                 "active": profile_id == active,
                 "config_path": str(config_path),
@@ -406,6 +720,9 @@ def guardar_perfil_ia(
     provider_id: str = DEFAULT_PROVIDER_ID,
     provider_name: str = "Proveedor IA",
     model_name: str | None = None,
+    role: str | None = None,
+    context_window: int | None = None,
+    max_output_tokens: int | None = None,
     profile_id: str | None = None,
     set_active: bool = True,
     path: str | Path | None = None,
@@ -444,6 +761,10 @@ def guardar_perfil_ia(
         if api_key is not None and str(api_key).strip()
         else previous_key
     )
+    default_role, default_context, default_output = _provider_defaults(
+        provider_id,
+        clean_model,
+    )
     payload = {
         "id": selected_id,
         "name": clean_name,
@@ -457,6 +778,19 @@ def guardar_perfil_ia(
         "model_name": str(model_name or clean_model).strip(),
         "base_url": clean_url,
         "api_key": clean_key,
+        "role": str(role or (existing or {}).get("role") or default_role),
+        "context_window": _safe_int(
+            context_window
+            if context_window is not None
+            else (existing or {}).get("context_window"),
+            default_context,
+        ),
+        "max_output_tokens": _safe_int(
+            max_output_tokens
+            if max_output_tokens is not None
+            else (existing or {}).get("max_output_tokens"),
+            default_output,
+        ),
     }
 
     if existing is None:
@@ -470,6 +804,39 @@ def guardar_perfil_ia(
         store["active_profile_id"] = selected_id
     _write_ai_store(config_path, store)
     return cargar_perfil_ia(selected_id, config_path)
+
+
+def guardar_perfil_predefinido(
+    preset_id: str,
+    *,
+    api_key: str,
+    profile_name: str | None = None,
+    set_active: bool = True,
+    path: str | Path | None = None,
+) -> AIProviderConfig:
+    preset = AI_PROVIDER_PRESETS.get(str(preset_id))
+    if not preset:
+        raise ValueError(f"Preset IA desconocido: {preset_id}")
+    key = str(api_key or "").strip()
+    if not key:
+        raise ValueError(
+            "Este proveedor requiere una API key. "
+            "Aegis no incorpora claves en el código ni en releases."
+        )
+    return guardar_perfil_ia(
+        profile_name=profile_name or str(preset["name"]),
+        base_url=str(preset["base_url"]),
+        model_id=str(preset["model_id"]),
+        api_key=key,
+        provider_id=str(preset["provider_id"]),
+        provider_name=str(preset["provider_name"]),
+        model_name=str(preset["model_name"]),
+        role=str(preset["role"]),
+        context_window=int(preset["context_window"]),
+        max_output_tokens=int(preset["max_output_tokens"]),
+        set_active=set_active,
+        path=path,
+    )
 
 
 def guardar_configuracion_aegis_ai(
@@ -627,10 +994,15 @@ def cargar_configuracion_ia() -> AIProviderConfig:
         model_id = str(
             os.getenv("AEGIS_AI_MODEL") or DEFAULT_MODEL_ID
         ).strip()
+        env_provider_id = str(
+            os.getenv("AEGIS_AI_PROVIDER_ID") or DEFAULT_PROVIDER_ID
+        ).strip()
+        role, context_window, max_output = _provider_defaults(
+            env_provider_id,
+            model_id,
+        )
         return AIProviderConfig(
-            provider_id=str(
-                os.getenv("AEGIS_AI_PROVIDER_ID") or DEFAULT_PROVIDER_ID
-            ).strip(),
+            provider_id=env_provider_id,
             provider_name=str(
                 os.getenv("AEGIS_AI_PROVIDER_NAME") or "Proveedor IA"
             ).strip(),
@@ -643,6 +1015,15 @@ def cargar_configuracion_ia() -> AIProviderConfig:
             config_path="variables de entorno AEGIS_AI_*",
             profile_id="env",
             profile_name="Variables de entorno",
+            role=str(os.getenv("AEGIS_AI_ROLE") or role).strip(),
+            context_window=_safe_int(
+                os.getenv("AEGIS_AI_CONTEXT_WINDOW"),
+                context_window,
+            ),
+            max_output_tokens=_safe_int(
+                os.getenv("AEGIS_AI_MAX_OUTPUT_TOKENS"),
+                max_output,
+            ),
         )
 
     try:
