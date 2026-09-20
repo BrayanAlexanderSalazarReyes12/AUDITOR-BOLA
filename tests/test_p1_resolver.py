@@ -154,3 +154,56 @@ def test_descubrimiento_p1_en_vivo_es_solo_lectura(monkeypatch):
         == []
     )
     assert calls == []
+
+
+
+def test_resuelve_bola_con_campos_semanticos_no_estandar(monkeypatch):
+    cfg = ConfigObjetivo(
+        sistema="demo",
+        base_url="http://127.0.0.1:5050",
+        cuentas=[
+            Cuenta(
+                username="ana.vargas",
+                password="x",
+                role="analista",
+            )
+        ],
+        endpoints=[],
+    )
+    metadata = {
+        "candidatos_pilar1": [
+            {
+                "familia": "BOLA",
+                "metodo": "GET",
+                "ruta_detectada": "/api/tickets/{ticket_id}",
+            }
+        ]
+    }
+
+    monkeypatch.setattr(
+        "auditor_bola.p1_resolver.request_http",
+        lambda *args, **kwargs: FakeResponse(
+            200,
+            {
+                "records": [
+                    {
+                        "ticket_id": 88,
+                        "author": "ana.vargas",
+                        "subject": "demo",
+                    }
+                ]
+            },
+        ),
+    )
+
+    resolved = resolve_live_bola_candidates(
+        cfg,
+        metadata,
+        base_url="http://127.0.0.1:5050",
+    )
+
+    assert len(resolved) == 1
+    assert resolved[0].id_prueba == "88"
+    assert resolved[0].propietario_esperado == "ana.vargas"
+    assert "campo id ticket_id" in resolved[0].pistas_codigo
+    assert "campo propietario author" in resolved[0].pistas_codigo
