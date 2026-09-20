@@ -207,3 +207,66 @@ def test_resuelve_bola_con_campos_semanticos_no_estandar(monkeypatch):
     assert resolved[0].propietario_esperado == "ana.vargas"
     assert "campo id ticket_id" in resolved[0].pistas_codigo
     assert "campo propietario author" in resolved[0].pistas_codigo
+
+
+
+def test_resuelve_get_y_patch_bola_con_mismo_valor(monkeypatch):
+    cfg = ConfigObjetivo(
+        sistema="demo",
+        base_url="http://127.0.0.1:5050",
+        cuentas=[
+            Cuenta(
+                username="ana.vargas",
+                password="x",
+                role="member",
+            ),
+            Cuenta(
+                username="bruno.mejia",
+                password="x",
+                role="member",
+            ),
+        ],
+        endpoints=[],
+    )
+    metadata = {
+        "candidatos_pilar1": [
+            {
+                "familia": "BOLA",
+                "metodo": "GET",
+                "ruta_detectada": "/api/tickets/{ticket_id}",
+            },
+            {
+                "familia": "BOLA",
+                "metodo": "PATCH",
+                "ruta_detectada": "/api/tickets/{ticket_id}",
+            },
+        ]
+    }
+
+    monkeypatch.setattr(
+        "auditor_bola.p1_resolver.request_http",
+        lambda *args, **kwargs: FakeResponse(
+            200,
+            {
+                "records": [
+                    {
+                        "ticket_id": 88,
+                        "author": "ana.vargas",
+                        "summary": "sin cambios",
+                    }
+                ]
+            },
+        ),
+    )
+
+    resolved = resolve_live_bola_candidates(
+        cfg,
+        metadata,
+        base_url="http://127.0.0.1:5050",
+    )
+
+    assert [item.metodo for item in resolved] == ["GET", "PATCH"]
+    patch = resolved[1]
+    assert patch.id_prueba == "88"
+    assert patch.propietario_esperado == "ana.vargas"
+    assert patch.cuerpo_prueba == {"summary": "sin cambios"}
