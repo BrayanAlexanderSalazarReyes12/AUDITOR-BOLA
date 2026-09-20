@@ -983,6 +983,9 @@ class AuditorController(QObject):
         cfg = cargar_config(profile)
         self.config_path = profile
         self.cfg = cfg
+        self.ai_failed_attempts.clear()
+        self.ai_source_hashes.clear()
+        self.ai_diagnosis = None
         self.proceso = None
         self.active_runtime_status = {}
         self.log_message.emit(f"Perfil cargado: {profile}")
@@ -1000,6 +1003,9 @@ class AuditorController(QObject):
         if not root.is_dir():
             raise FileNotFoundError(root)
         self.target_root = root
+        self.ai_failed_attempts.clear()
+        self.ai_source_hashes.clear()
+        self.ai_diagnosis = None
         self.proceso = None
         self.active_runtime_status = {}
         self.log_message.emit(f"Aplicación cargada: {root}")
