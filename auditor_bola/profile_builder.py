@@ -4502,6 +4502,36 @@ def build_profile_draft(
             "cuentas_candidatas": list(detection.account_sources),
             "archivos_cuentas_escaneados": True,
             "perfil_generado_automaticamente": True,
+            "motor_evidencia": {
+                "version": 2,
+                "modo": "semantico-generico",
+                "fuentes": [
+                    "codigo",
+                    "configuracion",
+                    "documentacion",
+                    "tests",
+                    "fixtures",
+                    "seeds",
+                    "runtime-vivo-solo-lectura",
+                ],
+                "capacidades_pilar1": [
+                    "BOLA/IDOR por propiedad",
+                    "RBAC/ABAC desde contratos de seguridad",
+                    "alcance de agente desde API directa vs agente",
+                ],
+                "capacidades_pilar2": [
+                    "CORS",
+                    "secretos por defecto",
+                    "debug explicito",
+                    "cookies Secure=false",
+                    "bypass de limites sin guardia",
+                    "contenedor no-root",
+                ],
+                "politica_confianza": (
+                    "solo activar controles cuando la evidencia es "
+                    "ejecutable; lo ambiguo permanece como candidato"
+                ),
+            },
             "candidatos_pilar1": inferred_p1_candidates,
             "total_candidatos_pilar1": len(inferred_p1_candidates),
             "controles_pilar1_inferidos_automaticamente": [
