@@ -27,8 +27,8 @@ def _app():
     return app
 
 
-def test_version_is_1_3_1():
-    assert __version__ == "1.3.1"
+def test_version_is_1_3_2():
+    assert __version__ == "1.3.2"
 
 
 def test_startup_splash_reports_percentage():
@@ -343,7 +343,8 @@ def test_ai_page_prioriza_la_vista_de_codigo_sobre_el_detalle():
     app.processEvents()
 
     assert page.diff_view.lineWrapMode() == QTextEdit.LineWrapMode.NoWrap
-    assert page.detail.maximumHeight() == 165
+    assert page.diff_view.minimumHeight() >= 320
+    assert page.detail.maximumHeight() == 112
     assert page.list.count() == 1
     assert "secure()" in page.diff_view.toHtml()
 
