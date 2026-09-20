@@ -204,7 +204,7 @@ jobs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.11]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.11]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -271,6 +271,7 @@ jobs:
           - El perfil JSON expone preferencia_arranque, permitir_fallback_local, comandos, URL y alternativas, y mantiene metadata_detectada.plan_ejecucion sincronizado.
           - En proyectos Python, Aegis prioriza .venv/venv/env del proyecto antes de buscar Python del sistema.
           - La pantalla de Inicio muestra el comando de ejecución, política de arranque y alternativas locales configuradas.
+          - Los workflows CI y la interfaz profesional fueron validados después de las correcciones del arranque local y la detección de puertos.
 
           ## Descargas
 
