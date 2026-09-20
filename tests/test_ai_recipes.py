@@ -736,3 +736,63 @@ def test_perfil_activo_de_aegis_tiene_prioridad_sobre_variables(
     assert provider.profile_name == "Perfil seleccionado"
     assert provider.base_url == "https://profile.example/v1"
     assert provider.model_id == "profile-model"
+
+def test_validacion_local_rechaza_identidad_de_prueba_hardcodeada():
+    proposal = ai.AIRecipeProposal(
+        id="IA-1",
+        titulo="Bloquear usuario concreto",
+        enfoque="MINIMA",
+        explicacion="No debe aceptarse como política general.",
+        riesgo="BAJO",
+        estrategia="replace_exact",
+        buscar="def auditoria():\n    return ok()",
+        reemplazar=(
+            "def auditoria():\n"
+            "    if request.user == \"ana.vargas\":\n"
+            "        return forbidden()\n"
+            "    return ok()"
+        ),
+        requiere_reinicio=False,
+        consideraciones="demo",
+    )
+
+    proposals = ai.validar_propuestas_contextuales(
+        [proposal],
+        source_relative="app.py",
+        source_text="def auditoria():\n    return ok()\n",
+        metadata_hallazgo={"cuenta": "ana.vargas"},
+        matriz_pruebas=[],
+    )
+
+    assert proposals[0].validacion_ok is False
+    assert any(
+        "hardcodea una identidad" in error
+        for error in proposals[0].errores_validacion
+    )
+
+
+def test_validacion_local_rechaza_python_invalido():
+    proposal = ai.AIRecipeProposal(
+        id="IA-2",
+        titulo="Parche roto",
+        enfoque="ESTRUCTURAL",
+        explicacion="demo",
+        riesgo="MEDIO",
+        estrategia="replace_exact",
+        buscar="return True",
+        reemplazar="if (: return False",
+        requiere_reinicio=False,
+        consideraciones="demo",
+    )
+
+    proposals = ai.validar_propuestas_contextuales(
+        [proposal],
+        source_relative="app.py",
+        source_text="def check():\n    return True\n",
+    )
+
+    assert proposals[0].validacion_ok is False
+    assert any(
+        "Python inválido" in error
+        for error in proposals[0].errores_validacion
+    )
