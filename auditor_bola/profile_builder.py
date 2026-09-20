@@ -3644,8 +3644,8 @@ def _infer_agent_scope_checks(
         # response.get_json()['steps']... y aliases:
         # payload = response.get_json(); payload['steps']...
         python_accessors = (
-            rf"\\b{var}\\.(?:json|body)(?:\\(\\))?",
-            rf"\\b{var}\\.get_json\\s*\\(\\s*\\)",
+            rf"\b{var}\.(?:json|body)(?:\(\))?",
+            rf"\b{var}\.get_json\s*\(\s*\)",
         )
         for accessor in python_accessors:
             for match in re.finditer(
