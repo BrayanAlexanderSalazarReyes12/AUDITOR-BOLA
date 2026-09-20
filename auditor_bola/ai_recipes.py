@@ -2369,6 +2369,67 @@ def _request_json_provider(
         json=payload,
         timeout=timeout,
     )
+    context_retry = False
+    if response.status_code >= 400:
+        body_full = response.text or ""
+        context_error = (
+            response.status_code == 400
+            and any(
+                token in body_full.lower()
+                for token in (
+                    "contextwindowexceeded",
+                    "maximum context length",
+                    "context length",
+                    "too many tokens",
+                    "input_tokens",
+                )
+            )
+        )
+        if context_error:
+            # Segunda oportunidad para proveedores pequeños. Reduce salida y
+            # contexto de forma agresiva antes de abandonar al siguiente modelo.
+            context_retry = True
+            compacted_retry = _compact_structure(
+                compacted,
+                max_string=700,
+                max_list=3,
+            )
+            retry_content = (
+                compacted_retry
+                if isinstance(compacted_retry, str)
+                else json.dumps(
+                    compacted_retry,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            retry_requested = min(2048, requested_output)
+            retry_tokens = _dynamic_output_tokens(
+                provider,
+                system_prompt=system_prompt,
+                user_content=retry_content,
+                requested=retry_requested,
+            )
+            retry_payload = {
+                **payload,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": retry_content},
+                ],
+                "max_tokens": retry_tokens,
+            }
+            response = requests.post(
+                endpoint,
+                headers=_provider_headers(provider),
+                json=retry_payload,
+                timeout=timeout,
+            )
+            if response.status_code < 400:
+                payload = retry_payload
+                user_content = retry_content
+                max_tokens = retry_tokens
+                was_compacted = True
+
     if response.status_code >= 400:
         body = response.text[:2400]
         raise RuntimeError(
@@ -2382,6 +2443,7 @@ def _request_json_provider(
         "provider": provider.public_dict(),
         "max_tokens": max_tokens,
         "context_compacted": was_compacted,
+        "context_retry": context_retry,
         "estimated_input_tokens": (
             _estimate_tokens(system_prompt)
             + _estimate_tokens(user_content)
