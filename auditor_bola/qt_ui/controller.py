@@ -23,6 +23,7 @@ from ..ai_recipes import (
     generar_tres_recetas,
     guardar_seleccion_ia,
     guardar_sesion_ia,
+    generalizar_correccion_exitosa,
     propuesta_a_correccion,
 )
 from ..app_paths import default_config_dir, default_evidence_dir
@@ -50,6 +51,7 @@ from ..profile_builder import (
     detect_runtime_profile,
     save_profile_draft,
 )
+from ..recipe_library import guardar_receta_biblioteca
 from ..remediation_knowledge import (
     buscar_conocimiento,
     crear_conocimiento_respaldo_verificado,
@@ -2268,22 +2270,100 @@ class AuditorController(QObject):
                     resultado=result,
                 )
 
-            if result.get("estado_final") == "CORREGIDO":
-                knowledge = crear_conocimiento_respaldo_verificado(
-                    control_id=row["id"],
-                    descripcion=row.get("control"),
+            if result.get("estado_patch") == "PATCH_VERIFIED":
+                provider = self.ai_provider
+                guardar_receta_biblioteca(
+                    correction,
+                    sistema=self.cfg.sistema,
+                    version_objetivo=self.cfg.version_objetivo,
+                    metodo=row.get("metodo"),
+                    ruta=row.get("ruta"),
                     tipo_control=row.get("tipo_control"),
-                    extension=Path(target_relative).suffix.lower(),
+                    titulo=proposal.titulo,
+                    fuente="ia-verificada",
+                    proveedor=(
+                        provider.provider_name
+                        if provider
+                        else None
+                    ),
+                    modelo=(
+                        provider.model_id
+                        if provider
+                        else None
+                    ),
+                    verificada=True,
                 )
+
+                knowledge = None
+                applied = result.get("correccion_aplicada") or {}
+                backup_path = str(applied.get("backup") or "").strip()
+                try:
+                    before_text = (
+                        Path(backup_path).read_text(
+                            encoding="utf-8",
+                            errors="replace",
+                        )
+                        if backup_path
+                        else ""
+                    )
+                    after_text = (
+                        self.target_root / target_relative
+                    ).read_text(
+                        encoding="utf-8",
+                        errors="replace",
+                    )
+                    if provider and before_text:
+                        knowledge, _context, _provider = (
+                            generalizar_correccion_exitosa(
+                                self.cfg,
+                                control_id=row["id"],
+                                descripcion=(
+                                    row.get("control")
+                                    or row["id"]
+                                ),
+                                detalle=row.get("detalle") or "",
+                                metadata_hallazgo=row,
+                                matriz_pruebas=[
+                                    item
+                                    for item in self.rows
+                                    if item.get("id") == row.get("id")
+                                ],
+                                source_relative=target_relative,
+                                codigo_antes=before_text,
+                                codigo_despues=after_text,
+                                diff=str(applied.get("diff") or ""),
+                                propuesta=proposal,
+                                provider=provider,
+                            )
+                        )
+                except Exception as exc:
+                    self.log_message.emit(
+                        "El parche fue verificado, pero la generalización "
+                        f"enriquecida falló: {exc}. Se guardará respaldo "
+                        "semántico verificado."
+                    )
+
+                if knowledge is None:
+                    knowledge = crear_conocimiento_respaldo_verificado(
+                        control_id=row["id"],
+                        descripcion=row.get("control"),
+                        tipo_control=row.get("tipo_control"),
+                        extension=Path(
+                            target_relative
+                        ).suffix.lower(),
+                    )
+
                 guardar_conocimiento(
                     knowledge,
                     caso_exitoso={
                         "control_id": row["id"],
                         "tipo_control": row.get("tipo_control"),
+                        "familia": row.get("familia"),
                         "archivo_extension": Path(
                             target_relative
                         ).suffix.lower(),
-                        "resultado": "CORREGIDO",
+                        "resultado": "PATCH_VERIFIED",
+                        "estado_patch": "PATCH_VERIFIED",
                     },
                 )
             return result
