@@ -2240,6 +2240,10 @@ class AuditorController(QObject):
                         "regenera las recetas IA sobre la versión actual."
                     )
 
+            history = self.ai_failed_attempts.get(
+                row["id"],
+                [],
+            )
             result = ciclo_correctivo(
                 self.cfg,
                 row["id"],
@@ -2247,6 +2251,13 @@ class AuditorController(QObject):
                 evidence_base=self.evidence_base,
                 reiniciar=self.restart_callback(),
                 selector=selector,
+                attempt_number=len(history) + 1,
+                proposal_id=proposal.id,
+                estrategia=(
+                    proposal.estrategia_conceptual
+                    or proposal.enfoque
+                ),
+                hipotesis=proposal.hipotesis_id or None,
             )
 
             if self.ai_session_dir:
@@ -2262,7 +2273,7 @@ class AuditorController(QObject):
                     control_id=row["id"],
                     descripcion=row.get("control"),
                     tipo_control=row.get("tipo_control"),
-                    extension=Path(self.ai_source_relative).suffix.lower(),
+                    extension=Path(target_relative).suffix.lower(),
                 )
                 guardar_conocimiento(
                     knowledge,
@@ -2270,7 +2281,7 @@ class AuditorController(QObject):
                         "control_id": row["id"],
                         "tipo_control": row.get("tipo_control"),
                         "archivo_extension": Path(
-                            self.ai_source_relative
+                            target_relative
                         ).suffix.lower(),
                         "resultado": "CORREGIDO",
                     },
@@ -2278,18 +2289,41 @@ class AuditorController(QObject):
             return result
 
         def success(result):
-            state = result.get("estado_final") or "DESCONOCIDO"
-            if state == "CORREGIDO":
-                # Las propuestas fueron construidas sobre la versión anterior
-                # del archivo y no deben reutilizarse después del parche.
+            legacy_state = result.get("estado_final") or "DESCONOCIDO"
+            patch_state = result.get("estado_patch") or legacy_state
+            verified = patch_state == "PATCH_VERIFIED"
+
+            if verified:
                 self.ai_source_hash = None
+                self.ai_source_hashes.clear()
                 self.ai_failed_attempts.pop(row["id"], None)
                 self.info_message.emit(
-                    "Resultado de receta IA",
-                    f"{row['id']}: CORREGIDO",
+                    "Parche verificado",
+                    (
+                        f"{row['id']}: PATCH_VERIFIED\n\n"
+                        "La validación técnica, la prueba de seguridad, "
+                        "la regresión y el reescaneo no reprodujeron "
+                        "el hallazgo."
+                    ),
                 )
             else:
-                self.ai_failed_attempts[row["id"]] = dict(result)
+                history = self.ai_failed_attempts.setdefault(
+                    row["id"],
+                    [],
+                )
+                attempt_record = {
+                    "attempt": len(history) + 1,
+                    "propuesta": proposal.as_dict(),
+                    "archivo": target_relative,
+                    "diagnostico": self.ai_diagnosis,
+                    "resultado": dict(result),
+                    "failure_analysis": result.get(
+                        "failure_analysis"
+                    ),
+                }
+                history.append(attempt_record)
+                del history[:-12]
+
                 motive = str(result.get("motivo") or "").strip()
                 error = str(result.get("error") or "").strip()
                 rollback_state = (
@@ -2298,11 +2332,38 @@ class AuditorController(QObject):
                     else "No / no fue necesario"
                 )
                 details = [
-                    f"{row['id']}: {state}",
+                    f"{row['id']}: {patch_state}",
                     motive or "La receta no superó la verificación.",
                 ]
+
+                technical = result.get("validacion_tecnica") or {}
+                if technical:
+                    syntax = technical.get("sintaxis") or {}
+                    build = technical.get("build") or {}
+                    tests = technical.get("tests") or {}
+                    for label, item in (
+                        ("Sintaxis", syntax),
+                        ("Build", build),
+                        ("Tests", tests),
+                    ):
+                        if item.get("estado"):
+                            line = f"{label}: {item.get('estado')}"
+                            detail = str(item.get("detalle") or "").strip()
+                            if detail:
+                                line += f" · {detail}"
+                            details.append(line)
+
                 if error:
                     details.append(f"Error: {error}")
+
+                failure = result.get("failure_analysis") or {}
+                if failure.get("categoria_error"):
+                    details.append(
+                        "Análisis del fallo: "
+                        f"{failure.get('categoria_error')} · "
+                        f"{failure.get('por_que_no_resolvio') or ''}"
+                    )
+
                 verification_errors = result.get(
                     "errores_verificacion"
                 ) or []
@@ -2310,23 +2371,44 @@ class AuditorController(QObject):
                     detail = str(item.get("detalle") or "").strip()
                     if detail:
                         details.append(f"Verificación: {detail}")
+
+                regressions = result.get(
+                    "regresiones_globales"
+                ) or []
+                if regressions:
+                    details.append(
+                        "Regresiones detectadas: "
+                        f"{len(regressions)}"
+                    )
+
                 details.append(
                     f"Rollback automático: {rollback_state}"
                 )
                 evidence = str(result.get("evidencia") or "").strip()
                 if evidence:
                     details.append(f"Evidencia: {evidence}")
-                details.append(
-                    "Puedes seleccionar otra alternativa o generar "
-                    "nuevas recetas; Aegis enviará este intento fallido "
-                    "como retroalimentación para no repetirlo."
-                )
+
+                if len(history) >= 2:
+                    details.append(
+                        "STRATEGY_RESET_REQUIRED: dos intentos "
+                        "consecutivos fallaron. La próxima generación "
+                        "reanalizará la causa raíz, archivos relacionados "
+                        "y flujo completo, y rechazará variaciones "
+                        "cosméticas de las estrategias descartadas."
+                    )
+                else:
+                    details.append(
+                        "Puedes seleccionar otra alternativa o regenerar. "
+                        "Este intento se conservará como retroalimentación."
+                    )
+
                 self.error_message.emit(
                     "La receta no pudo corregir el hallazgo",
                     "\n\n".join(details),
                 )
                 self.log_message.emit(
-                    f"Receta IA {row['id']} falló: {state}"
+                    f"PATCH_ATTEMPT_{len(history)} {row['id']}: "
+                    f"{patch_state}"
                     + (f" · {motive}" if motive else "")
                     + (f" · {error}" if error else "")
                 )
