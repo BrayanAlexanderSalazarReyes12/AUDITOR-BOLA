@@ -1240,7 +1240,7 @@ class AIPage(QWidget):
                 f"<div style='color:#8AA9BC;margin-bottom:6px;'>"
                 f"{lenguaje}{subtitle}</div>"
                 "<pre style='white-space:pre-wrap;"
-                "font-family:Consolas,"Courier New",monospace;'>"
+                "font-family:Consolas,&quot;Courier New&quot;,monospace;'>"
                 + "\n".join(rows)
                 + "</pre></div>"
             )
