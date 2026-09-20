@@ -75,6 +75,221 @@ class SourceResolution:
     candidatos: list[SourceCandidate] = field(default_factory=list)
 
 
+@dataclass
+class RelatedSource:
+    archivo: str
+    score: int
+    razones: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SourceContextResolution:
+    principal: SourceResolution
+    relacionados: list[RelatedSource] = field(default_factory=list)
+
+
+_LAYER_TOKENS = {
+    "controller", "handler", "route", "router", "servlet", "resource",
+    "service", "repository", "repo", "dao", "model", "entity",
+    "security", "auth", "permission", "policy", "middleware", "filter",
+    "config", "settings",
+}
+
+
+def _symbol_tokens(text: str, relative: str) -> list[str]:
+    """Extrae símbolos y referencias útiles sin asumir framework."""
+    tokens: list[str] = []
+    patterns = (
+        r"(?m)^\s*(?:class|interface|enum|record)\s+([A-Za-z_][A-Za-z0-9_]*)",
+        r"(?m)^\s*(?:def|function|func)\s+([A-Za-z_][A-Za-z0-9_]*)",
+        r"(?m)^\s*(?:public|protected|private|static|final|async|export\s+)?"
+        r"(?:[A-Za-z_][A-Za-z0-9_<>,\[\]? ]+\s+)?"
+        r"([A-Za-z_][A-Za-z0-9_]*)\s*\(",
+        r"(?m)^\s*(?:from|import|require\()\s*[\"']?([A-Za-z0-9_./-]+)",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            value = str(match.group(1) or "").strip().lower()
+            if len(value) >= 4 and value not in tokens:
+                tokens.append(value)
+            if len(tokens) >= 40:
+                break
+        if len(tokens) >= 40:
+            break
+
+    stem = Path(relative).stem.lower()
+    if len(stem) >= 4 and stem not in tokens:
+        tokens.insert(0, stem)
+
+    for piece in re.findall(r"[A-Za-z][A-Za-z0-9_-]{3,}", relative):
+        value = piece.lower()
+        if value not in tokens:
+            tokens.append(value)
+
+    return tokens[:50]
+
+
+def _related_score(
+    path: Path,
+    root: Path,
+    *,
+    principal: Path,
+    principal_text: str,
+    principal_tokens: list[str],
+    metodo: str | None,
+    ruta: str | None,
+    descripcion: str | None,
+) -> RelatedSource:
+    relative = path.relative_to(root).as_posix()
+    if path == principal:
+        return RelatedSource(relative, -1000, ["archivo principal"])
+
+    text = _safe_read(path)
+    if text is None:
+        return RelatedSource(relative, -1000, ["ilegible"])
+
+    lower_text = text.lower()
+    lower_path = relative.lower()
+    principal_lower = principal_text.lower()
+    score = 0
+    reasons: list[str] = []
+
+    same_dir = path.parent == principal.parent
+    if same_dir:
+        score += 8
+        reasons.append("misma carpeta")
+
+    for token in principal_tokens[:30]:
+        if token in lower_text:
+            score += 5
+            reasons.append(f"referencia:{token}")
+        if token in lower_path:
+            score += 3
+
+    other_stem = path.stem.lower()
+    if len(other_stem) >= 4 and other_stem in principal_lower:
+        score += 22
+        reasons.append("referenciado por archivo principal")
+
+    principal_stem = principal.stem.lower()
+    if len(principal_stem) >= 4 and principal_stem in lower_text:
+        score += 22
+        reasons.append("referencia al archivo principal")
+
+    route_tokens = _route_tokens(ruta)
+    for token in route_tokens:
+        if token in lower_text:
+            score += 6
+            reasons.append(f"ruta:{token}")
+
+    method = (metodo or "").upper()
+    markers = _METHOD_MARKERS.get(method, ())
+    if markers and any(marker in lower_text for marker in markers):
+        score += 4
+        reasons.append(f"método:{method}")
+
+    desc_tokens = _description_tokens(descripcion)
+    for token in desc_tokens:
+        if token in lower_text:
+            score += 1
+
+    layer_hits = [
+        token
+        for token in _LAYER_TOKENS
+        if token in lower_path or token in lower_text[:5000]
+    ]
+    if layer_hits:
+        score += min(10, len(layer_hits) * 2)
+        reasons.append("capa:" + ",".join(sorted(layer_hits)[:4]))
+
+    if path.suffix.lower() == principal.suffix.lower():
+        score += 2
+
+    bad_parts = {"test", "tests", "docs", "doc", "examples", "example"}
+    if any(part.lower() in bad_parts for part in path.parts):
+        score -= 8
+
+    return RelatedSource(relative, score, reasons[:10])
+
+
+def resolver_contexto_fuente(
+    cfg: ConfigObjetivo,
+    target_root: str | Path,
+    *,
+    control_id: str,
+    metodo: str | None = None,
+    ruta: str | None = None,
+    descripcion: str | None = None,
+    max_relacionados: int = 8,
+) -> SourceContextResolution:
+    """Resuelve archivo principal y archivos relacionados por flujo.
+
+    No presupone que el archivo donde aparece la evidencia sea la causa raíz.
+    A partir del archivo principal busca referencias, símbolos compartidos y
+    capas típicas (controller/service/DAO/repository/security/config), siempre
+    dentro de target_root.
+    """
+    principal = resolver_archivo_fuente(
+        cfg,
+        target_root,
+        control_id=control_id,
+        metodo=metodo,
+        ruta=ruta,
+        descripcion=descripcion,
+    )
+    if not principal.archivo:
+        return SourceContextResolution(principal, [])
+
+    root = Path(target_root).resolve()
+    principal_path = (root / principal.archivo).resolve()
+    principal_text = _safe_read(principal_path) or ""
+    tokens = _symbol_tokens(principal_text, principal.archivo)
+
+    related = [
+        _related_score(
+            path,
+            root,
+            principal=principal_path,
+            principal_text=principal_text,
+            principal_tokens=tokens,
+            metodo=metodo,
+            ruta=ruta,
+            descripcion=descripcion,
+        )
+        for path in _iter_source_files(root)
+    ]
+    related = [item for item in related if item.score > 8]
+    related.sort(key=lambda item: (-item.score, item.archivo))
+
+    # Si el perfil ya declara más de un archivo, se conservan como contexto
+    # aunque la heurística de referencias no les asigne suficiente puntuación.
+    declared = _declared_files(
+        cfg,
+        control_id=control_id,
+        metodo=metodo,
+        ruta=ruta,
+    )
+    known = {item.archivo for item in related}
+    for relative in declared:
+        if relative == principal.archivo or relative in known:
+            continue
+        if _exists(root, relative):
+            related.insert(
+                0,
+                RelatedSource(
+                    relative,
+                    500,
+                    ["declarado explícitamente en el perfil"],
+                ),
+            )
+            known.add(relative)
+
+    return SourceContextResolution(
+        principal=principal,
+        relacionados=related[:max(0, int(max_relacionados))],
+    )
+
+
 def _normalizar_rel(path: str) -> str:
     return path.replace("\\", "/").lstrip("./")
 
