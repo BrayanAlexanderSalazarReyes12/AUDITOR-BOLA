@@ -315,11 +315,20 @@ class HomePage(QWidget):
             profile,
             c.config_path.name if c.config_path else "Configuración",
         )
+        active_runtime = (
+            c.active_runtime_status
+            if running and c.active_runtime_status
+            else {}
+        )
+        active_mode = str(
+            active_runtime.get("modo")
+            or (c.cfg.runtime.modo if c.cfg else "Runtime")
+        )
         self.process_metric.set_value(
             "En ejecución"
             if running
             else ("Detenido" if c.proceso else "No administrado"),
-            c.cfg.runtime.modo if c.cfg else "Runtime",
+            active_mode,
         )
         self.findings_metric.set_value(
             str(p1 + p2),
@@ -338,8 +347,20 @@ class HomePage(QWidget):
 
         if c.cfg:
             runtime = c.cfg.runtime
-            runtime_name = runtime.nombre or runtime.modo
-            runtime_mode = runtime.modo
+            active = (
+                c.active_runtime_status
+                if running and c.active_runtime_status
+                else {}
+            )
+            runtime_name = str(
+                active.get("nombre")
+                or runtime.nombre
+                or runtime.modo
+            )
+            runtime_mode = str(
+                active.get("modo")
+                or runtime.modo
+            )
 
             platform_key = (
                 "windows"
@@ -347,7 +368,8 @@ class HomePage(QWidget):
                 else ("macos" if sys.platform == "darwin" else "linux")
             )
             command = (
-                runtime.comando_inicio_por_so.get(platform_key)
+                active.get("comando_inicio")
+                or runtime.comando_inicio_por_so.get(platform_key)
                 or runtime.comando_inicio_por_so.get("default")
                 or runtime.comando_inicio
                 or []
@@ -397,7 +419,18 @@ class HomePage(QWidget):
                     f"Ruta          {c.target_root or '-'}",
                     f"Lenguaje      {languages}",
                     f"Framework     {frameworks}",
-                    f"Base URL      {c.cfg.base_url if c.cfg else '-'}",
+                    (
+                        "Base URL      "
+                        + str(
+                            (
+                                c.active_runtime_status.get("base_url")
+                                if running and c.active_runtime_status
+                                else None
+                            )
+                            or (c.cfg.base_url if c.cfg else "-")
+                            or "-"
+                        )
+                    ),
                     f"Runtime       {runtime_name} ({runtime_mode})",
                     f"Inicio        {start_text}",
                     f"Política      {policy_text}",
