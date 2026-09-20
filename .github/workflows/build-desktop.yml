@@ -1,5 +1,3 @@
-# startup-progress-fix: v1.1.6
-# release-trigger: v1.1.6-progress-fix
 name: Build desktop executables
 
 on:
@@ -170,7 +168,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.6' \
+            'Version: 1.1.7' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -199,13 +197,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-6:
-    name: Publicar Release v1.1.6
+  release-v1-1-7:
+    name: Publicar Release v1.1.7
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.6]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.7]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -223,11 +221,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.6
+          # Aegis Auditor v1.1.7
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.6
+          ## Novedades de v1.1.7
           - Corrige la versión de la aplicación analizada: ya no se asigna
             `1.0.0` por defecto.
           - Detecta la versión real desde package.json, pom.xml, Gradle,
@@ -251,6 +249,8 @@ jobs:
           - La auditoría P1 + P2 ahora muestra progreso real por control, etapa y total procesado.
           - Se elimina la sensación de bloqueo en porcentajes estimados como 42% durante diagnósticos largos.
           - La barra y el modal reciben el avance del motor en segundo plano sin congelar la interfaz.
+          - La fase de inicio del objetivo muestra ahora el progreso real del runtime: selección, preparación, lanzamiento y estabilización.
+          - Se corrige el bloqueo visual en 92% durante el inicio de la aplicación objetivo.
 
           ## Descargas
 
@@ -299,16 +299,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.6" >/dev/null 2>&1; then
-            gh release upload "v1.1.6" "${files[@]}" --clobber
-            gh release edit "v1.1.6" \
-              --title "Aegis Auditor v1.1.6" \
+          if gh release view "v1.1.7" >/dev/null 2>&1; then
+            gh release upload "v1.1.7" "${files[@]}" --clobber
+            gh release edit "v1.1.7" \
+              --title "Aegis Auditor v1.1.7" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.6" "${files[@]}" \
+            gh release create "v1.1.7" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.6" \
+              --title "Aegis Auditor v1.1.7" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
