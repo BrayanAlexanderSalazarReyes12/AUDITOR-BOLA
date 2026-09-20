@@ -6,6 +6,7 @@ import errno
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -1338,6 +1339,66 @@ class LocalTargetProcess:
 
         return raw.decode("utf-8", errors="replace").strip()
 
+    def _detect_local_url_from_output(self) -> str | None:
+        """Detecta la URL local que el propio servidor anuncia al arrancar.
+
+        Esto permite corregir perfiles donde la estrategia local usa un puerto
+        distinto del estimado por la auto-configuración (por ejemplo, 5000
+        configurado pero Flask realmente abre 5050).
+        """
+        output = self.runtime_output_tail(max_bytes=12000)
+        if not output:
+            return None
+
+        candidates = re.findall(
+            r"https?://(?:127\.0\.0\.1|localhost|0\.0\.0\.0|\[::\]|::1)"
+            r"(?::\d{1,5})?(?:/[^\s]*)?",
+            output,
+            flags=re.I,
+        )
+        if not candidates:
+            return None
+
+        for raw in reversed(candidates):
+            cleaned = raw.rstrip(".,;)'\"]")
+            try:
+                parsed = urlparse(cleaned)
+                port = parsed.port
+            except (ValueError, TypeError):
+                continue
+
+            host = (parsed.hostname or "").lower()
+            if host not in {
+                "127.0.0.1",
+                "localhost",
+                "0.0.0.0",
+                "::",
+                "::1",
+            }:
+                continue
+
+            if port is not None and not (1 <= int(port) <= 65535):
+                continue
+
+            normalized_host = (
+                "127.0.0.1"
+                if host in {"localhost", "0.0.0.0"}
+                else host
+            )
+            if normalized_host in {"::", "::1"}:
+                normalized_host = "[::1]"
+
+            scheme = parsed.scheme or "http"
+            netloc = (
+                f"{normalized_host}:{port}"
+                if port is not None
+                else normalized_host
+            )
+            path = parsed.path or ""
+            return f"{scheme}://{netloc}{path}".rstrip("/")
+
+        return None
+
     def _readiness_endpoint(self) -> tuple[str, int] | None:
         raw = str(self.runtime.base_url or "").strip()
         if not raw:
@@ -1392,6 +1453,7 @@ class LocalTargetProcess:
         started = time.monotonic()
         deadline = started + timeout
         last_error = ""
+        announced_url = ""
 
         while time.monotonic() <= deadline:
             if self.process is not None and self.process.poll() is not None:
@@ -1403,9 +1465,48 @@ class LocalTargetProcess:
                     message += f"\n\nSalida del proceso:\n{detail}"
                 return False, message
 
+            # Si el runtime real anuncia otro localhost/puerto, esa evidencia
+            # tiene prioridad sobre el puerto estimado del perfil.
+            detected_url = self._detect_local_url_from_output()
+            if detected_url and detected_url != announced_url:
+                try:
+                    detected = urlparse(detected_url)
+                    detected_host = (detected.hostname or "").strip()
+                    detected_port = detected.port
+                except (ValueError, TypeError):
+                    detected_host = ""
+                    detected_port = None
+
+                if detected_host and detected_port:
+                    normalized_host = (
+                        "127.0.0.1"
+                        if detected_host in {"0.0.0.0", "localhost"}
+                        else detected_host
+                    )
+                    if (
+                        normalized_host != host
+                        or int(detected_port) != int(port)
+                    ):
+                        old_url = str(self.runtime.base_url or "")
+                        self.runtime.base_url = detected_url
+                        host = normalized_host
+                        port = int(detected_port)
+                        announced_url = detected_url
+                        self._emit_progress(
+                            88,
+                            "El servidor anunció una URL distinta. "
+                            f"Usando {detected_url} en lugar de "
+                            f"{old_url or 'la URL estimada'}.",
+                        )
+
             try:
+                connect_host = (
+                    "::1"
+                    if host in {"[::1]", "::1"}
+                    else host
+                )
                 with socket.create_connection(
-                    (host, port),
+                    (connect_host, port),
                     timeout=0.8,
                 ):
                     return True, f"{host}:{port} disponible"
