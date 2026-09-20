@@ -1618,8 +1618,8 @@ class LocalTargetProcess:
             self._service_running = True
             self._started_successfully = True
             self._emit_progress(
-                100,
-                "Servidor objetivo iniciado y disponible.",
+                99,
+                "Servidor objetivo confirmado; finalizando inicio…",
             )
             return self.runtime_status()
 
@@ -1686,8 +1686,8 @@ class LocalTargetProcess:
 
         self._started_successfully = True
         self._emit_progress(
-            100,
-            "Servidor objetivo iniciado y disponible.",
+            99,
+            "Servidor objetivo confirmado; finalizando inicio…",
         )
         return self.runtime_status()
 
