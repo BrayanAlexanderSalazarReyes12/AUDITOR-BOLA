@@ -30,7 +30,12 @@ from .remediation_knowledge import (
 
 DEFAULT_PROVIDER_ID = "llmlab"
 DEFAULT_MODEL_ID = "lab-coder"
-DEFAULT_MAX_OUTPUT_TOKENS = 8192
+# lab-coder reporta una ventana máxima de 20.480 tokens. Pedir 8.192 de
+# salida dejaba muy poco espacio para código/evidencia y provocaba HTTP 400.
+LLMLAB_CONTEXT_WINDOW = 20480
+DEFAULT_MAX_OUTPUT_TOKENS = 4096
+MIN_OUTPUT_TOKENS = 1024
+TOKEN_SAFETY_MARGIN = 768
 
 
 @dataclass
@@ -876,6 +881,143 @@ def _json_schema() -> dict:
         "required": ["propuestas"],
         "additionalProperties": False,
     }
+def _estimate_tokens(text: str) -> int:
+    """Estimación conservadora para código/JSON sin depender de tokenizer."""
+    return max(1, (len(text or "") + 2) // 3)
+
+
+def _max_tokens_seguro(
+    system_prompt: str,
+    user_content: str,
+    *,
+    requested: int = DEFAULT_MAX_OUTPUT_TOKENS,
+    context_window: int = LLMLAB_CONTEXT_WINDOW,
+) -> int:
+    estimated_input = (
+        _estimate_tokens(system_prompt)
+        + _estimate_tokens(user_content)
+    )
+    available = (
+        int(context_window)
+        - estimated_input
+        - TOKEN_SAFETY_MARGIN
+    )
+    if available < MIN_OUTPUT_TOKENS:
+        raise RuntimeError(
+            "El contexto del hallazgo es demasiado grande para lab-coder "
+            f"(entrada estimada={estimated_input}, ventana={context_window}). "
+            "Aegis debe reducir archivos/evidencia antes de pedir la receta."
+        )
+    return max(
+        MIN_OUTPUT_TOKENS,
+        min(int(requested), available),
+    )
+
+
+def _compact_prompt_text(
+    text: str,
+    *,
+    max_chars: int = 42000,
+) -> str:
+    """Conserva instrucciones del inicio y evidencia reciente del final."""
+    if len(text) <= max_chars:
+        return text
+    head = max_chars // 3
+    tail = max_chars - head
+    return (
+        text[:head]
+        + "\n\n... <CONTEXTO COMPACTADO POR AEGIS> ...\n\n"
+        + text[-tail:]
+    )
+
+
+def _post_chat_json(
+    provider: AIProviderConfig,
+    *,
+    system_prompt: str,
+    user_content: str,
+    temperature: float,
+    timeout: int,
+) -> dict:
+    endpoint = provider.base_url.rstrip("/") + "/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if provider.api_key:
+        headers["Authorization"] = f"Bearer {provider.api_key}"
+
+    compacted = _compact_prompt_text(user_content)
+    max_tokens = _max_tokens_seguro(
+        system_prompt,
+        compacted,
+    )
+    payload = {
+        "model": provider.model_id,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": compacted},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    resp = requests.post(
+        endpoint,
+        headers=headers,
+        json=payload,
+        timeout=timeout,
+    )
+
+    # Si el servidor calcula más tokens que nuestra estimación, hacemos un
+    # segundo intento automático con menos contexto y solo 2.048 de salida.
+    if (
+        resp.status_code == 400
+        and any(
+            token in (resp.text or "").lower()
+            for token in (
+                "contextwindowexceeded",
+                "maximum context length",
+                "context length",
+                "input_tokens",
+            )
+        )
+    ):
+        compacted = _compact_prompt_text(
+            user_content,
+            max_chars=30000,
+        )
+        retry_tokens = min(
+            2048,
+            _max_tokens_seguro(
+                system_prompt,
+                compacted,
+                requested=2048,
+            ),
+        )
+        payload = {
+            **payload,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": compacted},
+            ],
+            "max_tokens": retry_tokens,
+        }
+        resp = requests.post(
+            endpoint,
+            headers=headers,
+            json=payload,
+            timeout=timeout,
+        )
+
+    if resp.status_code >= 400:
+        raise RuntimeError(
+            "Laboratorio UTB respondió HTTP "
+            f"{resp.status_code}: {resp.text[:1200]}"
+        )
+
+    return _extraer_json(
+        _extraer_contenido_chat(resp.json())
+    )
+
+
 def _extraer_contenido_chat(response_json: dict) -> str:
     choices = response_json.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -1743,11 +1885,6 @@ def generar_tres_recetas(
         + json.dumps(contexto, ensure_ascii=False, indent=2)
     )
 
-    endpoint = provider.base_url.rstrip("/") + "/chat/completions"
-    headers = {"Content-Type": "application/json"}
-    if provider.api_key:
-        headers["Authorization"] = f"Bearer {provider.api_key}"
-
     source_files = {
         source_relative: source_text,
         **(archivos_relacionados or {}),
@@ -1758,28 +1895,12 @@ def generar_tres_recetas(
         *,
         temperature: float,
     ) -> list[AIRecipeProposal]:
-        payload = {
-            "model": provider.model_id,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": current_prompt},
-            ],
-            "temperature": temperature,
-            "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
-        }
-        resp = requests.post(
-            endpoint,
-            headers=headers,
-            json=payload,
+        data = _post_chat_json(
+            provider,
+            system_prompt=system_prompt,
+            user_content=current_prompt,
+            temperature=temperature,
             timeout=timeout,
-        )
-        if resp.status_code >= 400:
-            raise RuntimeError(
-                "Laboratorio UTB respondió HTTP "
-                f"{resp.status_code}: {resp.text[:1200]}"
-            )
-        data = _extraer_json(
-            _extraer_contenido_chat(resp.json())
         )
         proposals = _validar_propuestas(data)
         return validar_propuestas_contextuales(
@@ -1977,42 +2098,17 @@ def _solicitar_json_gemma(
     user_payload: dict,
     timeout: int = 120,
 ) -> dict:
-    endpoint = provider.base_url.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": provider.model_id,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": json.dumps(
-                    user_payload,
-                    ensure_ascii=False,
-                    indent=2,
-                ),
-            },
-        ],
-        "temperature": 0.1,
-        "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
-    }
-    headers = {"Content-Type": "application/json"}
-    if provider.api_key:
-        headers["Authorization"] = f"Bearer {provider.api_key}"
-
-    resp = requests.post(
-        endpoint,
-        headers=headers,
-        json=payload,
+    return _post_chat_json(
+        provider,
+        system_prompt=system_prompt,
+        user_content=json.dumps(
+            user_payload,
+            ensure_ascii=False,
+            indent=2,
+        ),
+        temperature=0.1,
         timeout=timeout,
     )
-    if resp.status_code >= 400:
-        raise RuntimeError(
-            "Laboratorio UTB respondió HTTP "
-            f"{resp.status_code}: {resp.text[:1200]}"
-        )
-    texto = _extraer_contenido_chat(resp.json())
-    return _extraer_json(texto)
-
-
 def _lista_strings(data: dict, key: str) -> list[str]:
     """Normaliza listas semánticas devueltas por el modelo.
 
