@@ -1460,7 +1460,7 @@ def _detect_project_http_base_url(root: Path) -> str | None:
 
         for match in re.finditer(
             r"(?im)^\s*(?:PORT|APP_PORT|HTTP_PORT|SERVER_PORT)"
-            r"\s*[=:]\s*["']?(\d{2,5})["']?\s*$",
+            r"""\s*[=:]\s*["']?(\d{2,5})["']?\s*$""",
             text,
         ):
             port = int(match.group(1))
