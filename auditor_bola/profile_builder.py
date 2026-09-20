@@ -1340,6 +1340,61 @@ def _runtime_from_descriptor(descriptor: dict[str, Any] | None) -> dict[str, Any
     return runtime if runtime.get("comando_inicio") else None
 
 
+def _detect_compose_published_port(path: Path) -> int | None:
+    """Extrae el primer puerto TCP publicado en sintaxis Compose común."""
+    text = _read_text(path)
+    if not text:
+        return None
+
+    # Sintaxis corta: "8080:5000", "127.0.0.1:8080:5000", 8080:5000.
+    short = re.compile(
+        r"""(?mx)
+        ^\s*-\s*["']?
+        (?:(?:127\.0\.0\.1|0\.0\.0\.0|localhost):)?
+        (?P<published>\d{2,5})
+        :
+        (?P<target>\d{2,5})
+        (?:/tcp)?
+        ["']?\s*(?:\#.*)?$
+        """
+    )
+    for match in short.finditer(text):
+        port = int(match.group("published"))
+        if 1 <= port <= 65535:
+            return port
+
+    # Sintaxis larga:
+    # - target: 5000
+    #   published: 8080
+    long_match = re.search(
+        r"(?ms)^\s*-\s*target\s*:\s*\d+\s*$"
+        r".{0,250}?"
+        r"^\s*published\s*:\s*["']?(\d{2,5})["']?\s*$",
+        text,
+    )
+    if long_match:
+        port = int(long_match.group(1))
+        if 1 <= port <= 65535:
+            return port
+
+    return None
+
+
+def _detect_python_run_port(path: Path) -> int | None:
+    """Detecta app.run(... port=N) en launchers Flask sencillos."""
+    text = _read_text(path)
+    match = re.search(
+        r"\b(?:app\s*\.\s*)?run\s*\([^)]*?"
+        r"\bport\s*=\s*(\d{2,5})",
+        text,
+        re.I | re.S,
+    )
+    if not match:
+        return None
+    port = int(match.group(1))
+    return port if 1 <= port <= 65535 else None
+
+
 def _runtime_template(
     *,
     name: str,
@@ -1458,6 +1513,11 @@ def _detect_native_runtime(
 
         if (root / "run.py").exists():
             base["comando_inicio"] = ["python", "run.py"]
+            explicit_port = _detect_python_run_port(root / "run.py")
+            if explicit_port:
+                base["base_url"] = (
+                    f"http://127.0.0.1:{explicit_port}"
+                )
         elif (root / "manage.py").exists():
             base["comando_inicio"] = [
                 "python",
@@ -1651,10 +1711,16 @@ def _detect_runtime(
     if not compose:
         return native_runtime, native_url
 
+    published_port = _detect_compose_published_port(root / compose)
+    docker_base_url = (
+        f"http://127.0.0.1:{published_port}"
+        if published_port
+        else native_url
+    )
     docker_runtime = _runtime_template(
         name="Docker Compose",
         origin=compose,
-        base_url="http://127.0.0.1:8080",
+        base_url=docker_base_url,
     )
     docker_runtime["modo"] = "service"
     docker_runtime["comando_inicio"] = [
@@ -1679,7 +1745,8 @@ def _detect_runtime(
         compose,
         "restart",
     ]
-    docker_runtime["espera_inicio"] = 8.0
+    docker_runtime["espera_inicio"] = 2.0
+    docker_runtime["timeout_inicio"] = 45.0
 
     # Docker sigue siendo preferido cuando el proyecto lo declara, pero el
     # arranque nativo queda disponible como alternativa real.
