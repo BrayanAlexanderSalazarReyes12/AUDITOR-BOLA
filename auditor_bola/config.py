@@ -91,6 +91,11 @@ class ChequeoPilar2:
     patron_seguro: str | None = None
     archivos_fuente: list[str] = field(default_factory=list)
     pistas_codigo: list[str] = field(default_factory=list)
+    familia: str | None = None
+    componente: str | None = None
+    confianza_inicial: str | None = None
+    origen: str | None = None
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -176,6 +181,9 @@ class ConfigObjetivo:
     # observaciones dinámicas en hallazgos cuando existe una expectativa de
     # seguridad inferible (por ejemplo RBAC de bajo privilegio).
     candidatos_pilar1: list[dict] = field(default_factory=list)
+    # Hipótesis P2 que aún no son hallazgos. Permite conservar evidencia
+    # estática/dinámica sin elevarla prematuramente a vulnerabilidad.
+    candidatos_pilar2: list[dict] = field(default_factory=list)
 
     def cuenta_por_username(self, username: str) -> Cuenta | None:
         for cuenta in self.cuentas:
@@ -540,6 +548,20 @@ def cargar_config(path: str | Path) -> ConfigObjetivo:
                     )
                     else {}
                 ).get("candidatos_pilar1", [])
+            )
+            if isinstance(item, dict)
+        ],
+        candidatos_pilar2=[
+            dict(item)
+            for item in (
+                datos.get("candidatos_pilar2")
+                or (
+                    datos.get("metadata_detectada", {})
+                    if isinstance(
+                        datos.get("metadata_detectada"), dict
+                    )
+                    else {}
+                ).get("candidatos_pilar2", [])
             )
             if isinstance(item, dict)
         ],
