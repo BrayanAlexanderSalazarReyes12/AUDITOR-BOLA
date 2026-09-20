@@ -13,6 +13,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .security_semantics import (
+    infer_object_identity,
+    normalize_key,
+    route_parameter_name,
+)
+
 
 TEXT_EXTENSIONS = {
     ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
