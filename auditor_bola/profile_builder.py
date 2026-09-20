@@ -4040,7 +4040,8 @@ def _infer_automatic_p1_checks(
     # evitar perder rutas por deduplicaciones intermedias.
     strong_sensitive_tokens = (
         "/admin", "admin/", "audit", "auditoria", "auditoría",
-        "prioriz", "manage", "management", "gestion", "gestión",
+        "prioriz", "priorit", "priority", "manage", "management",
+        "gestion", "gestión",
         "roles", "permissions", "permisos", "privileged",
         "approve", "approval", "authorize", "authorization",
     )
