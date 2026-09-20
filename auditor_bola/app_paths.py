@@ -72,6 +72,11 @@ def default_evidence_dir() -> Path:
     return runtime_data_root() / "evidencias"
 
 
+def default_ai_config_path() -> Path:
+    """Configuración local del proveedor IA de Aegis."""
+    return default_config_dir() / "ai-provider.json"
+
+
 def default_recipe_dir() -> Path:
     return runtime_data_root() / "recetas"
 
