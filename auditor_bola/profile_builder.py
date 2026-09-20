@@ -3140,6 +3140,7 @@ def _extract_owner_samples(
                         "archivo": source,
                         "confianza": "alta",
                         "detector": "test-fixture-seed-owner",
+                        "contexto": window.lower(),
                     }
                 )
 
@@ -3187,6 +3188,7 @@ def _extract_owner_samples(
                     "archivo": source,
                     "confianza": "alta",
                     "detector": "seed-sql-owner",
+                    "contexto": match.group(0).lower(),
                 }
             )
 
@@ -3462,15 +3464,48 @@ def _infer_automatic_p1_checks(
         if "{id}" not in profile_route:
             continue
 
-        sample = next(
-            (
-                evidence for evidence in owner_samples
-                if evidence.get("propietario_esperado") in usernames
+        route_tokens = [
+            token.lower()
+            for token in re.findall(r"[A-Za-zÀ-ÿ_]+", profile_route)
+            if token.lower() not in {
+                "api", "id", "int", "string", "uuid",
+            }
+            and len(token) >= 3
+        ]
+        eligible_samples = [
+            evidence
+            for evidence in owner_samples
+            if evidence.get("propietario_esperado") in usernames
+        ]
+        ranked_samples = sorted(
+            eligible_samples,
+            key=lambda evidence: sum(
+                1
+                for token in route_tokens
+                if token in (
+                    str(evidence.get("archivo") or "")
+                    + " "
+                    + str(evidence.get("contexto") or "")
+                ).lower()
             ),
-            None,
+            reverse=True,
         )
-        if not sample:
+        if not ranked_samples:
             continue
+        best_score = sum(
+            1
+            for token in route_tokens
+            if token in (
+                str(ranked_samples[0].get("archivo") or "")
+                + " "
+                + str(ranked_samples[0].get("contexto") or "")
+            ).lower()
+        )
+        if best_score == 0 and len(eligible_samples) > 1:
+            # Con varias semillas de entidades distintas no asociamos la
+            # primera arbitrariamente a cualquier endpoint.
+            continue
+        sample = ranked_samples[0]
 
         object_id = str(sample["id_prueba"])
         matching_contract = next(
