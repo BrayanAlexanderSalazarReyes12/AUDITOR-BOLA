@@ -607,13 +607,19 @@ def importar_configuracion_opencode_a_aegis() -> AIProviderConfig:
 
 
 def cargar_configuracion_ia() -> AIProviderConfig:
-    """Resuelve IA sin exigir que OpenCode esté instalado en el equipo.
+    """Resuelve el proveedor IA efectivo.
 
     Prioridad:
-    1. Variables AEGIS_AI_*.
-    2. Perfil activo guardado por Aegis.
-    3. OpenCode como compatibilidad.
+    1. Perfil activo seleccionado dentro de Aegis.
+    2. Variables AEGIS_AI_* cuando no hay perfiles locales.
+    3. OpenCode como compatibilidad final.
     """
+    local_error: Exception | None = None
+    try:
+        return cargar_configuracion_aegis_ai()
+    except Exception as exc:
+        local_error = exc
+
     env_url = str(os.getenv("AEGIS_AI_BASE_URL") or "").strip().rstrip("/")
     if env_url:
         model_id = str(
@@ -638,19 +644,15 @@ def cargar_configuracion_ia() -> AIProviderConfig:
         )
 
     try:
-        return cargar_configuracion_aegis_ai()
-    except Exception as local_error:
-        try:
-            provider = cargar_configuracion_opencode()
-        except Exception as opencode_error:
-            raise RuntimeError(
-                "La IA no está configurada en este equipo. Abre "
-                "Configuración > Inteligencia artificial en Aegis y crea "
-                "uno o más perfiles con URL, modelo y API key. También puedes "
-                "usar AEGIS_AI_BASE_URL/AEGIS_AI_API_KEY/AEGIS_AI_MODEL. "
-                f"Detalle local: {local_error}. OpenCode: {opencode_error}"
-            ) from opencode_error
-        return provider
+        return cargar_configuracion_opencode()
+    except Exception as opencode_error:
+        raise RuntimeError(
+            "La IA no está configurada en este equipo. Abre "
+            "Configuración > Inteligencia artificial en Aegis y crea "
+            "uno o más perfiles con URL, modelo y API key. También puedes "
+            "usar AEGIS_AI_BASE_URL/AEGIS_AI_API_KEY/AEGIS_AI_MODEL. "
+            f"Detalle local: {local_error}. OpenCode: {opencode_error}"
+        ) from opencode_error
 
 
 @dataclass
