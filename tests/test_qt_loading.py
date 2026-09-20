@@ -13,6 +13,7 @@ from auditor_bola.config import (
 )
 from auditor_bola.qt_ui.controller import AuditorController
 from auditor_bola.qt_ui.loading import StartupSplash, TaskProgressOverlay
+from auditor_bola.qt_ui.pages import AIPage
 from auditor_bola.qt_ui.theme import QSS
 from auditor_bola.version import __version__
 
@@ -307,3 +308,43 @@ def test_promueve_hallazgo_rbac_de_matriz_a_control_activo(tmp_path):
     assert persisted["metadata_detectada"][
         "total_controles_pilar1_activos"
     ] == 1
+
+def test_ai_page_prioriza_la_vista_de_codigo_sobre_el_detalle():
+    app = _app()
+    controller = AuditorController()
+    page = AIPage(controller)
+    page.resize(1400, 850)
+    page.show()
+    page.set_proposals(
+        [
+            {
+                "id": "IA-TEST",
+                "enfoque": "MINIMA",
+                "riesgo": "BAJO",
+                "titulo": "Parche de prueba",
+                "explicacion": "Se modifica el archivo real.",
+                "validacion_ok": True,
+                "preview_cambios": [
+                    {
+                        "archivo": "app.py",
+                        "lenguaje": "Python",
+                        "frameworks": ["Flask"],
+                        "diff": (
+                            "--- app.py\\n"
+                            "+++ app.py\\n"
+                            "-return insecure()\\n"
+                            "+return secure()"
+                        ),
+                    }
+                ],
+            }
+        ]
+    )
+    app.processEvents()
+
+    assert page.diff_view.lineWrapMode() == page.diff_view.LineWrapMode.NoWrap
+    assert page.detail.maximumHeight() == 165
+    assert page.list.count() == 1
+    assert "secure()" in page.diff_view.toHtml()
+
+    page.close()
