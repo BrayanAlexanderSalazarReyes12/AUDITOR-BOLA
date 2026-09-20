@@ -20,6 +20,8 @@ def diagnosticar(
     cfg: ConfigObjetivo,
     target_root: str | Path | None = None,
     progress_callback: ProgressCallback | None = None,
+    *,
+    require_both_pillars: bool = False,
 ) -> dict:
     """Ejecuta P1 + P2 e informa avance real por control completado."""
     p1_total = (
@@ -36,7 +38,14 @@ def diagnosticar(
     if p2_total == 0:
         missing.append("Pilar 2 (Arquitectura y Configuración)")
 
-    if missing:
+    if configured_total == 0:
+        raise RuntimeError(
+            "El perfil contiene 0 controles activos. "
+            "Los endpoints detectados son inventario, no pruebas de "
+            "seguridad ejecutables."
+        )
+
+    if require_both_pillars and missing:
         raise RuntimeError(
             "La auditoría P1 + P2 está incompleta: no hay controles activos "
             "para "
