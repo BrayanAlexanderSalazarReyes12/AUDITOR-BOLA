@@ -1189,21 +1189,29 @@ class AutoProfileDialog(AegisDialog):
                 f"Endpoints candidatos: {len(meta.get('endpoints_candidatos') or [])}",
                 f"Cuentas detectadas/configuradas: {len(self.draft.get('cuentas') or [])}",
                 (
-                    "Controles activos inferidos: "
+                    "Pilar 1 activos: "
                     + str(
                         len(self.draft.get("endpoints") or [])
                         * len(self.draft.get("cuentas") or [])
                         + len(self.draft.get("chequeos_acceso") or [])
                         + len(self.draft.get("chequeos_agente") or [])
-                        + len(self.draft.get("chequeos_pilar2") or [])
                     )
+                ),
+                (
+                    "Pilar 1 candidatos por confirmar: "
+                    + str(meta.get("total_candidatos_pilar1") or 0)
+                ),
+                (
+                    "Pilar 2 activos inferidos: "
+                    + str(len(self.draft.get("chequeos_pilar2") or []))
                 ),
                 "",
                 (
-                    "Aegis agregó automáticamente solo controles que puede "
-                    "comprobar sin inventar semántica. BOLA/RBAC que requieran "
-                    "propietario o permisos esperados deben declararse o "
-                    "confirmarse explícitamente."
+                    "Diagnosticar P1 + P2 requiere cobertura activa en ambos "
+                    "pilares. Aegis puede activar automáticamente controles P2 "
+                    "de alta confianza; los candidatos BOLA/RBAC/alcance de "
+                    "agente necesitan confirmar propietario, rol o contrato "
+                    "esperado antes de ejecutarse."
                 ),
             ]
             self.summary.setText("\n".join(lines))
