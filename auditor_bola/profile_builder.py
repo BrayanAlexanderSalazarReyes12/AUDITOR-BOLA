@@ -22,6 +22,9 @@ from .security_semantics import (
 )
 
 
+from .security_model import enrich_profile
+
+
 TEXT_EXTENSIONS = {
     ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
     ".java", ".kt", ".kts", ".php", ".cs", ".go", ".rb", ".rs",
@@ -4832,7 +4835,7 @@ def build_profile_draft(
         },
     }
 
-    return profile
+    return enrich_profile(profile)
 
 
 def save_profile_draft(
