@@ -513,3 +513,89 @@ def test_start_siempre_limpia_antes_de_levantar_proceso(tmp_path):
             assert manager.is_running() is True
         finally:
             manager.stop()
+
+
+
+def test_cierra_todos_los_procesos_anteriores_del_mismo_proyecto(tmp_path):
+    runtime = RuntimeConfig(
+        modo="process",
+        nombre="Python local",
+        comando_inicio=["python", "run.py"],
+        base_url="http://127.0.0.1:5000",
+        espera_inicio=0,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch.object(
+        manager,
+        "_discover_target_processes",
+        return_value={2222, 3333},
+    ), patch.object(
+        manager,
+        "_terminate_pid_tree_by_id",
+        side_effect=[True, True],
+    ) as terminate:
+        killed = manager._terminate_all_previous_target_processes()
+
+    assert killed == [2222, 3333]
+    assert terminate.call_count == 2
+    terminate.assert_any_call(2222)
+    terminate.assert_any_call(3333)
+
+
+def test_no_confunde_proceso_ajeno_con_el_proyecto(tmp_path):
+    script = tmp_path / "run.py"
+    script.write_text("print('ok')\n", encoding="utf-8")
+
+    runtime = RuntimeConfig(
+        modo="process",
+        nombre="Python local",
+        comando_inicio=["python", "run.py"],
+        base_url="http://127.0.0.1:5000",
+        espera_inicio=0,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    propio = f'python "{script}"'
+    ajeno = 'python "C:/otro-proyecto/run.py"'
+
+    assert manager._command_matches_target(propio) is True
+    assert manager._command_matches_target(ajeno) is False
+
+
+def test_limpieza_previa_cierra_procesos_del_proyecto_antes_del_puerto(tmp_path):
+    runtime = RuntimeConfig(
+        modo="process",
+        nombre="Python local",
+        comando_inicio=["python", "run.py"],
+        base_url="http://127.0.0.1:5000",
+        espera_inicio=0,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    calls = []
+
+    def kill_project():
+        calls.append("project")
+        return [4444]
+
+    def kill_port(_port):
+        calls.append("port")
+        return []
+
+    with patch.object(
+        manager,
+        "_terminate_all_previous_target_processes",
+        side_effect=kill_project,
+    ), patch.object(
+        manager,
+        "_terminate_stale_listener",
+        side_effect=kill_port,
+    ):
+        manager._cleanup_previous_instance()
+
+    assert calls == ["project", "port"]
+    assert any(
+        "4444" in note
+        for note in manager.runtime_status()["limpieza_previa"]
+    )
