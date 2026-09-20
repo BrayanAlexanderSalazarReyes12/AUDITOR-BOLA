@@ -1,5 +1,5 @@
-# security-patching-release: v1.3.1
-# release-publish: v1.3.1
+# security-patching-release: v1.3.2
+# release-publish: v1.3.2
 name: Build desktop executables
 
 on:
