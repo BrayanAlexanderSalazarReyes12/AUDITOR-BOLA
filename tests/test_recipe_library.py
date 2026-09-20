@@ -126,3 +126,60 @@ def test_registra_uso_exitoso_y_marca_verificada(tmp_path):
     assert data["verificada"] is True
     assert data["estadisticas"]["usos"] == 1
     assert data["estadisticas"]["usos_exitosos"] == 1
+
+
+
+def test_guarda_medicina_multifile_verificada(tmp_path):
+    library = tmp_path / "recetas"
+    correction = Correccion(
+        control_id="P1-ACCESS",
+        archivo="auth.py",
+        operaciones=[
+            {
+                "estrategia": "replace_exact",
+                "buscar": "return True",
+                "reemplazar": "return can_access",
+                "max_reemplazos": 1,
+            }
+        ],
+        cambios=[
+            {
+                "archivo": "auth.py",
+                "operaciones": [
+                    {
+                        "estrategia": "replace_exact",
+                        "buscar": "return True",
+                        "reemplazar": "return can_access",
+                        "max_reemplazos": 1,
+                    }
+                ],
+            },
+            {
+                "archivo": "admin.py",
+                "operaciones": [
+                    {
+                        "estrategia": "replace_exact",
+                        "buscar": "@authenticated",
+                        "reemplazar": "@authenticated\n@requires_role(ADMIN)",
+                        "max_reemplazos": 1,
+                    }
+                ],
+            },
+        ],
+        descripcion="Autorización verificada",
+        requiere_reinicio=True,
+    )
+
+    path = guardar_receta_biblioteca(
+        correction,
+        sistema="demo",
+        verificada=True,
+        library_root=library,
+    )
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    assert data["schema_version"] == 2
+    assert data["verificada"] is True
+    assert len(data["cambios"]) == 2
+    assert data["cambios"][1]["archivo"] == "admin.py"
+    assert data["estadisticas"]["verificaciones_exitosas"] == 1
