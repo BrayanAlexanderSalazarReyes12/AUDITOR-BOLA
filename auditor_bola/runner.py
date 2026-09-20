@@ -16,7 +16,11 @@ from .engine import (
     auditar_matriz_acceso,
 )
 from .pilar2 import auditar_pilar2
-from .security_model import (\n    attach_runtime_consolidation,\n    infer_resource,\n    stable_finding_id,\n)
+from .security_model import (
+    attach_runtime_consolidation,
+    infer_resource,
+    stable_finding_id,
+)
 
 
 ProgressCallback = Callable[[int, str], None]
