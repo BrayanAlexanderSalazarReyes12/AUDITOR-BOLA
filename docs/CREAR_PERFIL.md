@@ -93,6 +93,34 @@ Los sistemas con flujos especiales (OAuth interactivo, SSO, MFA, protocolos no H
 
 ## 4. Pilar 1
 
+El perfil mantiene un registro canónico explícito:
+
+```json
+{
+  "chequeos_pilar1": []
+}
+```
+
+Cada entrada indica `tipo: "bola"`, `tipo: "acceso"` o
+`tipo: "alcance_agente"`. Los campos históricos `endpoints`,
+`chequeos_acceso` y `chequeos_agente` siguen presentes como vistas
+compatibles con el motor, pero `chequeos_pilar1` permite auditar, mostrar y
+persistir en un solo lugar todo el Pilar 1.
+
+Durante la auto-configuración Aegis no se limita a descubrir rutas. También
+revisa **tests, fixtures, datos semilla y archivos de soporte** para buscar
+contratos de seguridad verificables:
+
+- relación explícita `objeto/id -> propietario` para construir BOLA;
+- peticiones de prueba con usuario/rol y código HTTP esperado para reconstruir
+  RBAC/ABAC;
+- pruebas que comparan API directa con asistente/agente para reconstruir
+  controles de alcance.
+
+Solo se activa un control cuando existen datos suficientes para ejecutarlo sin
+inventar la política. Las coincidencias incompletas permanecen en
+`metadata_detectada.candidatos_pilar1` hasta que puedan confirmarse.
+
 ### BOLA / propiedad de objetos
 
 ```json
