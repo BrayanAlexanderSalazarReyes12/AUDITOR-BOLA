@@ -24,6 +24,39 @@ def _is_windows() -> bool:
     return os.name == "nt"
 
 
+def _windows_hidden_subprocess_kwargs(
+    *,
+    new_process_group: bool = False,
+) -> dict[str, object]:
+    """Evita que runtimes/CLI abran una consola visible en Windows.
+
+    Aegis captura stdout/stderr en su propia consola, por lo que la ventana
+    cmd/PowerShell del proceso hijo no aporta información y puede quedar
+    abierta mientras el servidor objetivo siga vivo.
+    """
+    if not _is_windows():
+        return {}
+
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if new_process_group:
+        flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+    kwargs: dict[str, object] = {"creationflags": flags}
+
+    startupinfo_factory = getattr(subprocess, "STARTUPINFO", None)
+    if startupinfo_factory is not None:
+        startupinfo = startupinfo_factory()
+        startupinfo.dwFlags |= getattr(
+            subprocess,
+            "STARTF_USESHOWWINDOW",
+            0,
+        )
+        startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+        kwargs["startupinfo"] = startupinfo
+
+    return kwargs
+
+
 class LocalTargetProcess:
     """Arranca objetivos heterogéneos sin acoplar el Auditor a un framework.
 
@@ -526,6 +559,7 @@ class LocalTargetProcess:
             capture_output=True,
             text=True,
             timeout=300,
+            **_windows_hidden_subprocess_kwargs(),
         )
 
         if completed.returncode != 0:
@@ -599,6 +633,7 @@ class LocalTargetProcess:
                     capture_output=True,
                     text=True,
                     timeout=8,
+                    **_windows_hidden_subprocess_kwargs(),
                 )
             except (OSError, subprocess.SubprocessError):
                 return ""
@@ -610,6 +645,7 @@ class LocalTargetProcess:
                 capture_output=True,
                 text=True,
                 timeout=5,
+                **_windows_hidden_subprocess_kwargs(),
             )
         except (OSError, subprocess.SubprocessError):
             return ""
@@ -767,6 +803,7 @@ class LocalTargetProcess:
                     capture_output=True,
                     text=True,
                     timeout=15,
+                    **_windows_hidden_subprocess_kwargs(),
                 )
             except (OSError, subprocess.SubprocessError):
                 return matches
@@ -790,6 +827,7 @@ class LocalTargetProcess:
                 capture_output=True,
                 text=True,
                 timeout=10,
+                **_windows_hidden_subprocess_kwargs(),
             )
         except (OSError, subprocess.SubprocessError):
             return matches
@@ -821,6 +859,7 @@ class LocalTargetProcess:
                     capture_output=True,
                     text=True,
                     timeout=15,
+                    **_windows_hidden_subprocess_kwargs(),
                 )
             except (OSError, subprocess.SubprocessError):
                 return False
@@ -898,6 +937,7 @@ class LocalTargetProcess:
                 capture_output=True,
                 text=True,
                 timeout=15,
+                **_windows_hidden_subprocess_kwargs(),
             )
         except (OSError, subprocess.SubprocessError):
             return set()
@@ -941,6 +981,7 @@ class LocalTargetProcess:
                     capture_output=True,
                     text=True,
                     timeout=15,
+                    **_windows_hidden_subprocess_kwargs(),
                 )
                 if completed.returncode in {0, 1}:
                     return {
@@ -961,6 +1002,7 @@ class LocalTargetProcess:
                     capture_output=True,
                     text=True,
                     timeout=15,
+                    **_windows_hidden_subprocess_kwargs(),
                 )
                 output = f"{completed.stdout} {completed.stderr}"
                 return {
@@ -993,6 +1035,7 @@ class LocalTargetProcess:
                         capture_output=True,
                         text=True,
                         timeout=15,
+                        **_windows_hidden_subprocess_kwargs(),
                     )
                     if completed.returncode == 0:
                         killed.append(pid)
@@ -1229,10 +1272,10 @@ class LocalTargetProcess:
             }
 
             if _is_windows():
-                popen_kwargs["creationflags"] = getattr(
-                    subprocess,
-                    "CREATE_NEW_PROCESS_GROUP",
-                    0,
+                popen_kwargs.update(
+                    _windows_hidden_subprocess_kwargs(
+                        new_process_group=True,
+                    )
                 )
             else:
                 popen_kwargs["start_new_session"] = True
@@ -1314,6 +1357,7 @@ class LocalTargetProcess:
                     capture_output=True,
                     text=True,
                     timeout=15,
+                    **_windows_hidden_subprocess_kwargs(),
                 )
                 if completed.returncode == 0:
                     try:
