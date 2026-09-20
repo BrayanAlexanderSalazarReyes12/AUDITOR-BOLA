@@ -706,3 +706,33 @@ def test_migra_configuracion_ia_antigua_a_perfiles(tmp_path, monkeypatch):
     assert stored["schema_version"] == 2
     assert len(stored["profiles"]) == 1
     assert stored["active_profile_id"] == stored["profiles"][0]["id"]
+
+
+
+def test_perfil_activo_de_aegis_tiene_prioridad_sobre_variables(
+    tmp_path,
+    monkeypatch,
+):
+    config_path = tmp_path / "ai-provider.json"
+    monkeypatch.setattr(
+        ai,
+        "default_ai_config_path",
+        lambda: config_path,
+    )
+    ai.guardar_perfil_ia(
+        profile_name="Perfil seleccionado",
+        base_url="https://profile.example/v1",
+        model_id="profile-model",
+        api_key="profile-key",
+    )
+    monkeypatch.setenv(
+        "AEGIS_AI_BASE_URL",
+        "https://env.example/v1",
+    )
+    monkeypatch.setenv("AEGIS_AI_MODEL", "env-model")
+
+    provider = ai.cargar_configuracion_ia()
+
+    assert provider.profile_name == "Perfil seleccionado"
+    assert provider.base_url == "https://profile.example/v1"
+    assert provider.model_id == "profile-model"
