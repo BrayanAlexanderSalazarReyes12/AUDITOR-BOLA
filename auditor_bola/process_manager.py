@@ -1339,6 +1339,110 @@ class LocalTargetProcess:
 
         return raw.decode("utf-8", errors="replace").strip()
 
+    def _target_listener_ports(self) -> list[int]:
+        """Puertos TCP LISTEN pertenecientes al proceso objetivo actual.
+
+        Se usa como segunda fuente de verdad cuando el servidor no imprime una
+        URL. Esto evita depender de puertos estimados como 5000/8000.
+        """
+        pids: set[int] = set()
+        if self.process is not None and self.process.poll() is None:
+            try:
+                pids.add(int(self.process.pid))
+            except (TypeError, ValueError):
+                pass
+
+        try:
+            pids.update(self._discover_target_processes())
+        except Exception:
+            pass
+
+        pids = {
+            pid for pid in pids
+            if pid > 1 and pid != os.getpid()
+        }
+        if not pids:
+            return []
+
+        ports: set[int] = set()
+
+        if _is_windows():
+            try:
+                completed = subprocess.run(
+                    ["netstat", "-ano", "-p", "tcp"],
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                    **_windows_hidden_subprocess_kwargs(),
+                )
+            except (OSError, subprocess.SubprocessError):
+                completed = None
+
+            if completed is not None and completed.returncode == 0:
+                for raw_line in completed.stdout.splitlines():
+                    line = raw_line.strip()
+                    if not line or "LISTENING" not in line.upper():
+                        continue
+                    parts = line.split()
+                    if len(parts) < 5:
+                        continue
+                    try:
+                        pid = int(parts[-1])
+                    except ValueError:
+                        continue
+                    if pid not in pids:
+                        continue
+
+                    local = parts[1]
+                    match = re.search(r":(\d{1,5})$", local)
+                    if not match:
+                        continue
+                    port = int(match.group(1))
+                    if 1024 <= port <= 65535:
+                        ports.add(port)
+        else:
+            env = os.environ.copy()
+            lsof = self._which("lsof", env)
+            if lsof:
+                for pid in sorted(pids):
+                    try:
+                        completed = subprocess.run(
+                            [
+                                lsof,
+                                "-Pan",
+                                "-p",
+                                str(pid),
+                                "-iTCP",
+                                "-sTCP:LISTEN",
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=8,
+                        )
+                    except (OSError, subprocess.SubprocessError):
+                        continue
+
+                    for match in re.finditer(
+                        r"TCP\s+[^\s]*:(\d{1,5})\s+\(LISTEN\)",
+                        completed.stdout,
+                    ):
+                        port = int(match.group(1))
+                        if 1024 <= port <= 65535:
+                            ports.add(port)
+
+        return sorted(ports)
+
+    def _detect_runtime_local_url(self) -> str | None:
+        """Obtiene la URL real del runtime local, no la estimada del perfil."""
+        announced = self._detect_local_url_from_output()
+        if announced:
+            return announced
+
+        ports = self._target_listener_ports()
+        if len(ports) == 1:
+            return f"http://127.0.0.1:{ports[0]}"
+        return None
+
     def _detect_local_url_from_output(self) -> str | None:
         """Detecta la URL local que el propio servidor anuncia al arrancar.
 
@@ -1432,22 +1536,75 @@ class LocalTargetProcess:
             float(getattr(self.runtime, "timeout_inicio", 30.0) or 30.0),
         )
 
-        # Sin endpoint comprobable conservamos compatibilidad, pero verificamos
-        # que un proceso administrado no haya terminado durante el arranque.
+        # Si la estrategia local no trae puerto explícito, descubrir el
+        # listener real del proceso. No se declara éxito solamente porque
+        # python/node/java sigan vivos.
         if endpoint is None:
-            if minimum_wait:
-                time.sleep(minimum_wait)
-            if self.process is not None and self.process.poll() is not None:
-                return_code = self.process.returncode
-                detail = self.runtime_output_tail()
-                message = (
-                    "el proceso terminó durante el arranque "
-                    f"(código {return_code})"
+            started = time.monotonic()
+            deadline = started + timeout
+            while time.monotonic() <= deadline:
+                if (
+                    self.process is not None
+                    and self.process.poll() is not None
+                ):
+                    return_code = self.process.returncode
+                    detail = self.runtime_output_tail()
+                    message = (
+                        "el proceso terminó durante el arranque "
+                        f"(código {return_code})"
+                    )
+                    if detail:
+                        message += (
+                            f"\n\nSalida del proceso:\n{detail}"
+                        )
+                    return False, message
+
+                detected_url = self._detect_runtime_local_url()
+                if detected_url:
+                    self.runtime.base_url = detected_url
+                    detected = urlparse(detected_url)
+                    host = (detected.hostname or "127.0.0.1").strip()
+                    port = detected.port
+                    if port is not None:
+                        connect_host = (
+                            "127.0.0.1"
+                            if host in {"0.0.0.0", "localhost"}
+                            else ("::1" if host in {"::", "::1"} else host)
+                        )
+                        try:
+                            with socket.create_connection(
+                                (connect_host, int(port)),
+                                timeout=0.8,
+                            ):
+                                return (
+                                    True,
+                                    f"{connect_host}:{port} disponible",
+                                )
+                        except OSError:
+                            pass
+
+                elapsed = max(
+                    0.0,
+                    time.monotonic() - started,
                 )
-                if detail:
-                    message += f"\n\nSalida del proceso:\n{detail}"
-                return False, message
-            return True, "sin endpoint de disponibilidad configurado"
+                fraction = min(
+                    1.0,
+                    elapsed / max(timeout, 0.1),
+                )
+                self._emit_progress(
+                    min(99, 85 + int(fraction * 14)),
+                    "Buscando el puerto real del servidor local…",
+                )
+                time.sleep(0.35)
+
+            detail = self.runtime_output_tail()
+            message = (
+                "el proceso local quedó activo, pero Aegis no detectó "
+                f"ningún puerto TCP del servidor dentro de {timeout:.0f} s"
+            )
+            if detail:
+                message += f"\n\nSalida del proceso:\n{detail}"
+            return False, message
 
         host, port = endpoint
         started = time.monotonic()
@@ -1467,7 +1624,7 @@ class LocalTargetProcess:
 
             # Si el runtime real anuncia otro localhost/puerto, esa evidencia
             # tiene prioridad sobre el puerto estimado del perfil.
-            detected_url = self._detect_local_url_from_output()
+            detected_url = self._detect_runtime_local_url()
             if detected_url and detected_url != announced_url:
                 try:
                     detected = urlparse(detected_url)
