@@ -290,6 +290,97 @@ class AuditorController(QObject):
             )
             return
 
+        # Los perfiles auto-generados antiguos podían dejar Docker Compose
+        # como runtime principal aunque el equipo no tuviera Docker. Si la
+        # detección actual del mismo proyecto ya eligió explícitamente un
+        # runtime local, promovemos ese runtime a principal en lugar de
+        # conservar Docker y depender siempre del fallback.
+        profile_payload = self.profile_dict()
+        metadata_payload = dict(
+            profile_payload.get("metadata_detectada") or {}
+        )
+        auto_generated = bool(
+            metadata_payload.get("perfil_generado_automaticamente")
+        )
+
+        current_origin = str(current.origen or "").lower()
+        current_name = str(current.nombre or "").lower()
+        current_is_compose = (
+            "docker" in current_name
+            or current_origin in {
+                "compose.yml",
+                "compose.yaml",
+                "docker-compose.yml",
+                "docker-compose.yaml",
+            }
+        )
+
+        detected_preference = str(
+            detected_raw.get("preferencia_arranque") or ""
+        ).lower()
+        detected_mode = str(
+            detected_raw.get("modo") or "process"
+        ).lower()
+        detected_origin = str(
+            detected_raw.get("origen") or ""
+        ).lower()
+        detected_is_local = (
+            detected_preference == "local"
+            and detected_mode != "external"
+            and "docker" not in detected_origin
+            and "compose" not in detected_origin
+        )
+
+        if auto_generated and current_is_compose and detected_is_local:
+            promoted = dict(detected_raw)
+            alternatives = [
+                dict(item)
+                for item in (promoted.get("alternativas") or [])
+                if isinstance(item, dict)
+            ]
+            current_as_alt = asdict(current)
+            current_as_alt["alternativas"] = []
+            current_key_before = self._runtime_key(current_as_alt)
+            alt_keys = {
+                self._runtime_key(item)
+                for item in alternatives
+            }
+            if current_key_before not in alt_keys:
+                alternatives.append(current_as_alt)
+            promoted["alternativas"] = alternatives
+
+            self.cfg.runtime = RuntimeConfig(**promoted)
+            current = self.cfg.runtime
+
+            detected_base = str(
+                promoted.get("base_url")
+                or detected_url
+                or ""
+            ).strip().rstrip("/")
+            previous_base = str(
+                self.cfg.base_url or ""
+            ).strip().rstrip("/")
+
+            # En un perfil generado automáticamente, una URL genérica del
+            # runtime Docker antiguo no debe imponerse al runtime local
+            # recién detectado. Si el runtime local tiene evidencia de URL,
+            # la promovemos también.
+            if detected_base:
+                self.cfg.base_url = detected_base
+
+            self.log_message.emit(
+                "Runtime principal actualizado por entorno local: "
+                f"{current_name or 'Docker/servicio'} → "
+                f"{current.nombre or current.modo}"
+                + (
+                    f" · Base URL {previous_base or '-'} → "
+                    f"{self.cfg.base_url or '-'}"
+                    if previous_base != str(self.cfg.base_url or "")
+                    else ""
+                )
+            )
+            self._persist_runtime_plan()
+
         current_data = asdict(current)
         current_key = self._runtime_key(current_data)
 
