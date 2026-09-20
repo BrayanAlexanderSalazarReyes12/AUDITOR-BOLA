@@ -1132,3 +1132,174 @@ def test_autoperfil_reconstruye_pilar1_desde_tests_fixtures_y_semillas(
         profile["metadata_detectada"]["total_controles_pilar1_activos"]
         == len(registry)
     )
+
+
+
+def test_autoperfil_infiere_bola_con_semantica_generica_de_fixture(
+    tmp_path,
+):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text(
+        "from flask import Flask\n"
+        "app = Flask(__name__)\n"
+        "@app.get('/api/tickets/<int:ticket_id>')\n"
+        "def ticket(ticket_id): return {'ticket_id': ticket_id}\n",
+        encoding="utf-8",
+    )
+    fixtures = tmp_path / "tests" / "fixtures"
+    fixtures.mkdir(parents=True)
+    (fixtures / "accounts.json").write_text(
+        json.dumps({
+            "accounts": [
+                {
+                    "username": "ana.vargas",
+                    "password": "x",
+                    "role": "member"
+                },
+                {
+                    "username": "bruno.mejia",
+                    "password": "x",
+                    "role": "member"
+                }
+            ]
+        }),
+        encoding="utf-8",
+    )
+    (fixtures / "ticket_data.json").write_text(
+        json.dumps({
+            "records": [
+                {
+                    "ticket_id": 44,
+                    "author": "ana.vargas",
+                    "title": "demo"
+                }
+            ]
+        }),
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    bola = [
+        item
+        for item in profile["chequeos_pilar1"]
+        if item["tipo"] == "bola"
+    ]
+    assert bola
+    assert bola[0]["ruta"] == "/api/tickets/{id}"
+    assert bola[0]["id_prueba"] == "44"
+    assert bola[0]["propietario_esperado"] == "ana.vargas"
+
+
+def test_autoperfil_extrae_rbac_desde_test_javascript_sin_nombre_admin(
+    tmp_path,
+):
+    (tmp_path / "package.json").write_text(
+        json.dumps({
+            "scripts": {"start": "node app.js"},
+            "dependencies": {
+                "express": "5.0.0",
+                "supertest": "7.0.0"
+            }
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / "app.js").write_text(
+        "const express = require('express');\n"
+        "const app = express();\n"
+        "app.get('/api/reports', (req, res) => res.json([]));\n"
+        "module.exports = app;\n",
+        encoding="utf-8",
+    )
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "accounts.json").write_text(
+        json.dumps({
+            "accounts": [
+                {
+                    "username": "bruno.mejia",
+                    "password": "x",
+                    "role": "analyst"
+                }
+            ]
+        }),
+        encoding="utf-8",
+    )
+    (tests / "security.test.js").write_text(
+        "test('authorization denied for analyst', async () => {\n"
+        "  const res = await request(app).get('/api/reports')\n"
+        "    .set('X-User', 'bruno.mejia');\n"
+        "  expect(res.status).toBe(403);\n"
+        "});\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    access = profile["chequeos_acceso"]
+    assert len(access) == 1
+    assert access[0]["ruta"] == "/api/reports"
+    assert access[0]["cuenta"] == "bruno.mejia"
+    assert access[0]["acceso_esperado"] is False
+
+
+def test_autoperfil_reconstruye_scope_desde_test_javascript(
+    tmp_path,
+):
+    (tmp_path / "package.json").write_text(
+        json.dumps({
+            "scripts": {"start": "node app.js"},
+            "dependencies": {
+                "express": "5.0.0",
+                "supertest": "7.0.0"
+            }
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / "app.js").write_text(
+        "const express = require('express');\n"
+        "const app = express();\n"
+        "app.get('/api/items', (req, res) => res.json([]));\n"
+        "app.post('/api/copilot', (req, res) => res.json({steps: []}));\n"
+        "module.exports = app;\n",
+        encoding="utf-8",
+    )
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "accounts.json").write_text(
+        json.dumps({
+            "accounts": [
+                {
+                    "username": "bruno.mejia",
+                    "password": "x",
+                    "role": "member"
+                }
+            ]
+        }),
+        encoding="utf-8",
+    )
+    (tests / "scope.test.js").write_text(
+        "test('agent scope keeps identity', async () => {\n"
+        "  const direct = await request(app).get('/api/items')\n"
+        "    .set('X-User', 'bruno.mejia');\n"
+        "  const agent = await request(app).post('/api/copilot')\n"
+        "    .set('X-User', 'bruno.mejia')\n"
+        "    .send({task: 'list items'});\n"
+        "  expect(agent.body.steps[0].tool).toBe('list_items');\n"
+        "  expect(agent.body.steps[0].returned).toBe(1);\n"
+        "});\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    checks = profile["chequeos_agente"]
+    assert len(checks) == 1
+    assert checks[0]["direct_ruta"] == "/api/items"
+    assert checks[0]["agent_ruta"] == "/api/copilot"
+    assert checks[0]["tool_field"] == "tool"
+    assert checks[0]["count_field"] == "returned"
+    assert checks[0]["tool_name"] == "list_items"
