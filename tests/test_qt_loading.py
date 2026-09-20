@@ -1,9 +1,15 @@
+import json
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QWidget
 
+from auditor_bola.config import (
+    ChequeoPilar2,
+    ConfigObjetivo,
+    RuntimeConfig,
+)
 from auditor_bola.qt_ui.controller import AuditorController
 from auditor_bola.qt_ui.loading import StartupSplash, TaskProgressOverlay
 from auditor_bola.qt_ui.theme import QSS
@@ -104,3 +110,118 @@ def test_async_worker_finaliza_busy_y_libera_overlay():
     assert busy_events[-1] == (False, "Listo")
     assert progress_events[-1][0] == 100
     assert controller._active_workers == []
+
+
+
+def test_diagnose_bloquea_p1_p2_incompleto_antes_del_worker():
+    _app()
+    controller = AuditorController()
+    controller.cfg = ConfigObjetivo(
+        sistema="solo-p2",
+        base_url="http://127.0.0.1:5050",
+        chequeos_pilar2=[
+            ChequeoPilar2(
+                id_control="P2-X",
+                nombre="x",
+                tipo="source_contains",
+                archivo="app.py",
+                patron_inseguro="debug=true",
+            )
+        ],
+    )
+    errors = []
+    busy = []
+    controller.error_message.connect(
+        lambda title, message: errors.append((title, message))
+    )
+    controller.busy_changed.connect(
+        lambda value, text: busy.append((value, text))
+    )
+
+    controller.diagnose()
+
+    assert errors
+    assert errors[-1][0] == "Cobertura de auditoría incompleta"
+    assert "Pilar 1" in errors[-1][1]
+    assert controller._active_workers == []
+    assert busy == []
+
+
+def test_promueve_python_en_perfil_auto_legacy_sin_docker(
+    tmp_path,
+    monkeypatch,
+):
+    _app()
+    controller = AuditorController()
+    project = tmp_path / "project"
+    project.mkdir()
+    profile = tmp_path / "profile.json"
+    profile.write_text(
+        json.dumps(
+            {
+                "sistema": "demo",
+                "base_url": "http://127.0.0.1:8080",
+                "runtime": {
+                    "modo": "service",
+                    "nombre": "Docker Compose",
+                    "origen": "docker-compose.yml",
+                    "comando_inicio": [
+                        "docker",
+                        "compose",
+                        "up",
+                        "-d",
+                    ],
+                    "base_url": "http://127.0.0.1:8080",
+                    "alternativas": [],
+                },
+                "metadata_detectada": {
+                    "perfil_generado_automaticamente": True
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    controller.config_path = profile
+    controller.cfg = __import__(
+        "auditor_bola.config",
+        fromlist=["cargar_config"],
+    ).cargar_config(profile)
+    controller.target_root = project
+
+    monkeypatch.setattr(
+        "auditor_bola.qt_ui.controller.detect_runtime_profile",
+        lambda _root: (
+            {
+                "modo": "process",
+                "nombre": "Python",
+                "origen": "python-project",
+                "preferencia_arranque": "local",
+                "comando_inicio": ["python", "run.py"],
+                "base_url": "http://127.0.0.1:5050",
+                "alternativas": [
+                    {
+                        "modo": "service",
+                        "nombre": "Docker Compose",
+                        "origen": "docker-compose.yml",
+                        "comando_inicio": [
+                            "docker",
+                            "compose",
+                            "up",
+                            "-d",
+                        ],
+                        "base_url": "http://127.0.0.1:5050",
+                    }
+                ],
+            },
+            "http://127.0.0.1:5050",
+        ),
+    )
+
+    controller._augment_runtime_from_target()
+
+    assert controller.cfg.runtime.nombre == "Python"
+    assert controller.cfg.runtime.modo == "process"
+    assert controller.cfg.base_url == "http://127.0.0.1:5050"
+    persisted = json.loads(profile.read_text(encoding="utf-8"))
+    assert persisted["runtime"]["nombre"] == "Python"
+    assert persisted["base_url"] == "http://127.0.0.1:5050"
