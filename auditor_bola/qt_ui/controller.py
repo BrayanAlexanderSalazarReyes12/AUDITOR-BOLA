@@ -98,6 +98,10 @@ class AuditorController(QObject):
         self.ai_target_row: dict | None = None
 
         self.pool = QThreadPool.globalInstance()
+        # Mantiene vivos QRunnable/WorkerSignals hasta recibir finished/error.
+        # Sin esta referencia, algunas ejecuciones largas podían llegar al
+        # último progreso pero perder la señal final y dejar el overlay en 100%.
+        self._active_workers: list[Worker] = []
 
     # ------------------------------------------------------------------
     # Utilidades
@@ -112,18 +116,47 @@ class AuditorController(QObject):
         self.log_message.emit(label)
 
         worker = Worker(fn)
+        self._active_workers.append(worker)
+
+        def release_worker() -> None:
+            try:
+                self._active_workers.remove(worker)
+            except ValueError:
+                pass
 
         def finished(result):
-            self.busy_changed.emit(False, "Listo")
-            if on_success:
-                on_success(result)
-            self.state_changed.emit()
+            try:
+                if on_success:
+                    on_success(result)
+                # El 100% pertenece a la finalización real del Worker, no al
+                # motor en segundo plano. Así 100% implica que la UI ya puede
+                # cerrar el overlay.
+                self.task_progress.emit(100, "Operación completada.")
+                self.busy_changed.emit(False, "Listo")
+            except Exception as exc:
+                self.busy_changed.emit(False, "Error")
+                self.log_message.emit(
+                    f"ERROR al finalizar la operación: {exc}"
+                )
+                self.error_message.emit(
+                    "Operación no completada",
+                    str(exc),
+                )
+            finally:
+                release_worker()
+                self.state_changed.emit()
 
         def failed(exc):
-            self.busy_changed.emit(False, "Error")
-            self.log_message.emit(f"ERROR: {exc}")
-            self.error_message.emit("Operación no completada", str(exc))
-            self.state_changed.emit()
+            try:
+                self.busy_changed.emit(False, "Error")
+                self.log_message.emit(f"ERROR: {exc}")
+                self.error_message.emit(
+                    "Operación no completada",
+                    str(exc),
+                )
+            finally:
+                release_worker()
+                self.state_changed.emit()
 
         worker.signals.finished.connect(finished)
         worker.signals.error.connect(failed)
