@@ -767,7 +767,7 @@ def _parse_compose(root: Path) -> list[dict[str, Any]]:
 
             if not in_services or not current_service:
                 continue
-            user_match = re.match(r"(?i)^user\s*:\s*["']?([^"'#\s]+)", stripped)
+            user_match = re.match(r"""(?i)^user\s*:\s*["']?([^"'#\s]+)""", stripped)
             if user_match:
                 findings.append(
                     {
@@ -788,7 +788,7 @@ def _parse_compose(root: Path) -> list[dict[str, Any]]:
                         "linea": index,
                     }
                 )
-            if re.match(r"(?i)^(?:network_mode|pid)\s*:\s*["']?host\b", stripped):
+            if re.match(r"""(?i)^(?:network_mode|pid)\s*:\s*["']?host\b""", stripped):
                 key = stripped.split(":", 1)[0].strip().lower()
                 findings.append(
                     {
