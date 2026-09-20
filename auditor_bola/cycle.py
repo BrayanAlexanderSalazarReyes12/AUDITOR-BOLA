@@ -506,6 +506,44 @@ def ciclo_correctivo(
         manifest["regresiones_globales"] = regresiones_todas
         manifest["errores_verificacion"] = errores_verificacion
         manifest["correccion_aplicada"] = correccion.as_dict()
+        build_state = str(
+            (validation_payload.get("build") or {}).get("estado")
+            or ""
+        )
+        test_state = str(
+            (validation_payload.get("tests") or {}).get("estado")
+            or ""
+        )
+        manifest["criterios_exito"] = {
+            "codigo_modificado": (
+                correccion.before_hash != correccion.after_hash
+            ),
+            "build_success": build_state in {"OK", "NO_APLICA"},
+            "build_aplicable": bool(
+                validation_payload.get("build_aplicable")
+            ),
+            "application_started": (
+                True if cfg.base_url else None
+            ),
+            "functional_test_success": test_state in {
+                "OK", "NO_APLICA"
+            },
+            "tests_aplicables": bool(
+                validation_payload.get("tests_aplicables")
+            ),
+            "security_test_success": (
+                estado_despues == "SIN_HALLAZGO"
+            ),
+            "original_exploit_failed": (
+                estado_despues == "SIN_HALLAZGO"
+            ),
+            "legitimate_flow_success": not bool(regresiones),
+            "regression_detected": bool(regresiones),
+            "rescan_confirmed": (
+                estado_despues == "SIN_HALLAZGO"
+            ),
+            "observaciones_globales": len(regresiones_todas),
+        }
 
         if (
             estado_despues == "SIN_HALLAZGO"
