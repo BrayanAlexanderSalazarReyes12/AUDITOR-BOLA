@@ -275,6 +275,35 @@ def _semantic_fingerprint(
     family: str,
     root_cause: str,
 ) -> str:
+    if chequeo.fingerprint:
+        return str(chequeo.fingerprint)
+
+    # Un control importado/manual puede no conocer aún el fingerprint que un
+    # detector AUTO ya obtuvo para la misma causa raíz. Si existe una única
+    # correlación inequívoca, reutilizarla evita contar control y hallazgo como
+    # si fueran vulnerabilidades distintas.
+    sibling_fingerprints: list[str] = []
+    for sibling in cfg.chequeos_pilar2:
+        if sibling is chequeo or not sibling.fingerprint:
+            continue
+        if _familia(sibling) != family:
+            continue
+        if family == "SECRET":
+            if (
+                chequeo.archivo
+                and sibling.archivo
+                and chequeo.archivo != sibling.archivo
+            ):
+                continue
+        sibling_fingerprints.append(str(sibling.fingerprint))
+    sibling_fingerprints = list(dict.fromkeys(sibling_fingerprints))
+    if len(sibling_fingerprints) == 1 and family in {
+        "CORS",
+        "SECRET",
+        "CONTAINER",
+    }:
+        return sibling_fingerprints[0]
+
     # CORS se consolida por componente responsable. Distintos endpoints del
     # mismo middleware son evidencias del mismo hallazgo, pero dos servicios o
     # componentes CORS distintos conservan hallazgos independientes.
@@ -293,8 +322,6 @@ def _semantic_fingerprint(
         )
     if family == "CONTAINER":
         return _digest(family, root_cause, "container-runtime")
-    if chequeo.fingerprint:
-        return str(chequeo.fingerprint)
     component = (
         chequeo.componente
         or chequeo.archivo
@@ -312,7 +339,6 @@ def _semantic_fingerprint(
         semantic_subject,
         chequeo.ruta if family == "LIMIT_BYPASS" else "",
     )
-
 
 def _resultado(
     cfg: ConfigObjetivo,
