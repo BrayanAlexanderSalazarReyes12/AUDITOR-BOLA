@@ -214,3 +214,39 @@ def test_runtime_deduplica_cors_global_entre_endpoints():
     assert finding["familia"] == "CORS"
     assert len(finding["casos_prueba"]) == 2
     assert enriched["resumen"]["hallazgos_unicos_confirmados"] == 1
+
+
+def test_id_cors_global_no_depende_del_endpoint_usado_como_sonda():
+    def make_result(routes):
+        return {
+            "pilar1": {
+                "bola": [],
+                "acceso": [],
+                "alcance_agente": [],
+                "matriz_acceso": [],
+            },
+            "pilar2": [
+                {
+                    "id_control": f"P2-CORS-{index}",
+                    "nombre": "cors",
+                    "tipo": "cors_reflection",
+                    "ruta": route,
+                    "metodo": "GET",
+                    "estado": "HALLAZGO",
+                    "detalle": "origin reflejado con credenciales",
+                }
+                for index, route in enumerate(routes, start=1)
+            ],
+            "resumen": {},
+        }
+
+    first = consolidate_runtime_results(
+        make_result(["/health", "/api/users"])
+    )
+    second = consolidate_runtime_results(
+        make_result(["/api/users", "/health"])
+    )
+
+    assert len(first) == 1
+    assert len(second) == 1
+    assert first[0]["id_hallazgo"] == second[0]["id_hallazgo"]
