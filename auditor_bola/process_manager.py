@@ -649,18 +649,29 @@ class LocalTargetProcess:
             for item in (state.get("command") or [])
             if str(item).strip()
         ]
-        significant: list[str] = []
-        for item in stored:
+
+        specific: list[str] = []
+        for item in stored[1:]:
             if item.startswith("-"):
                 continue
-            name = Path(item).name
-            if name:
-                significant.append(os.path.normcase(name))
+            candidate = Path(item)
+            name = candidate.name
+            if not name:
+                continue
+            if candidate.suffix or "/" in item or "\\" in item:
+                specific.append(os.path.normcase(name))
 
-        # El PID fue escrito por Aegis para este proyecto. Antes de matarlo
-        # exigimos que al menos un componente real de su comando siga presente,
-        # mitigando una posible reutilización del PID.
-        return any(token in haystack for token in significant)
+        # Si existe script/JAR/archivo de entrada, se exige ese marcador y no
+        # basta con coincidir solamente en python.exe, node.exe, java, etc.
+        if specific:
+            return any(token in haystack for token in specific)
+
+        executable = (
+            os.path.normcase(Path(stored[0]).name)
+            if stored
+            else ""
+        )
+        return bool(executable and executable in haystack)
 
     def _terminate_recorded_target_process(self) -> list[int]:
         state = self._read_runtime_state()
