@@ -33,6 +33,41 @@ Aegis analiza la carpeta seleccionada y construye un borrador compatible con `co
 
 El asistente permite además registrar cuentas, roles privilegiados y convertir endpoints detectados en controles **BOLA** o **RBAC** antes de guardar el perfil. Las decisiones que no pueden inferirse con seguridad —por ejemplo, propietario real de un objeto o acceso esperado de un rol— requieren confirmación humana.
 
+### Arranque local sin Docker
+
+El perfil JSON guarda explícitamente **cómo debe levantarse la aplicación**. Docker no es obligatorio. Cuando existe un `compose.yml` Aegis puede usarlo como primera estrategia, pero si Docker no está instalado, el comando falla o el servidor no abre el puerto esperado, Aegis intenta automáticamente una alternativa local detectada.
+
+Ejemplo:
+
+```json
+{
+  "runtime": {
+    "modo": "service",
+    "nombre": "Docker Compose",
+    "preferencia_arranque": "auto",
+    "permitir_fallback_local": true,
+    "comando_inicio": ["docker", "compose", "-f", "compose.yml", "up", "-d"],
+    "base_url": "http://127.0.0.1:8080",
+    "alternativas": [
+      {
+        "modo": "process",
+        "nombre": "Python",
+        "comando_inicio": ["python", "run.py"],
+        "directorio_trabajo": ".",
+        "base_url": "http://127.0.0.1:5000"
+      }
+    ]
+  }
+}
+```
+
+`preferencia_arranque` acepta `auto`, `local` o `contenedor`. Con `auto`, Aegis usa la estrategia declarada si está disponible y cae a la siguiente ejecutable. Con `local`, prioriza la alternativa local aunque Docker exista. `permitir_fallback_local` puede desactivarse explícitamente si un proyecto debe ejecutarse solo mediante su estrategia principal.
+
+Para Python, Aegis busca primero `.venv`, `venv` o `env` dentro del proyecto y después Python del sistema. También reconoce launchers locales de Node.js, Maven/Gradle, .NET, Laravel/PHP, Go y Rust cuando el proyecto proporciona suficiente información.
+
+El mismo perfil incluye `metadata_detectada.plan_ejecucion`, que resume el comando principal y las alternativas. Al cargar juntos el código fuente y el perfil, Aegis vuelve a detectar el runtime y mantiene el JSON de `config/` actualizado con el plan de ejecución efectivo.
+
+
 La navegación de la aplicación se organiza en:
 
 ```text
