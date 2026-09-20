@@ -1514,8 +1514,11 @@ def generar_tres_recetas(
         "Si strategy_reset es true, DOS intentos consecutivos ya fallaron: está "
         "PROHIBIDO producir pequeñas variaciones del mismo enfoque; reubica la "
         "corrección en otra capa o cambia sustancialmente el mecanismo si la "
-        "evidencia lo exige. El parche se someterá a build, tests, prueba de "
-        "seguridad, regresión y reescaneo. Responde únicamente JSON válido."
+        "evidencia lo exige. El criterio de seguridad exige que la fila "
+        "objetivo pase a SIN_HALLAZGO y que las filas legítimas previamente "
+        "seguras permanezcan en SIN_HALLAZGO. El parche se someterá a build, "
+        "tests, prueba de seguridad, regresión y reescaneo. Responde únicamente "
+        "JSON válido."
     )
 
     formato = {
