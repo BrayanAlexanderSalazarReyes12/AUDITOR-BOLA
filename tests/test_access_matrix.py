@@ -12,6 +12,15 @@ class FakeResponse:
         self.status_code = status_code
 
 
+class JsonResponse(FakeResponse):
+    def __init__(self, status_code, payload):
+        super().__init__(status_code)
+        self.payload = payload
+
+    def json(self):
+        return self.payload
+
+
 def test_matriz_prueba_cada_endpoint_con_cada_usuario(monkeypatch):
     cfg = ConfigObjetivo(
         sistema="demo",
@@ -287,3 +296,53 @@ def test_matriz_reutiliza_politica_de_otro_usuario_del_mismo_rol(
     assert bruno.vulnerable is True
     assert bruno.clasificacion == "HALLAZGO_CONFIRMADO"
     assert bruno.fuente_politica == "politica_mismo_rol"
+
+
+def test_matriz_compara_forma_conteo_e_ids_sin_inventar_vulnerabilidad(
+    monkeypatch,
+):
+    cfg = ConfigObjetivo(
+        sistema="demo",
+        base_url="http://127.0.0.1:5050",
+        cuentas=[
+            Cuenta("ana", "x", "member"),
+            Cuenta("bob", "x", "member"),
+        ],
+        endpoints=[],
+        endpoints_detectados=[
+            {"metodo": "GET", "ruta": "/api/items"}
+        ],
+    )
+
+    def fake_request(method, url, *, cuenta, **kwargs):
+        if cuenta.username == "ana":
+            return JsonResponse(200, [{"id": 1, "owner": "ana"}])
+        return JsonResponse(
+            200,
+            [
+                {"id": 1, "owner": "ana"},
+                {"id": 2, "owner": "bob"},
+            ],
+        )
+
+    monkeypatch.setattr(
+        "auditor_bola.engine.request_http",
+        fake_request,
+    )
+
+    rows = auditar_matriz_acceso(cfg)
+    by_user = {row.cuenta: row for row in rows}
+
+    assert by_user["ana"].object_count == 1
+    assert by_user["bob"].object_count == 2
+    assert by_user["ana"].object_ids == ["1"]
+    assert by_user["bob"].object_ids == ["1", "2"]
+    assert by_user["ana"].response_signature
+    assert by_user["bob"].response_signature
+    assert by_user["ana"].response_signature != by_user["bob"].response_signature
+    assert by_user["ana"].response_comparison
+    assert by_user["bob"].response_comparison
+    # Sin política de autorización, la diferencia aporta evidencia pero no se
+    # promociona automáticamente a vulnerabilidad.
+    assert by_user["ana"].vulnerable is None
+    assert by_user["bob"].vulnerable is None
