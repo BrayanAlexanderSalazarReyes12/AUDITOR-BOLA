@@ -11,7 +11,9 @@ from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 
 from ..ai_recipes import (
     AIRecipeProposal,
-    cargar_configuracion_opencode,
+    cargar_configuracion_ia,
+    importar_configuracion_opencode_a_aegis,
+    guardar_configuracion_aegis_ai,
     generar_tres_recetas,
     guardar_seleccion_ia,
     guardar_sesion_ia,
@@ -573,7 +575,7 @@ class AuditorController(QObject):
     # ------------------------------------------------------------------
     def _refresh_ai_provider(self, silent: bool = False) -> None:
         try:
-            self.ai_provider = cargar_configuracion_opencode()
+            self.ai_provider = cargar_configuracion_ia()
         except Exception as exc:
             self.ai_provider = None
             if not silent:
@@ -586,6 +588,66 @@ class AuditorController(QObject):
         if self.ai_provider:
             return True, self.ai_provider.model_name
         return False, "No configurada"
+
+    def ai_settings(self) -> dict:
+        if not self.ai_provider:
+            self._refresh_ai_provider(silent=True)
+        if not self.ai_provider:
+            return {
+                "enabled": False,
+                "provider_name": "",
+                "model_id": "lab-coder",
+                "model_name": "",
+                "base_url": "",
+                "config_path": "",
+            }
+        data = self.ai_provider.public_dict()
+        data["enabled"] = True
+        return data
+
+    def save_ai_settings(
+        self,
+        *,
+        base_url: str,
+        model_id: str,
+        api_key: str | None = None,
+    ) -> None:
+        try:
+            self.ai_provider = guardar_configuracion_aegis_ai(
+                base_url=base_url,
+                model_id=model_id,
+                api_key=api_key,
+            )
+        except Exception as exc:
+            self.error_message.emit(
+                "No se pudo guardar la IA",
+                str(exc),
+            )
+            return
+
+        self.info_message.emit(
+            "Proveedor IA configurado",
+            "La configuración quedó guardada localmente en este equipo. "
+            "No depende de OpenCode para futuros inicios.",
+        )
+        self.state_changed.emit()
+
+    def import_ai_from_opencode(self) -> None:
+        try:
+            self.ai_provider = importar_configuracion_opencode_a_aegis()
+        except Exception as exc:
+            self.error_message.emit(
+                "No se pudo importar OpenCode",
+                str(exc),
+            )
+            return
+
+        self.info_message.emit(
+            "Proveedor IA importado",
+            "Aegis guardó una copia local de la configuración IA. "
+            "Desde ahora puede usarla sin depender de OpenCode.",
+        )
+        self.state_changed.emit()
 
     def generate_ai(
         self,
