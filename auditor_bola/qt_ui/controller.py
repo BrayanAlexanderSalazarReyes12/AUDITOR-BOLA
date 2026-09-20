@@ -146,6 +146,86 @@ class AuditorController(QObject):
             ensure_ascii=False,
         )
 
+    @staticmethod
+    def _runtime_plan_payload(runtime: RuntimeConfig) -> dict:
+        primary = asdict(runtime)
+        alternatives = list(primary.pop("alternativas", []) or [])
+        return {
+            "preferencia": runtime.preferencia_arranque or "auto",
+            "fallback_local": bool(runtime.permitir_fallback_local),
+            "principal": {
+                "nombre": primary.get("nombre"),
+                "modo": primary.get("modo"),
+                "origen": primary.get("origen"),
+                "descripcion": primary.get("descripcion_ejecucion"),
+                "comando_inicio": primary.get("comando_inicio"),
+                "comando_inicio_por_so": primary.get(
+                    "comando_inicio_por_so"
+                ),
+                "comandos_preparacion": primary.get(
+                    "comandos_preparacion"
+                ),
+                "directorio_trabajo": primary.get(
+                    "directorio_trabajo"
+                ),
+                "base_url": primary.get("base_url"),
+            },
+            "alternativas": [
+                {
+                    "nombre": item.get("nombre"),
+                    "modo": item.get("modo"),
+                    "origen": item.get("origen"),
+                    "descripcion": item.get("descripcion_ejecucion"),
+                    "comando_inicio": item.get("comando_inicio"),
+                    "comando_inicio_por_so": item.get(
+                        "comando_inicio_por_so"
+                    ),
+                    "comandos_preparacion": item.get(
+                        "comandos_preparacion"
+                    ),
+                    "directorio_trabajo": item.get(
+                        "directorio_trabajo"
+                    ),
+                    "base_url": item.get("base_url"),
+                }
+                for item in alternatives
+                if isinstance(item, dict)
+            ],
+        }
+
+    def _persist_runtime_plan(self) -> None:
+        """Mantiene config/*.json alineado con el plan real de ejecución."""
+        if (
+            not self.cfg
+            or not self.config_path
+            or not self.config_path.exists()
+        ):
+            return
+
+        try:
+            payload = json.loads(
+                self.config_path.read_text(encoding="utf-8")
+            )
+            if not isinstance(payload, dict):
+                return
+
+            payload["runtime"] = asdict(self.cfg.runtime)
+            payload["base_url"] = self.cfg.base_url
+            metadata = dict(payload.get("metadata_detectada") or {})
+            metadata["plan_ejecucion"] = self._runtime_plan_payload(
+                self.cfg.runtime
+            )
+            payload["metadata_detectada"] = metadata
+            self.config_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            self.log_message.emit(
+                "No se pudo actualizar el plan de ejecución del perfil: "
+                f"{exc}"
+            )
+
     def _augment_runtime_from_target(self) -> None:
         """Complementa perfiles antiguos con runtimes detectados hoy."""
         if not self.cfg or not self.target_root:
@@ -288,6 +368,8 @@ class AuditorController(QObject):
                 + ", ".join(added)
             )
 
+        self._persist_runtime_plan()
+
     def _ensure_process(self) -> LocalTargetProcess:
         if not self.cfg:
             raise RuntimeError("Carga primero un perfil JSON.")
@@ -323,6 +405,8 @@ class AuditorController(QObject):
         self.cfg = cfg
         self.proceso = None
         self.log_message.emit(f"Perfil cargado: {profile}")
+        if self.target_root:
+            self._augment_runtime_from_target()
         self._refresh_ai_provider(silent=True)
         self.state_changed.emit()
 
@@ -333,6 +417,8 @@ class AuditorController(QObject):
         self.target_root = root
         self.proceso = None
         self.log_message.emit(f"Aplicación cargada: {root}")
+        if self.cfg:
+            self._augment_runtime_from_target()
         self.state_changed.emit()
 
     def set_evidence_base(self, path: str | Path) -> None:
