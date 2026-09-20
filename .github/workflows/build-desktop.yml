@@ -1,4 +1,4 @@
-# matrix-policy-evaluation-release: v1.2.5
+# matrix-policy-evaluation-release: v1.2.6
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.2.5' \
+            'Version: 1.2.6' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-2-5:
-    name: Publicar Release v1.2.5
+  release-v1-2-6:
+    name: Publicar Release v1.2.6
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.5]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.6]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,7 +253,7 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.2.5
+          # Aegis Auditor v1.2.6
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
@@ -298,6 +298,13 @@ jobs:
           - Después de dos intentos fallidos, STRATEGY_RESET puede regenerar automáticamente nuevas estrategias usando los fallos previos como evidencia y rechazando variaciones superficiales.
           - Las opciones NO APLICABLE permanecen visibles para diagnóstico, pero no pueden ejecutarse desde la interfaz.
           - La salida de QA conserva stdout y stderr relevantes para que TEST_FAILED alimente correctamente el siguiente diagnóstico.
+          - Antes de generar la medicina, Aegis identifica el lenguaje y el framework del archivo cargado para que el parche se escriba con la sintaxis y convenciones correctas.
+          - La medicina modifica el archivo real asociado al hallazgo y valida que el cambio sea compatible con el lenguaje detectado antes de continuar.
+          - Después de aplicar el parche, Aegis reinicia la aplicación o servicio objetivo cuando existe runtime reiniciable y registra el resultado del reinicio.
+          - El control de seguridad original se vuelve a ejecutar obligatoriamente después del reinicio para comprobar si el bug o fallo de seguridad sigue siendo reproducible.
+          - La verificación de seguridad ocurre antes de la suite funcional completa: una prueba legacy que todavía espere el comportamiento vulnerable ya no provoca por sí sola que Aegis restaure el fallo de seguridad.
+          - Si el exploit deja de reproducirse pero la suite funcional posterior presenta fallos, el parche se conserva como verificado con advertencias para revisión en vez de revertirse automáticamente.
+          - Los estados de evidencia distinguen reinicio, reescaneo de seguridad, QA posterior y advertencias funcionales para saber exactamente en qué fase falló una medicina.
           - Los hallazgos vulnerables descubiertos por la matriz endpoint × identidad se contabilizan como hallazgos P1 y reciben IDs semánticos estables cuando no existe un control previo.
           - Se conserva la detección real de versiones, runtimes locales/Docker, documentación, cuentas, endpoints, recetas verificables y fallbacks de ejecución.
           - Validación automatizada en Python 3.11 y 3.12, Qt y CustomTkinter.
@@ -348,16 +355,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.2.5" >/dev/null 2>&1; then
-            gh release upload "v1.2.5" "${files[@]}" --clobber
-            gh release edit "v1.2.5" \
-              --title "Aegis Auditor v1.2.5" \
+          if gh release view "v1.2.6" >/dev/null 2>&1; then
+            gh release upload "v1.2.6" "${files[@]}" --clobber
+            gh release edit "v1.2.6" \
+              --title "Aegis Auditor v1.2.6" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.2.5" "${files[@]}" \
+            gh release create "v1.2.6" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.2.5" \
+              --title "Aegis Auditor v1.2.6" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
