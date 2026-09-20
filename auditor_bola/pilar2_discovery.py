@@ -430,6 +430,48 @@ def analyze_secret_file(
     source_kind = _source_kind(relative)
     results: list[dict[str, Any]] = []
 
+    def add_secret_evidence(
+        *,
+        variable: str,
+        value: str,
+        line: int,
+        classification: str,
+        production_reachable: bool = False,
+        literal_deployable: bool = False,
+        context: dict[str, Any] | None = None,
+        symbolic: str | None = None,
+    ) -> None:
+        normalized = value.lower().strip()
+        item = {
+            "archivo": relative,
+            "linea": line,
+            "variable": variable,
+            "clasificacion": classification,
+            # Nunca persistir el secreto/fallback literal en el perfil.
+            "valor_fallback_redactado": _mask_secret(value),
+            "fallback_sha256": hashlib.sha256(
+                value.encode("utf-8")
+            ).hexdigest(),
+            "fallback_default_conocido": (
+                normalized in _KNOWN_INSECURE_VALUES
+                or any(
+                    token in normalized
+                    for token in (
+                        "default", "changeme", "dev", "development", "test",
+                        "example", "sample", "secret", "password",
+                        "placeholder", "replace-me", "replace_me",
+                    )
+                )
+            ),
+            "tipo_fuente": source_kind,
+            "produccion_puede_usar_fallback": production_reachable,
+            "literal_desplegable": literal_deployable,
+            **(context or {}),
+        }
+        if symbolic:
+            item["fallback_simbolico"] = symbolic
+        results.append(item)
+
     for pattern in _SECRET_PATTERNS:
         for match in pattern.finditer(text):
             fallback = str(match.groupdict().get("fallback") or "").strip()
@@ -438,16 +480,6 @@ def analyze_secret_file(
             if normalized in {"none", "null", "nil", "undefined"}:
                 continue
             context = _secret_context(text, match.start(), match.end())
-            obvious_default = (
-                normalized in _KNOWN_INSECURE_VALUES
-                or any(
-                    token in normalized
-                    for token in (
-                        "default", "changeme", "dev", "development", "test",
-                        "example", "sample", "secret", "password",
-                    )
-                )
-            )
             deployable = source_kind not in {
                 "documentacion", "test", "ejemplo"
             }
@@ -456,21 +488,15 @@ def analyze_secret_file(
                 and not context["guardia_desarrollo"]
                 and not context["guardia_produccion_fail_closed"]
             )
-            results.append(
-                {
-                    "archivo": relative,
-                    "linea": _line_number(text, match.start()),
-                    "variable": variable,
-                    "valor_fallback_redactado": _mask_secret(fallback),
-                    "fallback_sha256": hashlib.sha256(
-                        fallback.encode("utf-8")
-                    ).hexdigest(),
-                    "fallback_default_conocido": obvious_default,
-                    "tipo_fuente": source_kind,
-                    "produccion_puede_usar_fallback": production_reachable,
-                    **context,
-                }
+            add_secret_evidence(
+                variable=variable,
+                value=fallback,
+                line=_line_number(text, match.start()),
+                classification="fallback",
+                production_reachable=production_reachable,
+                context=context,
             )
+
     for match in _PYTHON_SYMBOLIC_SECRET.finditer(text):
         variable = str(match.group("var") or "secreto").strip()
         symbol = str(match.group("symbol") or "").strip()
@@ -482,22 +508,7 @@ def analyze_secret_file(
         if not assignment:
             continue
         fallback = str(assignment.group("fallback") or "").strip()
-        normalized = fallback.lower().strip()
         context = _secret_context(text, match.start(), match.end())
-        obvious_default = (
-            normalized in _KNOWN_INSECURE_VALUES
-            or any(
-                token in normalized
-                for token in (
-                    "default", "changeme", "dev", "development", "test",
-                    "example", "sample", "secret", "password",
-                )
-            )
-            or any(
-                token in symbol.lower()
-                for token in ("default", "dev", "test", "fallback")
-            )
-        )
         deployable = source_kind not in {
             "documentacion", "test", "ejemplo"
         }
@@ -506,25 +517,94 @@ def analyze_secret_file(
             and not context["guardia_desarrollo"]
             and not context["guardia_produccion_fail_closed"]
         )
-        results.append(
-            {
-                "archivo": relative,
-                "linea": _line_number(text, match.start()),
-                "variable": variable,
-                "fallback_simbolico": symbol,
-                "valor_fallback_redactado": _mask_secret(fallback),
-                "fallback_sha256": hashlib.sha256(
-                    fallback.encode("utf-8")
-                ).hexdigest(),
-                "fallback_default_conocido": obvious_default,
-                "tipo_fuente": source_kind,
-                "produccion_puede_usar_fallback": production_reachable,
-                **context,
-            }
+        add_secret_evidence(
+            variable=variable,
+            value=fallback,
+            line=_line_number(text, match.start()),
+            classification="fallback",
+            production_reachable=production_reachable,
+            context=context,
+            symbolic=symbol,
         )
 
-    return results
+    existing = {
+        (
+            str(item.get("variable") or ""),
+            int(item.get("linea") or 0),
+        )
+        for item in results
+    }
+    direct_literal = re.compile(
+        rf"""(?imx)^\s*
+        (?P<var>{_SECRET_VAR})
+        \s*[:=]\s*
+        (?P<quote>["'])(?P<value>[^"'\n]{{4,}})(?P=quote)
+        \s*[,;]?\s*$
+        """
+    )
+    for match in direct_literal.finditer(text):
+        variable = str(match.group("var") or "secreto").strip()
+        line = _line_number(text, match.start())
+        if (variable, line) in existing:
+            continue
+        value = str(match.group("value") or "").strip()
+        normalized = value.lower()
+        placeholder = (
+            normalized in _KNOWN_INSECURE_VALUES
+            or any(
+                token in normalized
+                for token in (
+                    "example", "sample", "changeme", "replace-me",
+                    "replace_me", "your-", "your_", "placeholder",
+                )
+            )
+        )
+        add_secret_evidence(
+            variable=variable,
+            value=value,
+            line=line,
+            classification=(
+                "placeholder"
+                if placeholder
+                else "secreto_posiblemente_real"
+            ),
+            literal_deployable=(
+                source_kind not in {
+                    "documentacion", "test", "ejemplo"
+                }
+            ),
+        )
 
+    # Los .env también pueden usar valores sin comillas. Aegis los conserva
+    # como candidatos para clasificación; nunca los confirma por texto solo.
+    if Path(relative).name.lower().startswith(".env"):
+        env_literal = re.compile(
+            rf"""(?imx)^\s*
+            (?P<var>{_SECRET_VAR})\s*=\s*
+            (?P<value>[^\s#][^\n#]{{3,}}?)\s*$
+            """
+        )
+        for match in env_literal.finditer(text):
+            variable = str(match.group("var") or "secreto").strip()
+            line = _line_number(text, match.start())
+            if (variable, line) in existing:
+                continue
+            value = str(match.group("value") or "").strip().strip("'\"")
+            if not value:
+                continue
+            add_secret_evidence(
+                variable=variable,
+                value=value,
+                line=line,
+                classification="secreto_posiblemente_real",
+                literal_deployable=(
+                    source_kind not in {
+                        "documentacion", "test", "ejemplo"
+                    }
+                ),
+            )
+
+    return results
 
 def _discover_secrets(
     root: Path,
@@ -544,19 +624,40 @@ def _discover_secrets(
                 continue
             seen.add(key)
             variable = str(item.get("variable") or "secreto")
+            classification = str(
+                item.get("clasificacion") or "fallback"
+            )
             fp = _stable_digest(
                 "SECRET", relative, variable,
                 item.get("fallback_sha256"), "gestion_secretos"
             )
-            strong = bool(item.get("produccion_puede_usar_fallback"))
-            confidence = "media-alta" if strong else "baja"
+            is_fallback = classification == "fallback"
+            strong = bool(
+                is_fallback
+                and item.get("produccion_puede_usar_fallback")
+            )
+            literal_deployable = bool(
+                item.get("literal_desplegable")
+            )
+            confidence = (
+                "media-alta"
+                if strong
+                else ("media" if literal_deployable else "baja")
+            )
+            motive = (
+                "Se detectó un fallback de secreto. Debe determinarse si "
+                "producción puede iniciar usando ese valor."
+                if is_fallback
+                else (
+                    "Se detectó un literal asociado a material secreto. "
+                    "Debe clasificarse como credencial real, placeholder, "
+                    "desarrollo o configuración externa antes de confirmarlo."
+                )
+            )
             candidate = _candidate(
                 family="SECRET",
                 root_cause="gestion_secretos",
-                motive=(
-                    "Se detectó un fallback de secreto. Debe determinarse si "
-                    "producción puede iniciar usando ese valor."
-                ),
+                motive=motive,
                 confidence=confidence,
                 state="prueba_preparada" if strong else "candidato",
                 component=f"{relative}:{variable}",
