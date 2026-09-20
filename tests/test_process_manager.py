@@ -937,3 +937,54 @@ def test_start_backend_reserva_100_para_finalizacion_ui(tmp_path):
 
     assert progress[-1][0] == 99
     assert all(value <= 99 for value, _ in progress)
+
+
+
+def test_python_sin_base_url_descubre_listener_real_del_proceso(tmp_path):
+    runtime = RuntimeConfig(
+        modo="process",
+        nombre="Python",
+        origen="python-project",
+        comando_inicio=["python", "run.py"],
+        base_url="",
+        espera_inicio=0,
+        timeout_inicio=2,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    class FakeProcess:
+        pid = 3210
+        returncode = None
+
+        def poll(self):
+            return None
+
+    manager.process = FakeProcess()
+
+    connection = type(
+        "Connection",
+        (),
+        {
+            "__enter__": lambda self: self,
+            "__exit__": lambda self, *args: False,
+        },
+    )()
+
+    with patch.object(
+        manager,
+        "_detect_local_url_from_output",
+        return_value=None,
+    ), patch.object(
+        manager,
+        "_target_listener_ports",
+        return_value=[5050],
+    ), patch(
+        "auditor_bola.process_manager.socket.create_connection",
+        return_value=connection,
+    ) as connect:
+        ready, detail = manager._wait_until_target_ready()
+
+    assert ready is True
+    assert manager.runtime.base_url == "http://127.0.0.1:5050"
+    assert "5050" in detail
+    connect.assert_called_with(("127.0.0.1", 5050), timeout=0.8)
