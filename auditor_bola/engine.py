@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+import hashlib
+import json
 import re
 from typing import Any, Callable
 
@@ -72,6 +74,11 @@ class ResultadoMatrizAcceso:
     id_control_referencia: str | None
     detalle: str
     ts: str
+    response_signature: str | None = None
+    response_shape: dict[str, Any] | None = None
+    object_count: int | None = None
+    object_ids: list[str] | None = None
+    response_comparison: str | None = None
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -406,8 +413,169 @@ def _cuerpo_matriz(
         if isinstance(endpoint.cuerpo_prueba, dict):
             return dict(endpoint.cuerpo_prueba)
 
-    # Para el barrido general no fabricamos datos de negocio.
-    return {}
+    # Para el barrido general no fabricamos datos de negocio. Una mutación
+    # sin cuerpo validado queda pendiente/no ejecutable en vez de dispararse.
+    return None
+
+
+def _response_shape(value: Any, depth: int = 0) -> dict[str, Any]:
+    """Describe estructura sin persistir valores de negocio o secretos."""
+    if depth >= 4:
+        return {"tipo": type(value).__name__}
+    if isinstance(value, dict):
+        keys = sorted(str(key) for key in value.keys())[:80]
+        return {
+            "tipo": "object",
+            "keys": keys,
+            "campos": {
+                str(key): _response_shape(nested, depth + 1)
+                for key, nested in list(value.items())[:40]
+            },
+        }
+    if isinstance(value, list):
+        sample = value[0] if value else None
+        return {
+            "tipo": "array",
+            "cantidad": len(value),
+            "item": (
+                _response_shape(sample, depth + 1)
+                if sample is not None
+                else None
+            ),
+        }
+    if value is None:
+        return {"tipo": "null"}
+    if isinstance(value, bool):
+        return {"tipo": "boolean"}
+    if isinstance(value, (int, float)):
+        return {"tipo": "number"}
+    return {"tipo": "string"}
+
+
+def _object_ids_from_payload(value: Any, limit: int = 30) -> list[str]:
+    ids: list[str] = []
+
+    def walk(current: Any) -> None:
+        if len(ids) >= limit:
+            return
+        if isinstance(current, dict):
+            for key, nested in current.items():
+                normalized = re.sub(
+                    r"[^a-z0-9]+",
+                    "_",
+                    str(key).lower(),
+                ).strip("_")
+                is_id = (
+                    normalized in {
+                        "id", "uuid", "pk", "key", "code", "codigo",
+                        "object_id", "resource_id", "record_id",
+                    }
+                    or normalized.endswith("_id")
+                    or normalized.endswith("_uuid")
+                )
+                if (
+                    is_id
+                    and isinstance(nested, (str, int))
+                    and not isinstance(nested, bool)
+                ):
+                    text = str(nested)
+                    if text not in ids:
+                        ids.append(text)
+                        if len(ids) >= limit:
+                            return
+                if isinstance(nested, (dict, list)):
+                    walk(nested)
+        elif isinstance(current, list):
+            for nested in current:
+                walk(nested)
+                if len(ids) >= limit:
+                    return
+
+    walk(value)
+    return ids
+
+
+def _object_count_from_payload(value: Any) -> int | None:
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, dict):
+        lists = [
+            nested
+            for nested in value.values()
+            if isinstance(nested, list)
+        ]
+        if lists:
+            return max(len(nested) for nested in lists)
+        return 1
+    return None
+
+
+def _observe_response(resp: Any) -> tuple[
+    str | None,
+    dict[str, Any] | None,
+    int | None,
+    list[str],
+]:
+    try:
+        payload = resp.json()
+    except Exception:
+        return None, None, None, []
+
+    shape = _response_shape(payload)
+    object_ids = _object_ids_from_payload(payload)
+    object_count = _object_count_from_payload(payload)
+    canonical = json.dumps(
+        {
+            "shape": shape,
+            "object_count": object_count,
+            "object_ids": object_ids,
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    signature = hashlib.sha256(
+        canonical.encode("utf-8")
+    ).hexdigest()[:20]
+    return signature, shape, object_count, object_ids
+
+
+def _annotate_matrix_response_differences(
+    results: list[ResultadoMatrizAcceso],
+) -> None:
+    grouped: dict[tuple[str, str], list[ResultadoMatrizAcceso]] = {}
+    for item in results:
+        if not item.response_signature:
+            continue
+        grouped.setdefault(
+            (item.metodo.upper(), _normalizar_ruta_matriz(item.endpoint_detectado)),
+            [],
+        ).append(item)
+
+    for items in grouped.values():
+        signatures = {
+            item.response_signature
+            for item in items
+            if item.response_signature
+        }
+        if len(signatures) <= 1:
+            continue
+
+        counts = sorted({
+            item.object_count
+            for item in items
+            if item.object_count is not None
+        })
+        message = (
+            "La forma/alcance de la respuesta cambia entre identidades"
+            + (f" (conteos observados: {counts})" if counts else "")
+            + ". La diferencia es evidencia contextual, no una "
+            "vulnerabilidad por sí sola."
+        )
+        for item in items:
+            item.response_comparison = message
+            if message not in item.detalle:
+                item.detalle += " · " + message
 
 
 def auditar_matriz_acceso(
@@ -417,11 +585,12 @@ def auditar_matriz_acceso(
     """Prueba cada endpoint detectado con cada cuenta configurada.
 
     La matriz es observacional: no inventa una política de acceso. GET/HEAD/
-    OPTIONS se ejecutan normalmente. POST/PUT/PATCH usan cuerpo vacío para
-    evitar reutilizar datos de negocio válidos y reducir efectos laterales.
-    DELETE se registra pero no se dispara automáticamente para no destruir
-    información. Una ruta parametrizada solo se ejecuta si ya existe un ID
-    verificable en un control BOLA.
+    OPTIONS se ejecutan normalmente. POST/PUT/PATCH solo se ejecutan cuando
+    existe un cuerpo de prueba previamente derivado de evidencia; si no, se
+    marcan NO_EJECUTABLE. DELETE no se dispara salvo una estrategia aislada
+    fuera de esta matriz. Las respuestas JSON se comparan por estructura,
+    cantidad e identificadores sin convertir una diferencia en vulnerabilidad
+    por sí sola.
     """
     resultados: list[ResultadoMatrizAcceso] = []
     if not cfg.probar_todos_endpoints_con_todos_usuarios:
@@ -504,6 +673,37 @@ def auditar_matriz_acceso(
                     metodo,
                     ruta,
                 )
+                if metodo in {"POST", "PUT", "PATCH"} and cuerpo is None:
+                    resultados.append(
+                        ResultadoMatrizAcceso(
+                            sistema=cfg.sistema,
+                            cuenta=cuenta.username,
+                            rol=cuenta.role,
+                            endpoint_detectado=ruta,
+                            endpoint_ejecutado=ejecutable,
+                            metodo=metodo,
+                            http_status=None,
+                            acceso_real=None,
+                            acceso_esperado=None,
+                            vulnerable=None,
+                            clasificacion="NO_EJECUTABLE",
+                            fuente_politica=None,
+                            confianza=None,
+                            id_control_referencia=None,
+                            detalle=(
+                                "Mutación omitida: no existe payload de prueba "
+                                "seguro derivado de evidencia"
+                            ),
+                            ts=_ts(),
+                        )
+                    )
+                    if progress_callback:
+                        progress_callback(
+                            "Pilar 1 · Matriz de acceso · "
+                            f"{metodo} {ruta} · cuenta {cuenta.username}"
+                        )
+                    continue
+
                 (
                     acceso_esperado,
                     fuente_politica,
@@ -515,6 +715,10 @@ def auditar_matriz_acceso(
                     metodo,
                     ruta,
                 )
+                response_signature = None
+                response_shape = None
+                object_count = None
+                object_ids: list[str] = []
                 try:
                     resp = request_http(
                         metodo,
@@ -522,6 +726,12 @@ def auditar_matriz_acceso(
                         cuenta=cuenta,
                         cuerpo=cuerpo,
                     )
+                    (
+                        response_signature,
+                        response_shape,
+                        object_count,
+                        object_ids,
+                    ) = _observe_response(resp)
                     acceso_real, clasificacion_base = (
                         _clasificar_status_matriz(resp.status_code)
                     )
@@ -582,6 +792,10 @@ def auditar_matriz_acceso(
                         id_control_referencia=id_control_referencia,
                         detalle=detalle,
                         ts=_ts(),
+                        response_signature=response_signature,
+                        response_shape=response_shape,
+                        object_count=object_count,
+                        object_ids=object_ids,
                     )
                 )
 
@@ -591,6 +805,7 @@ def auditar_matriz_acceso(
                     f"{metodo} {ruta} · cuenta {cuenta.username}"
                 )
 
+    _annotate_matrix_response_differences(resultados)
     return resultados
 
 
