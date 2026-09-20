@@ -129,12 +129,30 @@ def test_diagnostico_activa_strategy_reset_tras_dos_fallos(monkeypatch):
         "strategy_reset": True,
     }
 
-    def fake_request(provider_arg, *, system_prompt, user_payload, timeout):
+    def fake_request(
+        provider_arg,
+        *,
+        system_prompt,
+        user_payload,
+        timeout,
+        temperature,
+        requested_output,
+        task,
+        has_failures,
+    ):
         captured["system"] = system_prompt
         captured["payload"] = user_payload
-        return diagnosis
+        captured["task"] = task
+        captured["has_failures"] = has_failures
+        return diagnosis, provider, [
+            {"provider": provider.public_dict(), "status": "ok"}
+        ]
 
-    monkeypatch.setattr(ai, "_solicitar_json_gemma", fake_request)
+    monkeypatch.setattr(
+        ai,
+        "_solicitar_json_con_fallback",
+        fake_request,
+    )
 
     result, _provider = ai.diagnosticar_causa_raiz(
         _cfg(),
@@ -152,6 +170,8 @@ def test_diagnostico_activa_strategy_reset_tras_dos_fallos(monkeypatch):
 
     assert result["strategy_reset"] is True
     assert captured["payload"]["strategy_reset"] is True
+    assert captured["task"] == "diagnosis"
+    assert captured["has_failures"] is True
     assert "dos intentos ya fallaron" in captured["system"].lower()
 
 
