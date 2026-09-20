@@ -1,6 +1,7 @@
 from auditor_bola.language_detection import (
     detect_language_context,
     detect_source_language,
+    requires_service_restart,
 )
 
 
@@ -45,3 +46,14 @@ def test_contexto_incluye_lenguaje_principal_y_frameworks_relacionados():
     assert result["principal"]["language"] == "Python"
     assert result["archivos_relacionados"]["static/app.js"]["language"] == "JavaScript"
     assert "Flask" in result["frameworks_contexto"]
+
+
+
+def test_python_y_configuracion_ejecutable_requieren_reinicio():
+    assert requires_service_restart(["tramitia/auth.py"]) is True
+    assert requires_service_restart(["src/App.java"]) is True
+    assert requires_service_restart(["config/application.properties"]) is True
+
+
+def test_documentacion_estatica_no_fuerza_reinicio():
+    assert requires_service_restart(["README.md"]) is False
