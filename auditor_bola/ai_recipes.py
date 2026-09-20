@@ -679,6 +679,8 @@ class AIRecipeProposal:
     archivo_objetivo: str = ""
     hipotesis_id: str = ""
     estrategia_conceptual: str = ""
+    lenguaje_objetivo: str = ""
+    frameworks_objetivo: list[str] = field(default_factory=list)
     # Plan multiarchivo opcional. Cada cambio usa:
     # {"archivo": "...", "estrategia": "replace_exact|regex_replace",
     #  "buscar": "...", "reemplazar": "..."}
@@ -1490,6 +1492,21 @@ def validar_propuestas_contextuales(
             proposal.estrategia = str(first.get("estrategia") or "")
             proposal.buscar = str(first.get("buscar") or "")
             proposal.reemplazar = str(first.get("reemplazar") or "")
+            detected = detect_language_context(
+                touched[0],
+                working[touched[0]],
+                {
+                    target: working[target]
+                    for target in touched[1:]
+                },
+            )
+            principal_language = detected.get("principal") or {}
+            proposal.lenguaje_objetivo = str(
+                principal_language.get("language") or ""
+            )
+            proposal.frameworks_objetivo = list(
+                detected.get("frameworks_contexto") or []
+            )
 
         for identity in sorted(test_identities):
             if not identity:
