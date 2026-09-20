@@ -7,10 +7,11 @@ motor determinista y queda sometida a preview, backup, verificación y rollback.
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
@@ -667,6 +668,8 @@ class AIRecipeProposal:
     reemplazar: str
     requiere_reinicio: bool
     consideraciones: str
+    validacion_ok: bool = True
+    errores_validacion: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -922,6 +925,164 @@ def _validar_propuestas(data: dict) -> list[AIRecipeProposal]:
     return propuestas
 
 
+
+_IDENTITY_KEY_RE = re.compile(
+    r"(?i)^(cuenta|usuario|username|user|email|identity|identidad|subject|sujeto)$"
+)
+
+
+def _identidades_de_prueba(
+    metadata_hallazgo: dict | None,
+    matriz_pruebas: list[dict] | None,
+) -> set[str]:
+    """Extrae identidades usadas como datos de prueba, no como política."""
+    values: set[str] = set()
+
+    def walk(value, key: str | None = None) -> None:
+        if isinstance(value, dict):
+            for item_key, item_value in value.items():
+                if _IDENTITY_KEY_RE.match(str(item_key)):
+                    if isinstance(item_value, (str, int)):
+                        text = str(item_value).strip()
+                        if len(text) >= 3 and text not in {"-", "none", "null"}:
+                            values.add(text)
+                walk(item_value, str(item_key))
+        elif isinstance(value, list):
+            for item in value:
+                walk(item, key)
+
+    walk(metadata_hallazgo or {})
+    walk(matriz_pruebas or [])
+    return values
+
+
+def _aplicar_propuesta_en_memoria(
+    propuesta: AIRecipeProposal,
+    source_text: str,
+) -> str:
+    if propuesta.estrategia == "replace_exact":
+        if propuesta.buscar not in source_text:
+            raise RuntimeError(
+                "el bloque buscar no aparece literalmente en el archivo"
+            )
+        patched = source_text.replace(
+            propuesta.buscar,
+            propuesta.reemplazar,
+            1,
+        )
+    elif propuesta.estrategia == "regex_replace":
+        try:
+            pattern = re.compile(
+                propuesta.buscar,
+                re.MULTILINE | re.DOTALL,
+            )
+        except re.error as exc:
+            raise RuntimeError(
+                f"regex inválida: {exc}"
+            ) from exc
+        patched, count = pattern.subn(
+            propuesta.reemplazar,
+            source_text,
+            count=1,
+        )
+        if count == 0:
+            raise RuntimeError(
+                "la regex buscar no coincide con el archivo"
+            )
+    else:
+        raise RuntimeError(
+            f"estrategia no soportada: {propuesta.estrategia}"
+        )
+
+    if patched == source_text:
+        raise RuntimeError("la receta no produciría ningún cambio")
+    return patched
+
+
+def _validar_sintaxis_basica(
+    source_relative: str,
+    patched_text: str,
+) -> list[str]:
+    """Valida sintaxis cuando existe un parser estándar confiable."""
+    suffix = Path(source_relative).suffix.lower()
+    errors: list[str] = []
+
+    if suffix == ".py":
+        try:
+            ast.parse(patched_text)
+        except SyntaxError as exc:
+            errors.append(
+                "el parche dejaría Python inválido: "
+                f"{exc.msg} (línea {exc.lineno})"
+            )
+    elif suffix == ".json":
+        try:
+            json.loads(patched_text)
+        except json.JSONDecodeError as exc:
+            errors.append(
+                "el parche dejaría JSON inválido: "
+                f"{exc.msg} (línea {exc.lineno})"
+            )
+
+    return errors
+
+
+def validar_propuestas_contextuales(
+    propuestas: list[AIRecipeProposal],
+    *,
+    source_relative: str,
+    source_text: str,
+    metadata_hallazgo: dict | None = None,
+    matriz_pruebas: list[dict] | None = None,
+) -> list[AIRecipeProposal]:
+    """Marca recetas inseguras o no aplicables antes de mostrarlas.
+
+    Una identidad concreta observada en una fila de prueba no puede convertirse
+    en una regla hardcodeada de autorización. También se valida que el parche
+    realmente coincida con el archivo y, para formatos con parser estándar,
+    que conserve sintaxis válida.
+    """
+    test_identities = _identidades_de_prueba(
+        metadata_hallazgo,
+        matriz_pruebas,
+    )
+
+    for proposal in propuestas:
+        errors: list[str] = []
+        try:
+            patched = _aplicar_propuesta_en_memoria(
+                proposal,
+                source_text,
+            )
+        except Exception as exc:
+            proposal.validacion_ok = False
+            proposal.errores_validacion = [str(exc)]
+            continue
+
+        for identity in sorted(test_identities):
+            if (
+                identity
+                and identity not in source_text
+                and identity in proposal.reemplazar
+            ):
+                errors.append(
+                    "la receta hardcodea una identidad usada por la prueba "
+                    f"({identity!r}) en vez de corregir la política general"
+                )
+
+        errors.extend(
+            _validar_sintaxis_basica(
+                source_relative,
+                patched,
+            )
+        )
+
+        proposal.validacion_ok = not errors
+        proposal.errores_validacion = errors
+
+    return propuestas
+
+
 def _construir_contexto(
     cfg: ConfigObjetivo,
     *,
@@ -966,6 +1127,9 @@ def _construir_contexto(
             "tres_propuestas_diferentes": True,
             "verificacion_posterior_obligatoria": True,
             "no_romper_pruebas_que_ya_pasaban": True,
+            "no_hardcodear_identidades_de_prueba": True,
+            "parche_debe_ser_aplicable_al_archivo_actual": True,
+            "conservar_sintaxis_valida": True,
         },
     }
 
@@ -1028,6 +1192,12 @@ def generar_tres_recetas(
         "estrategia y contrato de verificación, pero ADÁPTALA al código actual. "
         "No copies nombres de archivos, clases, variables ni fragmentos del "
         "sistema donde se aprendió. "
+        "MUY IMPORTANTE: los nombres de cuenta/usuario presentes en "
+        "hallazgo_objetivo o matriz_de_pruebas_del_mismo_control son datos de "
+        "prueba, NO una política. Nunca hardcodees una identidad concreta para "
+        "permitir o denegar acceso. Corrige la regla general usando identidad "
+        "autenticada, propiedad del recurso, rol, permiso o política existente. "
+        "La receta debe ser general para usuarios equivalentes. "
         "Prioriza la validación de autorización/propiedad en el punto donde se "
         "decide el acceso al recurso. Responde únicamente con JSON válido, "
         "sin Markdown."
@@ -1116,6 +1286,21 @@ def generar_tres_recetas(
     texto = _extraer_contenido_chat(response_json)
     data = _extraer_json(texto)
     propuestas = _validar_propuestas(data)
+    propuestas = validar_propuestas_contextuales(
+        propuestas,
+        source_relative=source_relative,
+        source_text=source_text,
+        metadata_hallazgo=metadata_hallazgo,
+        matriz_pruebas=matriz_pruebas,
+    )
+    contexto["validacion_local_propuestas"] = [
+        {
+            "id": item.id,
+            "valida": item.validacion_ok,
+            "errores": list(item.errores_validacion),
+        }
+        for item in propuestas
+    ]
     return propuestas, contexto, provider
 
 

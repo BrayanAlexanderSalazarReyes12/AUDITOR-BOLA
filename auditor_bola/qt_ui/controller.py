@@ -114,6 +114,7 @@ class AuditorController(QObject):
         self.ai_source_hash: str | None = None
         self.ai_source_resolution: dict[str, Any] | None = None
         self.ai_target_row: dict | None = None
+        self.ai_failed_attempts: dict[str, dict[str, Any]] = {}
 
         self.pool = QThreadPool.globalInstance()
         # Mantiene vivos QRunnable/WorkerSignals hasta recibir finished/error.
@@ -2006,6 +2007,7 @@ class AuditorController(QObject):
                     for item in self.rows
                     if item.get("id") == row.get("id")
                 ],
+                intento_anterior=self.ai_failed_attempts.get(row["id"]),
                 conocimiento_reutilizable=reusable,
             )
             session = guardar_sesion_ia(
@@ -2055,6 +2057,16 @@ class AuditorController(QObject):
 
         proposal = self.ai_proposals[index]
         row = self.ai_target_row
+
+        if not proposal.validacion_ok:
+            self.error_message.emit(
+                "Receta IA no aplicable",
+                (
+                    f"{proposal.id} fue descartada por la validación local:\n- "
+                    + "\n- ".join(proposal.errores_validacion)
+                ),
+            )
+            return
 
         source = (
             self.target_root / self.ai_source_relative
@@ -2169,10 +2181,54 @@ class AuditorController(QObject):
                 # Las propuestas fueron construidas sobre la versión anterior
                 # del archivo y no deben reutilizarse después del parche.
                 self.ai_source_hash = None
-            self.info_message.emit(
-                "Resultado de receta IA",
-                f"{row['id']}: {state}",
-            )
+                self.ai_failed_attempts.pop(row["id"], None)
+                self.info_message.emit(
+                    "Resultado de receta IA",
+                    f"{row['id']}: CORREGIDO",
+                )
+            else:
+                self.ai_failed_attempts[row["id"]] = dict(result)
+                motive = str(result.get("motivo") or "").strip()
+                error = str(result.get("error") or "").strip()
+                rollback_state = (
+                    "Sí"
+                    if result.get("rollback")
+                    else "No / no fue necesario"
+                )
+                details = [
+                    f"{row['id']}: {state}",
+                    motive or "La receta no superó la verificación.",
+                ]
+                if error:
+                    details.append(f"Error: {error}")
+                verification_errors = result.get(
+                    "errores_verificacion"
+                ) or []
+                for item in verification_errors[:3]:
+                    detail = str(item.get("detalle") or "").strip()
+                    if detail:
+                        details.append(f"Verificación: {detail}")
+                details.append(
+                    f"Rollback automático: {rollback_state}"
+                )
+                evidence = str(result.get("evidencia") or "").strip()
+                if evidence:
+                    details.append(f"Evidencia: {evidence}")
+                details.append(
+                    "Puedes seleccionar otra alternativa o generar "
+                    "nuevas recetas; Aegis enviará este intento fallido "
+                    "como retroalimentación para no repetirlo."
+                )
+                self.error_message.emit(
+                    "La receta no pudo corregir el hallazgo",
+                    "\n\n".join(details),
+                )
+                self.log_message.emit(
+                    f"Receta IA {row['id']} falló: {state}"
+                    + (f" · {motive}" if motive else "")
+                    + (f" · {error}" if error else "")
+                )
+
             self.evidence_changed.emit()
             self.diagnose()
 

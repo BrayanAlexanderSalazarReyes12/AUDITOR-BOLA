@@ -56,6 +56,29 @@ def estado_control(
     return "SIN_HALLAZGO"
 
 
+def _errores_control(
+    resultado: dict,
+    control_id: str,
+    selector: dict | None = None,
+) -> list[dict]:
+    """Resume filas ERROR para explicar por qué falló una verificación."""
+    errores: list[dict] = []
+    for fila in filas_control(resultado, control_id, selector):
+        if fila.get("estado") != "ERROR":
+            continue
+        errores.append(
+            {
+                "id": fila.get("id"),
+                "cuenta": fila.get("cuenta"),
+                "metodo": fila.get("metodo"),
+                "ruta": fila.get("ruta"),
+                "tipo_control": fila.get("tipo_control"),
+                "detalle": fila.get("detalle"),
+            }
+        )
+    return errores
+
+
 def _clave_fila(fila: dict) -> tuple:
     return (
         fila.get("id"),
@@ -275,9 +298,15 @@ def ciclo_correctivo(
             verificacion,
             control_id,
         )
+        errores_verificacion = _errores_control(
+            verificacion,
+            control_id,
+            selector,
+        )
         manifest["estado_despues"] = estado_despues
         manifest["estado_global_despues"] = estado_global_despues
         manifest["regresiones"] = regresiones
+        manifest["errores_verificacion"] = errores_verificacion
         manifest["correccion_aplicada"] = correccion.as_dict()
 
         if estado_despues == "SIN_HALLAZGO" and not regresiones:
@@ -294,25 +323,49 @@ def ciclo_correctivo(
                 "La fila objetivo pudo cambiar, pero la receta introdujo "
                 "regresiones en otras pruebas que antes estaban seguras."
             )
-        else:
-            manifest["estado_final"] = (
-                "NO_CORREGIDO" if estado_despues == "HALLAZGO" else "ERROR"
+        elif estado_despues == "HALLAZGO":
+            manifest["estado_final"] = "NO_CORREGIDO"
+            manifest["motivo"] = (
+                "La receta se aplicó y se verificó, pero la fila objetivo "
+                "sigue reproduciendo el hallazgo. El cambio fue revertido."
             )
-            if manifest["estado_final"] == "NO_CORREGIDO":
-                manifest["motivo"] = (
-                    "La receta se aplicó y se verificó, pero la fila objetivo "
-                    "sigue reproduciendo el hallazgo. El cambio fue revertido."
-                )
+        elif estado_despues == "ERROR":
+            manifest["estado_final"] = "CORRECCION_FALLIDA"
+            detail = "; ".join(
+                str(item.get("detalle") or "").strip()
+                for item in errores_verificacion
+                if str(item.get("detalle") or "").strip()
+            )
+            manifest["motivo"] = (
+                "La receta dejó el control en ERROR durante la verificación. "
+                "El cambio fue revertido automáticamente."
+                + (f" Detalle: {detail}" if detail else "")
+            )
+        else:
+            manifest["estado_final"] = "CORRECCION_FALLIDA"
+            manifest["motivo"] = (
+                "La receta no produjo un estado verificable y fue revertida."
+            )
         evidence.write_json("manifest.json", manifest)
         return manifest
 
     except Exception as exc:
         manifest["error"] = str(exc)
-        manifest["estado_final"] = "ERROR"
 
         if correccion is not None:
+            manifest["estado_final"] = "CORRECCION_FALLIDA"
+            manifest["motivo"] = (
+                "La receta se alcanzó a aplicar, pero falló antes o durante "
+                "la verificación. El cambio fue revertido automáticamente."
+            )
             _rollback_seguro(
                 cfg, correccion, target_root, evidence, reiniciar, manifest
+            )
+        else:
+            manifest["estado_final"] = "RECETA_INVALIDA"
+            manifest["motivo"] = (
+                "La receta no pudo aplicarse de forma segura al archivo actual; "
+                "no se confirmó ninguna modificación."
             )
 
         evidence.write_json("manifest.json", manifest)

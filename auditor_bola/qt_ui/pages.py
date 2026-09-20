@@ -1048,25 +1048,57 @@ class AIPage(QWidget):
             if len(preview) > 115:
                 preview = preview[:112].rstrip() + "…"
 
+            valid = bool(proposal.get("validacion_ok", True))
+            validation_errors = [
+                str(item)
+                for item in proposal.get("errores_validacion") or []
+            ]
+
             lines = [
-                f"{index}. {enfoque}    •    Riesgo {riesgo}",
+                (
+                    f"{index}. {enfoque}    •    Riesgo {riesgo}"
+                    + ("" if valid else "    •    NO APLICABLE")
+                ),
                 titulo,
             ]
             if preview:
                 lines.append(preview)
+            if validation_errors:
+                lines.append(
+                    "Validación: " + validation_errors[0]
+                )
 
             item = QListWidgetItem("\n".join(lines))
-            item.setToolTip(
+            tooltip = (
                 f"{enfoque} · Riesgo {riesgo}\n{titulo}"
                 + (f"\n\n{explicacion}" if explicacion else "")
             )
+            if validation_errors:
+                tooltip += (
+                    "\n\nNo aplicable:\n- "
+                    + "\n- ".join(validation_errors)
+                )
+                item.setForeground(QColor("#FF9DA8"))
+            item.setToolTip(tooltip)
             item.setSizeHint(
-                QSize(0, 92 if preview else 70)
+                QSize(
+                    0,
+                    112 if validation_errors
+                    else (92 if preview else 70),
+                )
             )
             self.list.addItem(item)
 
         if proposals:
-            self.list.setCurrentRow(0)
+            first_valid = next(
+                (
+                    index
+                    for index, proposal in enumerate(proposals)
+                    if proposal.get("validacion_ok", True)
+                ),
+                0,
+            )
+            self.list.setCurrentRow(first_valid)
 
     def _show_proposal(self, index: int):
         if index < 0 or index >= len(self.proposals):
