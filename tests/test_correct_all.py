@@ -123,8 +123,10 @@ def test_fallo_de_reinicio_hace_rollback(tmp_path):
         reiniciar=reiniciar_fallando,
     )
 
-    assert resultado["estado_final"] == "ERROR"
+    assert resultado["estado_final"] == "CORRECCION_FALLIDA"
     assert resultado["rollback"] is True
+    assert "reinicio simulado falló" in resultado["error"]
+    assert "revertido" in resultado["motivo"].lower()
     assert config_file.read_text(encoding="utf-8") == "debug=true\n"
 
 
