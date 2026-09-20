@@ -3568,111 +3568,194 @@ def _infer_agent_scope_checks(
     endpoint_inventory: list[dict[str, Any]],
     contracts: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    """Reconstruye controles de alcance de agente desde contratos de tests.
+
+    No exige vocabulario de una aplicación concreta. Identifica una petición
+    directa y una petición hacia agente/asistente en el mismo test, y deriva
+    los campos de pasos/herramienta/conteo desde las aserciones observadas.
+    """
     checks: list[dict[str, Any]] = []
-    agent_tokens = ("agent", "agente", "assistant", "asistente")
+    agent_tokens = (
+        "agent", "agente", "assistant", "asistente",
+        "copilot", "chat", "tool", "herramienta",
+    )
+    step_tokens = (
+        "step", "steps", "paso", "pasos", "actions", "acciones",
+        "calls", "invocations", "invocaciones", "trace", "traza",
+    )
+    tool_tokens = (
+        "tool", "herramienta", "function", "funcion",
+        "action", "accion", "name", "nombre",
+    )
+    count_tokens = (
+        "count", "total", "returned", "devueltas", "devueltos",
+        "result_count", "items_count", "cantidad",
+    )
+
     get_routes = {
         str(item.get("ruta") or "")
         for item in endpoint_inventory
         if str(item.get("metodo") or "").upper() == "GET"
     }
 
-    evidence_files: dict[str, list[dict[str, Any]]] = {}
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for contract in contracts:
-        evidence_files.setdefault(
-            str(contract.get("archivo") or ""),
-            [],
-        ).append(contract)
+        source = str(contract.get("archivo") or "")
+        test_name = str(contract.get("test") or "")
+        grouped.setdefault((source, test_name), []).append(contract)
 
-    for source, items in evidence_files.items():
-        agent = next(
-            (
-                item for item in items
-                if item.get("metodo") == "POST"
-                and any(
-                    token in str(item.get("ruta") or "").lower()
-                    for token in agent_tokens
+    def fields_near_variable(
+        source_text: str,
+        variable: str,
+    ) -> list[str]:
+        if not variable:
+            return []
+        var = re.escape(variable)
+        fields: list[str] = []
+
+        # Python: response.json['steps'][0]['tool']
+        for match in re.finditer(
+            rf"""(?ix)
+            \b{var}\.(?:json|body)(?:\(\))?
+            ((?:\s*\[\s*["'][^"']+["']\s*\]
+              |\s*\[\s*\d+\s*\]){{1,8}})
+            """,
+            source_text,
+        ):
+            fields.extend(
+                re.findall(
+                    r"""\[\s*["']([^"']+)["']\s*\]""",
+                    match.group(1),
                 )
-                and item.get("intencion_seguridad")
-            ),
-            None,
-        )
-        if not agent or not agent.get("cuenta"):
-            continue
+            )
 
-        direct = next(
-            (
-                item for item in items
-                if item.get("metodo") == "GET"
-                and item.get("ruta") in get_routes
-                and not any(
-                    token in str(item.get("ruta") or "").lower()
-                    for token in agent_tokens
+        # JS/TS: response.body.steps[0].tool
+        for match in re.finditer(
+            rf"""(?ix)
+            \b{var}\.(?:body|json)
+            ((?:\.[A-Za-z_$][\w$]*|\[\d+\]){{1,8}})
+            """,
+            source_text,
+        ):
+            fields.extend(
+                re.findall(
+                    r"\.([A-Za-z_$][\w$]*)",
+                    match.group(1),
                 )
-            ),
-            None,
-        )
-        if not direct:
-            continue
+            )
 
+        return fields
+
+    def choose_field(
+        fields: list[str],
+        tokens: tuple[str, ...],
+    ) -> str | None:
+        for field in fields:
+            normalized = normalize_key(field)
+            if any(token in normalized for token in tokens):
+                return field
+        return None
+
+    index = 1
+    for (source, _test_name), items in grouped.items():
+        if not source:
+            continue
         source_text = _read_text(
             detection.root / source,
             limit=MAX_TEXT_SCAN_BYTES,
         )
-        if not all(
-            token in source_text
-            for token in ("pasos", "devueltas")
-        ):
+        if not source_text:
             continue
 
-        task_match = re.search(
-            r"""(?isx)["']tarea["']\s*:\s*
-            ["']([^"']{1,300})["']""",
-            source_text,
-        )
-        if not task_match:
+        agents = [
+            item
+            for item in items
+            if item.get("metodo") == "POST"
+            and (
+                any(
+                    token in str(item.get("ruta") or "").lower()
+                    for token in agent_tokens
+                )
+                or any(
+                    token in str(item.get("test") or "").lower()
+                    for token in ("scope", "alcance", "identity", "identidad")
+                )
+            )
+            and item.get("cuenta")
+            and isinstance(item.get("cuerpo"), dict)
+        ]
+        if not agents:
             continue
 
-        tool_match = re.search(
-            r"""(?isx)["']herramienta["']\s*
-            (?:\]|\)|\s)*(?:==|:)\s*["']([^"']+)["']""",
-            source_text,
-        )
-        tool_name = (
-            tool_match.group(1)
-            if tool_match
-            else "listar_solicitudes"
-        )
+        for agent in agents:
+            direct_candidates = [
+                item
+                for item in items
+                if item.get("metodo") == "GET"
+                and item.get("ruta") in get_routes
+                and item.get("ruta") != agent.get("ruta")
+            ]
+            if not direct_candidates:
+                continue
 
-        checks.append(
-            {
-                "tipo": "alcance_agente",
-                "id_control": "P1-AUTO-SCOPE-001",
-                "nombre": (
-                    "El agente conserva el alcance de la identidad solicitante"
-                ),
-                "cuenta": agent["cuenta"],
-                "direct_metodo": "GET",
-                "direct_ruta": direct["ruta"],
-                "agent_ruta": agent["ruta"],
-                "agent_cuerpo": {"tarea": task_match.group(1)},
-                "direct_json_path": "$",
-                "steps_json_path": "$.pasos",
-                "tool_name": tool_name,
-                "tool_field": "herramienta",
-                "count_field": "devueltas",
-                "id_field": "id",
-                "archivos_fuente": [source],
-                "pistas_codigo": [
-                    "pasos",
-                    "herramienta",
-                    "devueltas",
-                ],
-                "autogenerado": True,
-                "confianza": "alta",
-                "fuentes_evidencia": [source],
-            }
-        )
-        break
+            direct = direct_candidates[0]
+            variable = str(agent.get("variable") or "")
+            fields = fields_near_variable(source_text, variable)
+            steps_field = choose_field(fields, step_tokens)
+            tool_field = choose_field(fields, tool_tokens)
+            count_field = choose_field(fields, count_tokens)
+
+            if not steps_field or not tool_field or not count_field:
+                continue
+
+            tool_name = ""
+            tool_pattern = re.compile(
+                rf"""(?ix)
+                ["']?{re.escape(tool_field)}["']?
+                .{{0,80}}?
+                (?:==|toBe\s*\(|toEqual\s*\()
+                \s*["']([^"']+)["']
+                """
+            )
+            tool_match = tool_pattern.search(source_text)
+            if tool_match:
+                tool_name = tool_match.group(1)
+            if not tool_name:
+                # Sin herramienta concreta no podemos filtrar la invocación
+                # correcta con suficiente confianza.
+                continue
+
+            checks.append(
+                {
+                    "tipo": "alcance_agente",
+                    "id_control": f"P1-AUTO-SCOPE-{index:03d}",
+                    "nombre": (
+                        "El agente conserva el alcance de la "
+                        "identidad solicitante"
+                    ),
+                    "cuenta": agent["cuenta"],
+                    "direct_metodo": "GET",
+                    "direct_ruta": direct["ruta"],
+                    "agent_ruta": agent["ruta"],
+                    "agent_cuerpo": dict(agent["cuerpo"]),
+                    "direct_json_path": "$",
+                    "steps_json_path": f"$.{steps_field}",
+                    "tool_name": tool_name,
+                    "tool_field": tool_field,
+                    "count_field": count_field,
+                    "id_field": "id",
+                    "archivos_fuente": [source],
+                    "pistas_codigo": [
+                        f"steps={steps_field}",
+                        f"tool={tool_field}",
+                        f"count={count_field}",
+                    ],
+                    "autogenerado": True,
+                    "confianza": "alta",
+                    "fuentes_evidencia": [source],
+                }
+            )
+            index += 1
 
     return checks
 
