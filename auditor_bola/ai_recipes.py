@@ -908,9 +908,13 @@ def _max_tokens_seguro(
             f"(entrada estimada={estimated_input}, ventana={context_window}). "
             "Aegis debe reducir archivos/evidencia antes de pedir la receta."
         )
+    requested_cap = min(
+        int(requested),
+        DEFAULT_MAX_OUTPUT_TOKENS,
+    )
     return max(
         MIN_OUTPUT_TOKENS,
-        min(int(requested), available),
+        min(requested_cap, available),
     )
 
 
