@@ -507,7 +507,11 @@ def test_start_siempre_limpia_antes_de_levantar_proceso(tmp_path):
         manager,
         "_terminate_stale_listener",
         return_value=[],
-    ) as terminate:
+    ) as terminate, patch.object(
+        manager,
+        "_wait_until_target_ready",
+        return_value=(True, "127.0.0.1:5000 disponible"),
+    ):
         manager.start()
         try:
             terminate.assert_called_once_with(5000)
@@ -638,3 +642,103 @@ def test_no_aplica_flags_ocultos_fuera_de_windows(monkeypatch):
     )
 
     assert process_manager._windows_hidden_subprocess_kwargs() == {}
+
+
+
+def test_no_declara_iniciado_si_servidor_no_esta_disponible(tmp_path):
+    runtime = RuntimeConfig(
+        modo="service",
+        nombre="Docker Compose",
+        comando_inicio=["docker", "compose", "up", "-d"],
+        comando_detener=["docker", "compose", "down"],
+        base_url="http://127.0.0.1:8080",
+        espera_inicio=0,
+        timeout_inicio=1,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch.object(
+        manager,
+        "_select_runtime_if_needed",
+    ), patch.object(
+        manager,
+        "_cleanup_previous_instance",
+    ), patch.object(
+        manager,
+        "_prepare_if_needed",
+    ), patch.object(
+        manager,
+        "_run_control_command",
+    ), patch.object(
+        manager,
+        "_wait_until_target_ready",
+        return_value=(False, "127.0.0.1:8080 no disponible"),
+    ):
+        with pytest.raises(RuntimeError) as exc:
+            manager.start()
+
+    assert "no confirmó" in str(exc.value)
+    assert manager.has_started() is False
+
+
+def test_fallback_si_runtime_principal_no_levanta_servidor(tmp_path):
+    fallback = {
+        "modo": "process",
+        "nombre": "Python local",
+        "comando_inicio": ["python", "run.py"],
+        "base_url": "http://127.0.0.1:5000",
+        "espera_inicio": 0,
+    }
+    runtime = RuntimeConfig(
+        modo="service",
+        nombre="Docker Compose",
+        comando_inicio=["docker", "compose", "up", "-d"],
+        comando_detener=["docker", "compose", "down"],
+        base_url="http://127.0.0.1:8080",
+        alternativas=[fallback],
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+    manager._runtime_selected = True
+    manager.runtime = runtime
+
+    with patch.object(
+        manager,
+        "_validate_runtime_candidate",
+    ), patch.object(
+        manager,
+        "_start_current_runtime",
+        side_effect=[
+            RuntimeError("servidor 8080 no disponible"),
+            {"nombre": "Python local"},
+        ],
+    ):
+        result = manager.start()
+
+    assert result["nombre"] == "Python local"
+    assert manager.runtime.nombre == "Python local"
+
+
+def test_script_python_empaquetado_prefiere_venv_del_proyecto(
+    tmp_path,
+    monkeypatch,
+):
+    python = tmp_path / ".venv" / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.write_bytes(b"")
+
+    manager = _manager(tmp_path, ["run.py"])
+    monkeypatch.setattr(
+        process_manager,
+        "_is_windows",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        process_manager.sys,
+        "frozen",
+        True,
+        raising=False,
+    )
+
+    resolved = manager._python_interpreter({"PATH": ""})
+
+    assert resolved == str(python.resolve())
