@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QPushButton,
     QSplitter,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -935,34 +936,76 @@ class AIPage(QWidget):
                 "La propuesta todavía no modifica el código.",
             )
         )
+        # El detalle JSON se mantiene compacto para reservar la mayor
+        # parte del panel al código que realmente se va a revisar.
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
-        self.detail.setMaximumHeight(230)
+        self.detail.setMaximumHeight(175)
+        self.detail.setMinimumHeight(130)
+        self.detail.setLineWrapMode(
+            QPlainTextEdit.LineWrapMode.WidgetWidth
+        )
         right_l.addWidget(self.detail)
 
         right_l.addWidget(
             SectionHeader(
-                "Vista previa del código",
+                "Código que Aegis propone aplicar",
                 (
-                    "Rojo = código anterior · Verde = código nuevo. "
-                    "Aegis calcula esta vista sobre el archivo real cargado."
+                    "Código nuevo muestra el archivo completo. "
+                    "Diff muestra solo las líneas modificadas. "
+                    "El archivo todavía no se modifica hasta aplicar y verificar."
                 ),
             )
         )
+
+        self.code_tabs = QTabWidget()
+        self.code_tabs.setObjectName("CodePreviewTabs")
+        self.code_tabs.setDocumentMode(True)
+        self.code_tabs.setMinimumHeight(360)
+
+        self.code_before = QPlainTextEdit()
+        self.code_after = QPlainTextEdit()
         self.diff_view = QTextEdit()
+
+        for editor in (self.code_before, self.code_after):
+            editor.setReadOnly(True)
+            editor.setLineWrapMode(
+                QPlainTextEdit.LineWrapMode.WidgetWidth
+            )
+            editor.setObjectName("CodeFullPreview")
+            editor.setStyleSheet(
+                "QPlainTextEdit#CodeFullPreview {"
+                "background:#071723;"
+                "border:1px solid #164765;"
+                "border-radius:8px;"
+                "padding:10px;"
+                "font-family:Consolas, 'Courier New', monospace;"
+                "font-size:12px;"
+                "selection-background-color:#174D6C;"
+                "}"
+            )
+
         self.diff_view.setReadOnly(True)
+        self.diff_view.setLineWrapMode(
+            QTextEdit.LineWrapMode.NoWrap
+        )
         self.diff_view.setObjectName("CodeDiffPreview")
         self.diff_view.setStyleSheet(
             "QTextEdit#CodeDiffPreview {"
             "background:#071723;"
             "border:1px solid #164765;"
-            "border-radius:10px;"
-            "padding:8px;"
+            "border-radius:8px;"
+            "padding:10px;"
             "font-family:Consolas, 'Courier New', monospace;"
             "font-size:12px;"
             "}"
         )
-        right_l.addWidget(self.diff_view, 1)
+
+        self.code_tabs.addTab(self.code_after, "Código nuevo")
+        self.code_tabs.addTab(self.code_before, "Código anterior")
+        self.code_tabs.addTab(self.diff_view, "Diff del parche")
+        self.code_tabs.setCurrentIndex(0)
+        right_l.addWidget(self.code_tabs, 1)
 
         split.addWidget(left)
         split.addWidget(right)
@@ -991,6 +1034,8 @@ class AIPage(QWidget):
         self.proposals = []
         self.list.clear()
         self.detail.clear()
+        self.code_before.clear()
+        self.code_after.clear()
         self.diff_view.clear()
         self.control_label.setText(
             f"{row.get('id')} · {row.get('control')}"
@@ -1145,6 +1190,8 @@ class AIPage(QWidget):
     def _show_proposal(self, index: int):
         if index < 0 or index >= len(self.proposals):
             self.detail.clear()
+            self.code_before.clear()
+            self.code_after.clear()
             self.diff_view.clear()
             self.apply_btn.setEnabled(False)
             self.apply_btn.setText("Aplicar propuesta y verificar")
@@ -1174,19 +1221,40 @@ class AIPage(QWidget):
             for item in proposal.get("preview_cambios") or []
             if isinstance(item, dict)
         ]
+
+        self.code_before.clear()
+        self.code_after.clear()
+        self.diff_view.clear()
+
         if not previews:
-            self.diff_view.setHtml(
-                "<p style='color:#8AA9BC;'>"
-                "No hay una vista previa determinista disponible."
-                "</p>"
+            empty = (
+                "No hay una vista previa determinista disponible.\n\n"
+                "Aegis necesita cargar el archivo real y generar la "
+                "propuesta nuevamente para mostrar el código."
             )
+            self.code_after.setPlainText(empty)
+            self.code_before.setPlainText(empty)
+            self.diff_view.setPlainText(empty)
             return
 
+        before_sections: list[str] = []
+        after_sections: list[str] = []
         sections: list[str] = []
+
         for preview in previews:
-            archivo = html.escape(
-                str(preview.get("archivo") or "archivo")
-            )
+            archivo_raw = str(preview.get("archivo") or "archivo")
+            archivo = html.escape(archivo_raw)
+            before = str(preview.get("codigo_antes") or "")
+            after = str(preview.get("codigo_despues") or "")
+
+            if before:
+                before_sections.append(
+                    f"===== {archivo_raw} =====\n{before}"
+                )
+            if after:
+                after_sections.append(
+                    f"===== {archivo_raw} =====\n{after}"
+                )
             lenguaje = html.escape(
                 str(preview.get("lenguaje") or "desconocido")
             )
@@ -1237,7 +1305,19 @@ class AIPage(QWidget):
                 + "</pre></div>"
             )
 
+        self.code_before.setPlainText(
+            "\n\n".join(before_sections)
+            or "No se encontró código anterior para mostrar."
+        )
+        self.code_after.setPlainText(
+            "\n\n".join(after_sections)
+            or "No se encontró código nuevo para mostrar."
+        )
         self.diff_view.setHtml("".join(sections))
+
+        # Siempre abrir en el código nuevo: es la vista que el usuario necesita
+        # inspeccionar antes de aplicar la medicina.
+        self.code_tabs.setCurrentWidget(self.code_after)
 
     def _apply(self):
         index = self.list.currentRow()
