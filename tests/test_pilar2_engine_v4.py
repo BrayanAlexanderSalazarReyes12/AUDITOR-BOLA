@@ -417,3 +417,48 @@ def test_descubrimiento_expone_registro_extensible_de_detectores(tmp_path):
     assert {"CORS", "SECRET", "LIMIT_BYPASS", "CONTAINER"}.issubset(
         registered
     )
+
+
+def test_control_manual_y_auto_secret_se_consolidan_por_misma_causa(tmp_path):
+    (tmp_path / "settings.py").write_text(
+        'import os\nSECRET_KEY = os.getenv("APP_SECRET", "dev-secret")\n',
+        encoding="utf-8",
+    )
+    discovery = discover_pilar2_profile(tmp_path, [])
+    auto_raw = next(
+        item for item in discovery["checks"]
+        if item.get("familia") == "SECRET"
+    )
+    auto = ChequeoPilar2(**auto_raw)
+    manual = ChequeoPilar2(
+        id_control="P2-SECRET-MANUAL-CHECK",
+        nombre="secret fallback manual evidence",
+        tipo="source_contains",
+        familia="SECRET",
+        archivo="settings.py",
+        patron_inseguro='os.getenv("APP_SECRET", "dev-secret")',
+        causa_raiz="gestion_secretos",
+    )
+    cfg = _cfg([manual, auto])
+
+    raw = [item.as_dict() for item in auditar_pilar2(cfg, tmp_path)]
+    assert sum(item["estado"] == "HALLAZGO" for item in raw) == 2
+
+    findings = consolidate_runtime_results(
+        {
+            "pilar1": {
+                "bola": [],
+                "acceso": [],
+                "alcance_agente": [],
+                "matriz_acceso": [],
+            },
+            "pilar2": raw,
+        }
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["familia"] == "SECRET"
+    assert set(findings[0]["relacionado_con"]) == {
+        "P2-SECRET-MANUAL-CHECK",
+        auto.id_control,
+    }
