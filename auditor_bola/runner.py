@@ -375,6 +375,12 @@ def filas_gui(resultado: dict) -> list[dict]:
                 "causa_raiz": item.get("causa_raiz"),
                 "evidencia": item.get("evidencia") or [],
                 "recomendacion": item.get("recomendacion"),
+                "archivo": item.get("archivo"),
+                "componente": item.get("componente"),
+                "configuracion_detectada": (
+                    item.get("configuracion_detectada") or {}
+                ),
+                "casos_prueba": item.get("casos_prueba") or [],
                 "metodo": item.get("metodo"),
                 "ruta": item.get("ruta"),
             }
