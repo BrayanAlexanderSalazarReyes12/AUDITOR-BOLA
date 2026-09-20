@@ -172,6 +172,10 @@ class ConfigObjetivo:
     # semánticamente confirmados.
     endpoints_detectados: list[dict] = field(default_factory=list)
     probar_todos_endpoints_con_todos_usuarios: bool = True
+    # Candidatos P1 conservados para que la matriz pueda convertir
+    # observaciones dinámicas en hallazgos cuando existe una expectativa de
+    # seguridad inferible (por ejemplo RBAC de bajo privilegio).
+    candidatos_pilar1: list[dict] = field(default_factory=list)
 
     def cuenta_por_username(self, username: str) -> Cuenta | None:
         for cuenta in self.cuentas:
@@ -525,4 +529,18 @@ def cargar_config(path: str | Path) -> ConfigObjetivo:
                 True,
             )
         ),
+        candidatos_pilar1=[
+            dict(item)
+            for item in (
+                datos.get("candidatos_pilar1")
+                or (
+                    datos.get("metadata_detectada", {})
+                    if isinstance(
+                        datos.get("metadata_detectada"), dict
+                    )
+                    else {}
+                ).get("candidatos_pilar1", [])
+            )
+            if isinstance(item, dict)
+        ],
     )
