@@ -135,6 +135,7 @@ class RuntimeConfig:
 
     directorio_trabajo: str = "."
     espera_inicio: float = 1.2
+    timeout_inicio: float = 30.0
     variables: dict[str, str] = field(default_factory=dict)
     base_url: str = ""
 
