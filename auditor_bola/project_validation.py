@@ -41,6 +41,8 @@ class ProjectValidationReport:
     tecnico_ok: bool
     build_aplicable: bool
     tests_aplicables: bool
+    archivos: list[str] = field(default_factory=list)
+    sintaxis_archivos: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -117,9 +119,23 @@ def _run(
             detalle=str(exc),
         )
 
-    output = (completed.stderr or completed.stdout or "").strip()
-    if len(output) > 6000:
-        output = output[-6000:]
+    stdout = (completed.stdout or "").strip()
+    stderr = (completed.stderr or "").strip()
+    pieces: list[str] = []
+    if stdout:
+        pieces.append("[stdout]\n" + stdout)
+    if stderr:
+        pieces.append("[stderr]\n" + stderr)
+    output = "\n\n".join(pieces).strip()
+
+    # En fallos de pytest/build la causa útil puede estar tanto al inicio como
+    # al final. Conservamos ambos extremos en vez de perder la aserción real.
+    if len(output) > 12000:
+        output = (
+            output[:4500]
+            + "\n\n... salida intermedia recortada ...\n\n"
+            + output[-7000:]
+        )
     return ValidationStep(
         nombre=nombre,
         estado="OK" if completed.returncode == 0 else "FAILED",
@@ -281,14 +297,61 @@ def _detect_tests(root: Path) -> tuple[list[str] | None, bool]:
 
 def validate_project_after_patch(
     target_root: str | Path,
-    relative_file: str,
+    relative_file: str | Iterable[str],
     *,
     build_timeout: int = 180,
     test_timeout: int = 240,
 ) -> ProjectValidationReport:
-    """Ejecuta validación sintáctica, build conocido y tests conocidos."""
+    """Valida uno o varios archivos y ejecuta build/tests del proyecto una vez."""
     root = Path(target_root).resolve()
-    syntax = _syntax_check(root, relative_file)
+    if isinstance(relative_file, (str, Path)):
+        files = [str(relative_file)]
+    else:
+        files = [
+            str(item)
+            for item in relative_file
+            if str(item).strip()
+        ]
+    files = list(dict.fromkeys(files))
+    if not files:
+        files = [""]
+
+    syntax_steps = [
+        _syntax_check(root, relative)
+        for relative in files
+    ]
+    failed_syntax = [
+        step for step in syntax_steps
+        if step.estado == "FAILED"
+    ]
+    if failed_syntax:
+        syntax = ValidationStep(
+            nombre="sintaxis",
+            estado="FAILED",
+            detalle="; ".join(
+                f"{files[index]}: {step.detalle}"
+                for index, step in enumerate(syntax_steps)
+                if step.estado == "FAILED"
+            ),
+        )
+    elif all(step.estado == "NO_APLICA" for step in syntax_steps):
+        syntax = ValidationStep(
+            nombre="sintaxis",
+            estado="NO_APLICA",
+            detalle=(
+                "No hay parser estándar seguro para los archivos modificados; "
+                "se delega al build/tests del proyecto."
+            ),
+        )
+    else:
+        syntax = ValidationStep(
+            nombre="sintaxis",
+            estado="OK",
+            detalle=(
+                f"{sum(step.estado == 'OK' for step in syntax_steps)} "
+                "archivo(s) con sintaxis validada."
+            ),
+        )
 
     build_cmd, build_applicable = _detect_build(root)
     if build_applicable and not build_cmd:
@@ -344,8 +407,16 @@ def validate_project_after_patch(
         else tests.estado == "OK"
     )
     return ProjectValidationReport(
-        archivo=relative_file,
+        archivo=files[0],
+        archivos=files,
         sintaxis=syntax,
+        sintaxis_archivos=[
+            {
+                "archivo": relative,
+                **step.as_dict(),
+            }
+            for relative, step in zip(files, syntax_steps)
+        ],
         build=build,
         tests=tests,
         tecnico_ok=bool(syntax_ok and build_ok and tests_ok),
