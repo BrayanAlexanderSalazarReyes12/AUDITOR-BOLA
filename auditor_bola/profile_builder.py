@@ -3361,10 +3361,34 @@ def _safe_literal_dict(value: str) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+def _safe_js_object_dict(value: str) -> dict[str, Any] | None:
+    """Convierte objetos literales simples JS/TS usados en tests."""
+    text = str(value or "").strip()
+    if not text.startswith("{") or not text.endswith("}"):
+        return None
+    text = re.sub(
+        r"(?m)([{,]\s*)([A-Za-z_$][A-Za-z0-9_$-]*)\s*:",
+        r"\1'\2':",
+        text,
+    )
+    text = re.sub(r"\btrue\b", "True", text, flags=re.I)
+    text = re.sub(r"\bfalse\b", "False", text, flags=re.I)
+    text = re.sub(r"\bnull\b", "None", text, flags=re.I)
+    try:
+        parsed = ast.literal_eval(text)
+    except (ValueError, SyntaxError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _extract_http_test_contracts(
     detection: ProjectDetection,
 ) -> list[dict[str, Any]]:
-    """Obtiene contratos HTTP expresados por tests del proyecto."""
+    """Obtiene contratos HTTP expresados por tests Python y JS/TS.
+
+    La salida es independiente del framework de tests: método, ruta, cuenta,
+    status esperado, cuerpo de prueba y variable de respuesta.
+    """
     usernames = [
         str(item.get("username") or "")
         for item in detection.accounts
@@ -3372,12 +3396,22 @@ def _extract_http_test_contracts(
     ]
     contracts: list[dict[str, Any]] = []
 
-    request_re = re.compile(
+    python_request_re = re.compile(
         r"""(?ix)
         \b(?P<var>[A-Za-z_]\w*)\s*=\s*
         [A-Za-z_][\w.]*\.
         (?P<method>get|post|put|patch|delete)\s*\(
         \s*["'](?P<route>/[^"']+)["']
+        """
+    )
+    js_request_re = re.compile(
+        r"""(?ix)
+        (?:const|let|var)\s+(?P<var>[A-Za-z_$][\w$]*)\s*=\s*
+        (?:await\s+)?
+        (?:request\s*\([^)]*\)|[A-Za-z_$][\w$]*)
+        \s*\.\s*
+        (?P<method>get|post|put|patch|delete)\s*\(
+        \s*["'`](?P<route>/[^"'`]+)["'`]
         """
     )
 
@@ -3388,6 +3422,7 @@ def _extract_http_test_contracts(
         "auditoria", "coordin", "supervisor", "prioriz", "bola",
         "owner", "propiet", "scope", "alcance", "escalada",
         "identity", "identidad", "agent", "agente", "asistente",
+        "security", "seguridad", "privilege", "privilegio",
     )
 
     for path, relative in _iter_source_files(
@@ -3400,72 +3435,130 @@ def _extract_http_test_contracts(
         if not text:
             continue
         source = relative.as_posix()
+        suffix = path.suffix.lower()
 
-        for match in request_re.finditer(text):
-            start = max(0, match.start() - 1000)
-            end = min(len(text), match.start() + 2200)
-            window = text[start:end]
+        patterns = [python_request_re]
+        if suffix in {
+            ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"
+        }:
+            patterns.append(js_request_re)
 
-            before = text[max(0, match.start() - 1200):match.start()]
-            test_names = list(
-                re.finditer(
-                    r"(?im)^\s*(?:def|async\s+def)\s+"
-                    r"(test_[A-Za-z0-9_]+)\s*\(",
-                    before,
+        seen_matches: set[tuple[int, str, str]] = set()
+        for request_re in patterns:
+            for match in request_re.finditer(text):
+                method = match.group("method").upper()
+                route = match.group("route")
+                match_key = (match.start(), method, route)
+                if match_key in seen_matches:
+                    continue
+                seen_matches.add(match_key)
+
+                start_window = max(0, match.start() - 1200)
+                end_window = min(len(text), match.start() + 2600)
+                window = text[start_window:end_window]
+                before = text[
+                    max(0, match.start() - 1600):match.start()
+                ]
+
+                test_name = ""
+                python_names = list(
+                    re.finditer(
+                        r"(?im)^\s*(?:def|async\s+def)\s+"
+                        r"(test_[A-Za-z0-9_]+)\s*\(",
+                        before,
+                    )
                 )
-            )
-            test_name = (
-                test_names[-1].group(1)
-                if test_names
-                else ""
-            )
-            security_intent = any(
-                token in (test_name + " " + window[:500]).lower()
-                for token in security_name_tokens
-            )
+                if python_names:
+                    test_name = python_names[-1].group(1)
+                else:
+                    js_names = list(
+                        re.finditer(
+                            r"""(?is)
+                            \b(?:it|test)\s*\(\s*
+                            ["'`]([^"'`]{1,180})["'`]
+                            """,
+                            before,
+                        )
+                    )
+                    if js_names:
+                        test_name = js_names[-1].group(1)
 
-            username = next(
-                (item for item in usernames if item in window),
-                None,
-            )
-            var = re.escape(match.group("var"))
-            status: int | None = None
-            status_patterns = (
-                rf"\b{var}\.status_code\s*==\s*(\d{{3}})",
-                rf"\bassert\s+(\d{{3}})\s*==\s*{var}\.status_code",
-                rf"\b{var}\.status(?:_code)?\s*==\s*(\d{{3}})",
-            )
-            for pattern in status_patterns:
-                status_match = re.search(
-                    pattern,
+                security_intent = any(
+                    token in (
+                        test_name + " " + window[:700]
+                    ).lower()
+                    for token in security_name_tokens
+                )
+
+                username = next(
+                    (
+                        item
+                        for item in usernames
+                        if item and item in window
+                    ),
+                    None,
+                )
+
+                var_name = match.group("var")
+                var = re.escape(var_name)
+                status: int | None = None
+                status_patterns = (
+                    rf"\b{var}\.status_code\s*==\s*(\d{{3}})",
+                    rf"\bassert\s+(\d{{3}})\s*==\s*{var}\.status_code",
+                    rf"\b{var}\.status(?:_code)?\s*==\s*(\d{{3}})",
+                    rf"expect\s*\(\s*{var}\.(?:status|statusCode)\s*\)"
+                    rf"\s*\.\s*(?:toBe|toEqual)\s*\(\s*(\d{{3}})\s*\)",
+                )
+                for pattern in status_patterns:
+                    status_match = re.search(
+                        pattern,
+                        window,
+                        re.I,
+                    )
+                    if status_match:
+                        status = int(status_match.group(1))
+                        break
+                if status is None:
+                    chain_status = re.search(
+                        r"\.expect\s*\(\s*(\d{3})\s*\)",
+                        window,
+                        re.I,
+                    )
+                    if chain_status:
+                        status = int(chain_status.group(1))
+
+                body = None
+                body_match = re.search(
+                    r"\bjson\s*=\s*(\{.{0,1200}?\})",
                     window,
-                    re.I,
+                    re.S,
                 )
-                if status_match:
-                    status = int(status_match.group(1))
-                    break
+                if body_match:
+                    body = _safe_literal_dict(body_match.group(1))
+                if body is None:
+                    send_match = re.search(
+                        r"\.send\s*\(\s*(\{.{0,1200}?\})\s*\)",
+                        window,
+                        re.S,
+                    )
+                    if send_match:
+                        body = _safe_js_object_dict(
+                            send_match.group(1)
+                        )
 
-            body = None
-            body_match = re.search(
-                r"\bjson\s*=\s*(\{.{0,800}?\})",
-                window,
-                re.S,
-            )
-            if body_match:
-                body = _safe_literal_dict(body_match.group(1))
-
-            contracts.append(
-                {
-                    "metodo": match.group("method").upper(),
-                    "ruta": match.group("route"),
-                    "cuenta": username,
-                    "http_esperado": status,
-                    "cuerpo": body,
-                    "archivo": source,
-                    "test": test_name,
-                    "intencion_seguridad": security_intent,
-                }
-            )
+                contracts.append(
+                    {
+                        "metodo": method,
+                        "ruta": route,
+                        "cuenta": username,
+                        "http_esperado": status,
+                        "cuerpo": body,
+                        "archivo": source,
+                        "test": test_name,
+                        "variable": var_name,
+                        "intencion_seguridad": security_intent,
+                    }
+                )
 
     return contracts
 
