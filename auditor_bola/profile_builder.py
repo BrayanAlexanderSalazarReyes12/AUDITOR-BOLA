@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import shutil
 import unicodedata
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -1680,6 +1681,21 @@ def _detect_native_runtime(
     return base, base["base_url"]
 
 
+def _docker_available_on_host() -> bool:
+    """Indica si Docker CLI está instalado en el equipo que genera el perfil."""
+    return shutil.which("docker") is not None
+
+
+def _runtime_has_local_launcher(runtime: dict[str, Any]) -> bool:
+    mode = str(runtime.get("modo") or "process").strip().lower()
+    if mode == "external":
+        return False
+    return bool(
+        runtime.get("comando_inicio")
+        or runtime.get("comando_inicio_por_so")
+    )
+
+
 def _detect_runtime(
     root: Path,
     languages: list[str],
@@ -1761,15 +1777,35 @@ def _detect_runtime(
     docker_runtime["espera_inicio"] = 2.0
     docker_runtime["timeout_inicio"] = 45.0
 
-    # Docker sigue siendo preferido cuando el proyecto lo declara, pero el
-    # arranque nativo queda disponible como alternativa real.
-    if (
-        native_runtime.get("modo") != "external"
-        and (
-            native_runtime.get("comando_inicio")
-            or native_runtime.get("comando_inicio_por_so")
+    native_launchable = _runtime_has_local_launcher(
+        native_runtime
+    )
+    docker_available = _docker_available_on_host()
+
+    # El JSON se arma para el equipo donde se está ejecutando Aegis.
+    # Si Docker no existe en ese PC, no tiene sentido dejar Docker como
+    # runtime principal solamente porque el repositorio contenga compose.yml.
+    if not docker_available and native_launchable:
+        native_runtime["preferencia_arranque"] = "local"
+        native_runtime["descripcion_ejecucion"] = (
+            str(native_runtime.get("descripcion_ejecucion") or "").strip()
+            + (
+                " Docker Compose existe en el proyecto, pero Docker no fue "
+                "detectado en este equipo al generar el perfil; por eso Aegis "
+                "seleccionó el runtime local como estrategia principal."
+            )
+        ).strip()
+        # Docker queda como alternativa para que el mismo JSON siga siendo
+        # útil si el equipo instala Docker más adelante.
+        native_runtime["alternativas"] = [docker_runtime]
+        return native_runtime, str(
+            native_runtime.get("base_url") or native_url or ""
         )
-    ):
+
+    # Con Docker disponible se conserva como estrategia principal y el
+    # runtime local queda como fallback.
+    docker_runtime["preferencia_arranque"] = "contenedor"
+    if native_launchable:
         docker_runtime["alternativas"] = [native_runtime]
 
     return docker_runtime, docker_runtime["base_url"]
@@ -2906,6 +2942,22 @@ def build_profile_draft(
             "cuentas_candidatas": list(detection.account_sources),
             "archivos_cuentas_escaneados": True,
             "perfil_generado_automaticamente": True,
+            "entorno_ejecucion": {
+                "docker_instalado": _docker_available_on_host(),
+                "runtime_principal": detection.runtime.get("nombre"),
+                "runtime_modo": detection.runtime.get("modo"),
+                "runtime_origen": detection.runtime.get("origen"),
+                "preferencia_arranque": detection.runtime.get(
+                    "preferencia_arranque"
+                ),
+                "comando_inicio": detection.runtime.get(
+                    "comando_inicio"
+                ),
+                "comando_inicio_por_so": detection.runtime.get(
+                    "comando_inicio_por_so"
+                ),
+                "base_url": detection.runtime.get("base_url"),
+            },
             "plan_ejecucion": {
                 "preferencia": str(
                     detection.runtime.get("preferencia_arranque") or "auto"
