@@ -111,11 +111,16 @@ Durante la auto-configuración Aegis no se limita a descubrir rutas. También
 revisa **tests, fixtures, datos semilla y archivos de soporte** para buscar
 contratos de seguridad verificables:
 
-- relación explícita `objeto/id -> propietario` para construir BOLA;
-- peticiones de prueba con usuario/rol y código HTTP esperado para reconstruir
-  RBAC/ABAC;
+- relaciones semánticas `objeto/id -> identidad propietaria`, incluso cuando
+  el proyecto usa nombres como `record_id`, `codigo`, `author`,
+  `creator` o estructuras anidadas;
+- contratos HTTP en tests Python y JavaScript/TypeScript con usuario/rol y
+  código esperado para reconstruir RBAC/ABAC;
 - pruebas que comparan API directa con asistente/agente para reconstruir
-  controles de alcance.
+  controles de alcance sin depender de nombres de campos de una aplicación;
+- evidencia dinámica de solo lectura: si existe un candidato BOLA pero falta
+  el propietario, Aegis puede consultar una colección GET del objetivo activo
+  y convertirlo en control solo cuando la respuesta demuestra la relación.
 
 Solo se activa un control cuando existen datos suficientes para ejecutarlo sin
 inventar la política. Las coincidencias incompletas permanecen en
@@ -207,7 +212,13 @@ Controles incluidos actualmente:
 - `cors_reflection`: detecta reflexión de Origin junto con credenciales.
 - `http_status_policy`: exige que una operación sensible sea rechazada con códigos definidos.
 - `source_contains`: comprueba patrones inseguros/seguros en archivos.
+- `source_regex`: comprueba patrones semánticos reutilizables mediante regex.
 - `docker_non_root`: verifica que la imagen declare un usuario no root.
+
+La auto-configuración puede activar controles de alta confianza para CORS,
+secretos con valores por defecto, debug explícito, cookies de sesión con
+`Secure=false`, vías de bypass de límites/cuotas sin una guardia de
+autorización cercana y contenedores con usuario root.
 
 Estos controles son declarativos y no dependen del framework del objetivo.
 
