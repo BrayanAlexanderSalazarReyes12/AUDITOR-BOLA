@@ -195,7 +195,11 @@ def test_service_mode_usa_comandos_de_control(tmp_path):
     with patch.object(manager, "_select_runtime_if_needed"), patch.object(
         manager,
         "_run_control_command",
-    ) as run:
+    ) as run, patch.object(
+        manager,
+        "_wait_until_target_ready",
+        return_value=(True, "servicio disponible"),
+    ):
         manager.start()
         assert manager.is_running() is True
         assert run.call_count == 2
