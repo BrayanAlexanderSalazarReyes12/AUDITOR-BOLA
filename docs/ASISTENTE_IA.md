@@ -26,56 +26,76 @@ backup → aplicar → reiniciar → verificar → rollback
 
 La decisión final permanece en el usuario.
 
-## Proveedor IA: Gemma del Laboratorio UTB
+## Proveedores IA configurables
 
-El auditor reutiliza la configuración ya existente de OpenCode. Por defecto
-busca:
+Aegis ya no depende de que OpenCode esté instalado o configurado en el equipo.
+Desde **Configuración → Inteligencia artificial** se pueden administrar varios
+perfiles de proveedor.
+
+Cada perfil conserva:
+
+- nombre visible;
+- URL base;
+- modelo;
+- API key local cuando el proveedor la requiere.
+
+La pantalla permite **crear, editar, duplicar, eliminar y activar** perfiles.
+Solo un perfil queda activo a la vez y es el que usa la generación de recetas.
+
+Ejemplos de perfiles:
 
 ```text
-~/.config/opencode/opencode.json
+UTB - Gemma
+Ollama local
+LM Studio
+Servidor compatible OpenAI
 ```
 
-y utiliza el proveedor:
-
-```text
-llmlab
-```
-
-con el modelo:
-
-```text
-lab-coder
-```
-
-No es necesario volver a pegar una API key en la interfaz.
-
-Si en OpenCode la clave está declarada mediante una variable:
-
-```json
-"apiKey": "{env:UTB_LLM_API_KEY}"
-```
-
-esa variable debe existir en la misma sesión desde la que se ejecuta el
-auditor. Si OpenCode tiene una clave literal en su archivo local, el auditor
-puede leerla localmente, pero no la imprime ni la almacena en las evidencias.
-
-El endpoint usado por el auditor es:
+El endpoint esperado continúa siendo compatible con:
 
 ```text
 <baseURL>/chat/completions
 ```
 
-Puede sobrescribir la ruta del archivo de OpenCode para pruebas con:
+La configuración local se guarda en `config/ai-provider.json` dentro de los
+datos persistentes de Aegis. El archivo usa un esquema con una lista de
+perfiles y un `active_profile_id`. Las versiones anteriores que tenían un
+único proveedor se migran automáticamente al nuevo formato.
+
+La API key no se copia a perfiles de aplicaciones auditadas ni a evidencias.
+En la interfaz se muestra solo si un perfil tiene o no una clave; nunca se
+devuelve la clave en los listados públicos de perfiles.
+
+También se soportan las variables:
+
+```text
+AEGIS_AI_BASE_URL
+AEGIS_AI_MODEL
+AEGIS_AI_API_KEY
+```
+
+Estas variables se usan cuando todavía no existe un perfil local seleccionado.
+
+### Importación opcional desde OpenCode
+
+Si el equipo ya tiene OpenCode configurado, Aegis puede importar su proveedor
+como un perfil adicional mediante **Importar desde OpenCode**.
+
+Por compatibilidad se busca:
+
+```text
+~/.config/opencode/opencode.json
+```
+
+y se puede sobrescribir la ruta con:
 
 ```powershell
 $env:OPENCODE_CONFIG="C:\ruta\a\opencode.json"
 ```
 
-Luego ejecute:
+La importación crea un perfil independiente; después Aegis puede usarlo sin
+depender de OpenCode para seleccionarlo.
 
-```powershell
-python -m auditor_bola.gui
-```
 
 ## Carga automática del archivo relacionado
 
