@@ -3,7 +3,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QTextEdit, QWidget
 
 from auditor_bola.config import (
     ChequeoPilar2,
@@ -342,7 +342,7 @@ def test_ai_page_prioriza_la_vista_de_codigo_sobre_el_detalle():
     )
     app.processEvents()
 
-    assert page.diff_view.lineWrapMode() == page.diff_view.LineWrapMode.NoWrap
+    assert page.diff_view.lineWrapMode() == QTextEdit.LineWrapMode.NoWrap
     assert page.detail.maximumHeight() == 165
     assert page.list.count() == 1
     assert "secure()" in page.diff_view.toHtml()
