@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QSizePolicy,
@@ -1116,6 +1118,8 @@ class SettingsPage(QWidget):
     def __init__(self, controller, parent=None):
         super().__init__(parent)
         self.controller = controller
+        self._editing_profile_id: str | None = None
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
@@ -1148,43 +1152,77 @@ class SettingsPage(QWidget):
         ia_l.addWidget(
             SectionHeader(
                 "Inteligencia artificial",
-                "Configura el proveedor directamente en Aegis. "
-                "OpenCode queda como opción de importación, no como requisito.",
+                "Guarda varios proveedores y modelos, cambia el activo cuando "
+                "quieras e importa OpenCode solo si lo necesitas.",
             )
         )
+
         self.ai = QLabel()
         self.ai.setObjectName("Muted")
         self.ai.setWordWrap(True)
         ia_l.addWidget(self.ai)
 
+        profile_row = QHBoxLayout()
+        profile_row.addWidget(QLabel("Perfil IA"))
+        self.ai_profiles = QComboBox()
+        self.ai_profiles.setMinimumWidth(280)
+        self.ai_profiles.currentIndexChanged.connect(
+            self._profile_changed
+        )
+        profile_row.addWidget(self.ai_profiles, 1)
+
+        activate_ai = QPushButton("Usar seleccionado")
+        activate_ai.clicked.connect(self._activate_ai)
+        profile_row.addWidget(activate_ai)
+
+        new_ai = QPushButton("Nuevo")
+        new_ai.clicked.connect(self._new_ai)
+        profile_row.addWidget(new_ai)
+
+        duplicate_ai = QPushButton("Duplicar")
+        duplicate_ai.clicked.connect(self._duplicate_ai)
+        profile_row.addWidget(duplicate_ai)
+
+        delete_ai = QPushButton("Eliminar")
+        delete_ai.clicked.connect(self._delete_ai)
+        profile_row.addWidget(delete_ai)
+        ia_l.addLayout(profile_row)
+
         ai_grid = QGridLayout()
         ai_grid.setHorizontalSpacing(10)
         ai_grid.setVerticalSpacing(8)
 
-        ai_grid.addWidget(QLabel("URL base"), 0, 0)
+        ai_grid.addWidget(QLabel("Nombre"), 0, 0)
+        self.ai_profile_name = QLineEdit()
+        self.ai_profile_name.setPlaceholderText(
+            "Ej. UTB - Gemma, Ollama local, LM Studio"
+        )
+        ai_grid.addWidget(self.ai_profile_name, 0, 1)
+
+        ai_grid.addWidget(QLabel("URL base"), 1, 0)
         self.ai_base_url = QLineEdit()
         self.ai_base_url.setPlaceholderText(
             "https://servidor-ejemplo/v1"
         )
-        ai_grid.addWidget(self.ai_base_url, 0, 1)
+        ai_grid.addWidget(self.ai_base_url, 1, 1)
 
-        ai_grid.addWidget(QLabel("Modelo"), 1, 0)
+        ai_grid.addWidget(QLabel("Modelo"), 2, 0)
         self.ai_model = QLineEdit()
         self.ai_model.setPlaceholderText("lab-coder")
-        ai_grid.addWidget(self.ai_model, 1, 1)
+        ai_grid.addWidget(self.ai_model, 2, 1)
 
-        ai_grid.addWidget(QLabel("API key"), 2, 0)
+        ai_grid.addWidget(QLabel("API key"), 3, 0)
         self.ai_key = QLineEdit()
         self.ai_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.ai_key.setPlaceholderText(
-            "Déjala vacía para conservar la clave guardada"
+            "Vacía conserva la clave guardada; puede ser opcional"
         )
-        ai_grid.addWidget(self.ai_key, 2, 1)
+        ai_grid.addWidget(self.ai_key, 3, 1)
 
         ia_l.addLayout(ai_grid)
 
         ai_actions = QHBoxLayout()
-        save_ai = PrimaryButton("Guardar configuración IA")
+        save_ai = PrimaryButton("Guardar perfil IA")
         save_ai.clicked.connect(self._save_ai)
         ai_actions.addWidget(save_ai)
 
@@ -1205,21 +1243,84 @@ class SettingsPage(QWidget):
         layout.addWidget(ia)
         layout.addStretch(1)
 
-    def _save_ai(self):
+    def _selected_profile_id(self) -> str | None:
+        value = self.ai_profiles.currentData()
+        return str(value) if value else None
+
+    def _load_profile_fields(self, profile_id: str | None) -> None:
+        if not profile_id:
+            return
+        settings = self.controller.ai_profile_settings(profile_id)
+        if not settings:
+            return
+        self._editing_profile_id = profile_id
+        self.ai_profile_name.setText(
+            str(settings.get("profile_name") or "")
+        )
+        self.ai_base_url.setText(str(settings.get("base_url") or ""))
+        self.ai_model.setText(
+            str(settings.get("model_id") or "lab-coder")
+        )
+        self.ai_key.clear()
+
+    def _profile_changed(self, _index: int) -> None:
+        self._load_profile_fields(self._selected_profile_id())
+
+    def _new_ai(self) -> None:
+        self._editing_profile_id = None
+        self.ai_profiles.setCurrentIndex(-1)
+        self.ai_profile_name.clear()
+        self.ai_base_url.clear()
+        self.ai_model.setText("lab-coder")
+        self.ai_key.clear()
+        self.ai_profile_name.setFocus()
+
+    def _save_ai(self) -> None:
         self.controller.save_ai_settings(
+            profile_id=self._editing_profile_id,
+            profile_name=self.ai_profile_name.text().strip(),
             base_url=self.ai_base_url.text().strip(),
             model_id=self.ai_model.text().strip() or "lab-coder",
             api_key=self.ai_key.text().strip() or None,
         )
         self.ai_key.clear()
 
-    def _import_ai(self):
+    def _activate_ai(self) -> None:
+        profile_id = self._selected_profile_id()
+        if profile_id:
+            self.controller.select_ai_profile(profile_id)
+
+    def _duplicate_ai(self) -> None:
+        profile_id = self._selected_profile_id()
+        if profile_id:
+            self.controller.duplicate_ai_profile(profile_id)
+
+    def _delete_ai(self) -> None:
+        profile_id = self._selected_profile_id()
+        if not profile_id:
+            return
+        name = self.ai_profiles.currentText().replace(" ✓ activo", "")
+        answer = QMessageBox.question(
+            self,
+            "Eliminar perfil IA",
+            f"¿Eliminar el perfil '{name}'?\n\n"
+            "La configuración y su clave local dejarán de estar disponibles.",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.controller.delete_ai_profile(profile_id)
+
+    def _import_ai(self) -> None:
         self.controller.import_ai_from_opencode()
         self.ai_key.clear()
 
-    def refresh(self):
-        enabled, model = self.controller.ai_status()
+    def refresh(self) -> None:
+        enabled, active_label = self.controller.ai_status()
         settings = self.controller.ai_settings()
+        profiles = self.controller.ai_profiles()
+
         self.paths.setText(
             f"Config: {default_config_dir()}\n"
             f"Evidencias: {default_evidence_dir()}\n"
@@ -1227,34 +1328,61 @@ class SettingsPage(QWidget):
             f"Artículo: {default_article_dir()}"
         )
         self.ai.setText(
-            f"● Conectada · {model}"
+            f"● IA activa · {active_label}"
             if enabled
             else (
-                "○ No configurada · registra aquí el proveedor para que "
-                "la IA funcione aunque OpenCode no esté instalado."
+                "○ No configurada · crea un perfil IA o importa OpenCode. "
+                "Puedes conservar varios proveedores y alternar entre ellos."
             )
         )
         self.ai.setStyleSheet(
             f"color:{COLORS['success'] if enabled else COLORS['muted']};"
         )
 
-        if settings.get("base_url"):
-            self.ai_base_url.setText(str(settings["base_url"]))
-        elif not self.ai_base_url.text():
-            self.ai_base_url.clear()
+        previous = (
+            self._editing_profile_id
+            or self._selected_profile_id()
+            or str(settings.get("profile_id") or "")
+        )
 
-        if settings.get("model_id"):
-            self.ai_model.setText(str(settings["model_id"]))
-        elif not self.ai_model.text():
-            self.ai_model.setText("lab-coder")
+        self.ai_profiles.blockSignals(True)
+        self.ai_profiles.clear()
+        selected_index = -1
+        for index, item in enumerate(profiles):
+            label = str(item.get("name") or item.get("id") or "Perfil IA")
+            if item.get("active"):
+                label += " ✓ activo"
+            profile_id = str(item.get("id") or "")
+            self.ai_profiles.addItem(label, profile_id)
+            if profile_id == previous:
+                selected_index = index
+            elif (
+                selected_index < 0
+                and profile_id == str(settings.get("profile_id") or "")
+            ):
+                selected_index = index
+
+        if selected_index < 0 and self.ai_profiles.count():
+            selected_index = 0
+        self.ai_profiles.setCurrentIndex(selected_index)
+        self.ai_profiles.blockSignals(False)
+
+        selected_id = self._selected_profile_id()
+        if selected_id:
+            self._load_profile_fields(selected_id)
+        elif not profiles:
+            self._editing_profile_id = None
+            if not self.ai_model.text():
+                self.ai_model.setText("lab-coder")
 
         config_path = (
             settings.get("config_path")
             or str(default_ai_config_path())
         )
         self.ai_path.setText(
-            "Configuración activa: "
-            f"{config_path}\n"
-            "La API key se conserva solo en la configuración local del equipo "
-            "y no se muestra en esta pantalla."
+            f"Perfiles guardados: {len(profiles)} · "
+            f"Configuración local: {config_path}\n"
+            "La API key de cada perfil se guarda localmente y nunca se "
+            "muestra en pantalla ni se incorpora a evidencias o releases."
         )
+
