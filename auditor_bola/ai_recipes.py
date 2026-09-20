@@ -30,6 +30,34 @@ from .remediation_knowledge import (
 DEFAULT_PROVIDER_ID = "llmlab"
 DEFAULT_MODEL_ID = "lab-coder"
 DEFAULT_MAX_OUTPUT_TOKENS = 8192
+DEFAULT_CONTEXT_WINDOW = 32768
+MIN_OUTPUT_TOKENS = 1024
+TOKEN_SAFETY_MARGIN = 768
+
+AI_PROVIDER_PRESETS = {
+    "openrouter-qwen3-coder-free": {
+        "name": "Qwen3-Coder Free · OpenRouter",
+        "provider_id": "openrouter",
+        "provider_name": "OpenRouter",
+        "model_id": "qwen/qwen3-coder:free",
+        "model_name": "Qwen3 Coder 480B A35B Free",
+        "base_url": "https://openrouter.ai/api/v1",
+        "role": "coder_primary",
+        "context_window": 1048576,
+        "max_output_tokens": 16384,
+    },
+    "gemini-2.5-flash-free": {
+        "name": "Gemini 2.5 Flash · Google AI",
+        "provider_id": "google-gemini",
+        "provider_name": "Google AI",
+        "model_id": "gemini-2.5-flash",
+        "model_name": "Gemini 2.5 Flash",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "role": "analyst_secondary",
+        "context_window": 1048576,
+        "max_output_tokens": 8192,
+    },
+}
 
 
 @dataclass
@@ -43,6 +71,9 @@ class AIProviderConfig:
     config_path: str
     profile_id: str = ""
     profile_name: str = ""
+    role: str = "generic"
+    context_window: int = DEFAULT_CONTEXT_WINDOW
+    max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS
 
     def public_dict(self) -> dict:
         """Metadatos seguros; nunca incluye la API key."""
@@ -55,7 +86,251 @@ class AIProviderConfig:
             "config_path": self.config_path,
             "profile_id": self.profile_id,
             "profile_name": self.profile_name,
+            "role": self.role,
+            "context_window": self.context_window,
+            "max_output_tokens": self.max_output_tokens,
         }
+
+
+def listar_presets_ia() -> list[dict]:
+    """Presets seguros: nunca incluyen claves API."""
+    return [
+        {"id": preset_id, **dict(data)}
+        for preset_id, data in AI_PROVIDER_PRESETS.items()
+    ]
+
+
+def _provider_defaults(
+    provider_id: str,
+    model_id: str,
+) -> tuple[str, int, int]:
+    provider = str(provider_id or "").lower()
+    model = str(model_id or "").lower()
+
+    if provider == "openrouter" and "qwen3-coder" in model:
+        return "coder_primary", 1048576, 16384
+    if provider in {"google-gemini", "gemini"} or "gemini-2.5-flash" in model:
+        return "analyst_secondary", 1048576, 8192
+    if provider == "llmlab" or model == "lab-coder":
+        # El endpoint UTB observado expone 20.480 tokens de contexto.
+        # Se deja margen suficiente para evitar ContextWindowExceededError.
+        return "fallback", 20480, 4096
+    return "generic", DEFAULT_CONTEXT_WINDOW, 4096
+
+
+def _safe_int(value, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimación conservadora para código + JSON multilingüe."""
+    return max(1, (len(text or "") + 2) // 3)
+
+
+def _dynamic_output_tokens(
+    provider: AIProviderConfig,
+    *,
+    system_prompt: str,
+    user_content: str,
+    requested: int = DEFAULT_MAX_OUTPUT_TOKENS,
+) -> int:
+    estimated_input = _estimate_tokens(system_prompt) + _estimate_tokens(
+        user_content
+    )
+    context_window = max(
+        4096,
+        _safe_int(provider.context_window, DEFAULT_CONTEXT_WINDOW),
+    )
+    provider_cap = max(
+        MIN_OUTPUT_TOKENS,
+        _safe_int(provider.max_output_tokens, DEFAULT_MAX_OUTPUT_TOKENS),
+    )
+    available = context_window - estimated_input - TOKEN_SAFETY_MARGIN
+    if available < MIN_OUTPUT_TOKENS:
+        raise RuntimeError(
+            "El contexto supera la capacidad segura de "
+            f"{provider.model_name or provider.model_id}: "
+            f"entrada estimada={estimated_input}, contexto={context_window}. "
+            "Aegis debe compactar el contexto o usar otro proveedor."
+        )
+    return max(
+        MIN_OUTPUT_TOKENS,
+        min(int(requested), provider_cap, available),
+    )
+
+
+def _clip_text_middle(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    if max_chars < 200:
+        return text[:max_chars]
+    head = max_chars * 2 // 3
+    tail = max_chars - head
+    return (
+        text[:head]
+        + "\n... <CONTEXTO COMPACTADO POR AEGIS> ...\n"
+        + text[-tail:]
+    )
+
+
+def _compact_structure(value, *, max_string: int, max_list: int = 12):
+    if isinstance(value, dict):
+        return {
+            str(key): _compact_structure(
+                item,
+                max_string=max_string,
+                max_list=max_list,
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        items = value[-max_list:] if len(value) > max_list else value
+        return [
+            _compact_structure(
+                item,
+                max_string=max_string,
+                max_list=max_list,
+            )
+            for item in items
+        ]
+    if isinstance(value, tuple):
+        return _compact_structure(
+            list(value),
+            max_string=max_string,
+            max_list=max_list,
+        )
+    if isinstance(value, str):
+        return _clip_text_middle(value, max_string)
+    return value
+
+
+def _compact_payload_for_provider(
+    provider: AIProviderConfig,
+    *,
+    system_prompt: str,
+    user_payload,
+    requested_output: int = DEFAULT_MAX_OUTPUT_TOKENS,
+):
+    """Reduce contexto progresivamente antes de cambiar de proveedor."""
+    raw = (
+        user_payload
+        if isinstance(user_payload, str)
+        else json.dumps(user_payload, ensure_ascii=False, indent=2)
+    )
+    context_window = max(
+        4096,
+        _safe_int(provider.context_window, DEFAULT_CONTEXT_WINDOW),
+    )
+    output_cap = min(
+        int(requested_output),
+        max(MIN_OUTPUT_TOKENS, int(provider.max_output_tokens or 4096)),
+    )
+    safe_input_tokens = max(
+        2048,
+        context_window - output_cap - TOKEN_SAFETY_MARGIN,
+    )
+    safe_chars = safe_input_tokens * 3
+
+    if len(system_prompt) + len(raw) <= safe_chars:
+        return user_payload, False
+
+    # Compactación conservadora: primero limita strings grandes y listas
+    # históricas. Mantiene claves, rutas, errores, hipótesis y extremos del código.
+    budget_for_payload = max(
+        3000,
+        safe_chars - len(system_prompt) - 1000,
+    )
+    if isinstance(user_payload, str):
+        return _clip_text_middle(user_payload, budget_for_payload), True
+
+    max_string = max(1200, min(9000, budget_for_payload // 4))
+    compacted = _compact_structure(
+        user_payload,
+        max_string=max_string,
+        max_list=8,
+    )
+    serialized = json.dumps(compacted, ensure_ascii=False, indent=2)
+    if len(serialized) > budget_for_payload:
+        # Segunda pasada más agresiva para proveedores pequeños como lab-coder.
+        compacted = _compact_structure(
+            compacted,
+            max_string=max(700, max_string // 2),
+            max_list=4,
+        )
+    return compacted, True
+
+
+def _provider_headers(provider: AIProviderConfig) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if provider.api_key:
+        headers["Authorization"] = f"Bearer {provider.api_key}"
+    if provider.provider_id == "openrouter":
+        headers["HTTP-Referer"] = "https://github.com/BrayanAlexanderSalazarReyes12/AUDITOR-BOLA"
+        headers["X-Title"] = "Aegis Auditor"
+    return headers
+
+
+def _providers_from_store() -> list[AIProviderConfig]:
+    config_path, store = _read_ai_store()
+    result: list[AIProviderConfig] = []
+    for item in store.get("profiles", []):
+        try:
+            result.append(_profile_to_provider(item, config_path))
+        except Exception:
+            continue
+    return result
+
+
+def resolver_cadena_proveedores_ia(
+    *,
+    task: str = "patch",
+    preferred: AIProviderConfig | None = None,
+    has_failures: bool = False,
+) -> list[AIProviderConfig]:
+    """Ordena proveedor principal, segunda opinión y fallback.
+
+    patch/diagnóstico inicial: coder_primary -> analyst_secondary -> fallback.
+    diagnóstico tras fallo: analyst_secondary -> coder_primary -> fallback.
+    """
+    providers = _providers_from_store()
+    if preferred is not None:
+        key = (preferred.base_url, preferred.model_id)
+        if all((p.base_url, p.model_id) != key for p in providers):
+            providers.append(preferred)
+
+    if not providers:
+        try:
+            providers = [preferred or cargar_configuracion_ia()]
+        except Exception:
+            return []
+
+    role_order = (
+        ["analyst_secondary", "coder_primary", "fallback", "generic"]
+        if task == "diagnosis" and has_failures
+        else ["coder_primary", "analyst_secondary", "fallback", "generic"]
+    )
+    role_rank = {role: index for index, role in enumerate(role_order)}
+    providers.sort(
+        key=lambda item: (
+            role_rank.get(item.role or "generic", 99),
+            0 if preferred and item.profile_id == preferred.profile_id else 1,
+            item.profile_name or item.model_name,
+        )
+    )
+
+    deduped: list[AIProviderConfig] = []
+    seen: set[tuple[str, str]] = set()
+    for item in providers:
+        key = (item.base_url.rstrip("/"), item.model_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
 
 
 def _opencode_config_path() -> Path:
@@ -140,6 +415,10 @@ def cargar_configuracion_opencode(
     model_data = models.get(model_id) or {}
     model_name = str(model_data.get("name") or model_id)
 
+    role, context_window, max_output = _provider_defaults(
+        provider_id,
+        model_id,
+    )
     return AIProviderConfig(
         provider_id=provider_id,
         provider_name=str(provider.get("name") or provider_id),
@@ -148,12 +427,15 @@ def cargar_configuracion_opencode(
         base_url=base_url,
         api_key=api_key,
         config_path=str(path),
+        role=role,
+        context_window=context_window,
+        max_output_tokens=max_output,
     )
 
 
 def _empty_ai_store() -> dict:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "active_profile_id": None,
         "profiles": [],
     }
@@ -235,7 +517,7 @@ def _read_ai_store(
             "api_key": str(data.get("api_key") or "").strip(),
         }
         store = {
-            "schema_version": 2,
+            "schema_version": 3,
             "active_profile_id": profile_id,
             "profiles": [profile],
         }
@@ -249,7 +531,7 @@ def _read_ai_store(
 def _write_ai_store(path: Path, store: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "active_profile_id": store.get("active_profile_id"),
         "profiles": list(store.get("profiles") or []),
     }
@@ -286,15 +568,20 @@ def _profile_to_provider(
 ) -> AIProviderConfig:
     base_url = str(profile.get("base_url") or "").strip().rstrip("/")
     model_id = str(profile.get("model_id") or DEFAULT_MODEL_ID).strip()
+    provider_id = str(
+        profile.get("provider_id") or DEFAULT_PROVIDER_ID
+    ).strip()
+    default_role, default_context, default_output = _provider_defaults(
+        provider_id,
+        model_id,
+    )
     if not base_url:
         raise RuntimeError("El perfil IA no declara base_url.")
     if not model_id:
         raise RuntimeError("El perfil IA no declara model_id.")
 
     return AIProviderConfig(
-        provider_id=str(
-            profile.get("provider_id") or DEFAULT_PROVIDER_ID
-        ).strip(),
+        provider_id=provider_id,
         provider_name=str(
             profile.get("provider_name") or "Proveedor IA"
         ).strip(),
@@ -311,6 +598,15 @@ def _profile_to_provider(
             or profile.get("provider_name")
             or model_id
         ).strip(),
+        role=str(profile.get("role") or default_role).strip(),
+        context_window=_safe_int(
+            profile.get("context_window"),
+            default_context,
+        ),
+        max_output_tokens=_safe_int(
+            profile.get("max_output_tokens"),
+            default_output,
+        ),
     )
 
 
@@ -349,6 +645,24 @@ def listar_perfiles_ia(
                     or DEFAULT_MODEL_ID
                 ),
                 "base_url": str(item.get("base_url") or ""),
+                "role": str(item.get("role") or _provider_defaults(
+                    str(item.get("provider_id") or DEFAULT_PROVIDER_ID),
+                    str(item.get("model_id") or DEFAULT_MODEL_ID),
+                )[0]),
+                "context_window": _safe_int(
+                    item.get("context_window"),
+                    _provider_defaults(
+                        str(item.get("provider_id") or DEFAULT_PROVIDER_ID),
+                        str(item.get("model_id") or DEFAULT_MODEL_ID),
+                    )[1],
+                ),
+                "max_output_tokens": _safe_int(
+                    item.get("max_output_tokens"),
+                    _provider_defaults(
+                        str(item.get("provider_id") or DEFAULT_PROVIDER_ID),
+                        str(item.get("model_id") or DEFAULT_MODEL_ID),
+                    )[2],
+                ),
                 "has_api_key": bool(str(item.get("api_key") or "").strip()),
                 "active": profile_id == active,
                 "config_path": str(config_path),
@@ -406,6 +720,9 @@ def guardar_perfil_ia(
     provider_id: str = DEFAULT_PROVIDER_ID,
     provider_name: str = "Proveedor IA",
     model_name: str | None = None,
+    role: str | None = None,
+    context_window: int | None = None,
+    max_output_tokens: int | None = None,
     profile_id: str | None = None,
     set_active: bool = True,
     path: str | Path | None = None,
@@ -444,6 +761,10 @@ def guardar_perfil_ia(
         if api_key is not None and str(api_key).strip()
         else previous_key
     )
+    default_role, default_context, default_output = _provider_defaults(
+        provider_id,
+        clean_model,
+    )
     payload = {
         "id": selected_id,
         "name": clean_name,
@@ -457,6 +778,19 @@ def guardar_perfil_ia(
         "model_name": str(model_name or clean_model).strip(),
         "base_url": clean_url,
         "api_key": clean_key,
+        "role": str(role or (existing or {}).get("role") or default_role),
+        "context_window": _safe_int(
+            context_window
+            if context_window is not None
+            else (existing or {}).get("context_window"),
+            default_context,
+        ),
+        "max_output_tokens": _safe_int(
+            max_output_tokens
+            if max_output_tokens is not None
+            else (existing or {}).get("max_output_tokens"),
+            default_output,
+        ),
     }
 
     if existing is None:
@@ -470,6 +804,39 @@ def guardar_perfil_ia(
         store["active_profile_id"] = selected_id
     _write_ai_store(config_path, store)
     return cargar_perfil_ia(selected_id, config_path)
+
+
+def guardar_perfil_predefinido(
+    preset_id: str,
+    *,
+    api_key: str,
+    profile_name: str | None = None,
+    set_active: bool = True,
+    path: str | Path | None = None,
+) -> AIProviderConfig:
+    preset = AI_PROVIDER_PRESETS.get(str(preset_id))
+    if not preset:
+        raise ValueError(f"Preset IA desconocido: {preset_id}")
+    key = str(api_key or "").strip()
+    if not key:
+        raise ValueError(
+            "Este proveedor requiere una API key. "
+            "Aegis no incorpora claves en el código ni en releases."
+        )
+    return guardar_perfil_ia(
+        profile_name=profile_name or str(preset["name"]),
+        base_url=str(preset["base_url"]),
+        model_id=str(preset["model_id"]),
+        api_key=key,
+        provider_id=str(preset["provider_id"]),
+        provider_name=str(preset["provider_name"]),
+        model_name=str(preset["model_name"]),
+        role=str(preset["role"]),
+        context_window=int(preset["context_window"]),
+        max_output_tokens=int(preset["max_output_tokens"]),
+        set_active=set_active,
+        path=path,
+    )
 
 
 def guardar_configuracion_aegis_ai(
@@ -561,6 +928,15 @@ def duplicar_perfil_ia(
             or source.get("model_id")
             or DEFAULT_MODEL_ID
         ),
+        role=str(source.get("role") or "generic"),
+        context_window=_safe_int(
+            source.get("context_window"),
+            DEFAULT_CONTEXT_WINDOW,
+        ),
+        max_output_tokens=_safe_int(
+            source.get("max_output_tokens"),
+            DEFAULT_MAX_OUTPUT_TOKENS,
+        ),
         set_active=True,
         path=config_path,
     )
@@ -627,10 +1003,15 @@ def cargar_configuracion_ia() -> AIProviderConfig:
         model_id = str(
             os.getenv("AEGIS_AI_MODEL") or DEFAULT_MODEL_ID
         ).strip()
+        env_provider_id = str(
+            os.getenv("AEGIS_AI_PROVIDER_ID") or DEFAULT_PROVIDER_ID
+        ).strip()
+        role, context_window, max_output = _provider_defaults(
+            env_provider_id,
+            model_id,
+        )
         return AIProviderConfig(
-            provider_id=str(
-                os.getenv("AEGIS_AI_PROVIDER_ID") or DEFAULT_PROVIDER_ID
-            ).strip(),
+            provider_id=env_provider_id,
             provider_name=str(
                 os.getenv("AEGIS_AI_PROVIDER_NAME") or "Proveedor IA"
             ).strip(),
@@ -643,6 +1024,15 @@ def cargar_configuracion_ia() -> AIProviderConfig:
             config_path="variables de entorno AEGIS_AI_*",
             profile_id="env",
             profile_name="Variables de entorno",
+            role=str(os.getenv("AEGIS_AI_ROLE") or role).strip(),
+            context_window=_safe_int(
+                os.getenv("AEGIS_AI_CONTEXT_WINDOW"),
+                context_window,
+            ),
+            max_output_tokens=_safe_int(
+                os.getenv("AEGIS_AI_MAX_OUTPUT_TOKENS"),
+                max_output,
+            ),
         )
 
     try:
@@ -879,7 +1269,7 @@ def _extraer_contenido_chat(response_json: dict) -> str:
     choices = response_json.get("choices")
     if not isinstance(choices, list) or not choices:
         raise RuntimeError(
-            "El Laboratorio UTB no devolvió choices en chat/completions."
+            "El proveedor IA no devolvió choices en chat/completions."
         )
 
     message = choices[0].get("message") or {}
@@ -899,7 +1289,7 @@ def _extraer_contenido_chat(response_json: dict) -> str:
             return "".join(textos).strip()
 
     raise RuntimeError(
-        "La respuesta de Gemma no contiene texto utilizable."
+        "La respuesta del proveedor IA no contiene texto utilizable."
     )
 
 
@@ -924,7 +1314,7 @@ def _extraer_json(texto: str) -> dict:
             pass
 
     raise RuntimeError(
-        "Gemma no devolvió un JSON válido con las tres recetas."
+        "El proveedor IA no devolvió un JSON válido con las tres recetas."
     )
 
 
@@ -1405,11 +1795,15 @@ def diagnosticar_causa_raiz(
         "intentos_fallidos": _redactar_estructura(attempts),
         "strategy_reset": reset,
     }
-    data = _solicitar_json_gemma(
+    data, provider, provider_trace = _solicitar_json_con_fallback(
         provider,
         system_prompt=system_prompt,
         user_payload=payload,
         timeout=timeout,
+        temperature=0.1,
+        requested_output=6144,
+        task="diagnosis",
+        has_failures=bool(attempts),
     )
 
     probable = str(data.get("causa_raiz_probable") or "").strip()
@@ -1462,6 +1856,7 @@ def diagnosticar_causa_raiz(
             "diagnostico_degradado": True,
         }
     data["strategy_reset"] = reset
+    data["provider_trace"] = provider_trace
     data["archivos_contexto_disponibles"] = [
         source_relative,
         *[key for key in related if key != source_relative],
@@ -1720,44 +2115,30 @@ def generar_tres_recetas(
         + json.dumps(contexto, ensure_ascii=False, indent=2)
     )
 
-    endpoint = provider.base_url.rstrip("/") + "/chat/completions"
-    headers = {"Content-Type": "application/json"}
-    if provider.api_key:
-        headers["Authorization"] = f"Bearer {provider.api_key}"
-
     source_files = {
         source_relative: source_text,
         **(archivos_relacionados or {}),
     }
+    provider_trace: list[dict] = []
 
     def request_proposals(
         current_prompt: str,
         *,
         temperature: float,
     ) -> list[AIRecipeProposal]:
-        payload = {
-            "model": provider.model_id,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": current_prompt},
-            ],
-            "temperature": temperature,
-            "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
-        }
-        resp = requests.post(
-            endpoint,
-            headers=headers,
-            json=payload,
+        nonlocal provider, provider_trace
+        data, used_provider, trace = _solicitar_json_con_fallback(
+            provider,
+            system_prompt=system_prompt,
+            user_payload=current_prompt,
             timeout=timeout,
+            temperature=temperature,
+            requested_output=DEFAULT_MAX_OUTPUT_TOKENS,
+            task="patch",
+            has_failures=bool(attempts),
         )
-        if resp.status_code >= 400:
-            raise RuntimeError(
-                "Laboratorio UTB respondió HTTP "
-                f"{resp.status_code}: {resp.text[:1200]}"
-            )
-        data = _extraer_json(
-            _extraer_contenido_chat(resp.json())
-        )
+        provider = used_provider
+        provider_trace.extend(trace)
         proposals = _validar_propuestas(data)
         return validar_propuestas_contextuales(
             proposals,
@@ -1810,6 +2191,8 @@ def generar_tres_recetas(
                 "motivo": "validación local de propuestas",
             }
 
+    contexto["provider_trace"] = provider_trace
+    contexto["provider_used_for_patch"] = provider.public_dict()
     contexto["validacion_local_propuestas"] = [
         {
             "id": item.id,
@@ -1944,6 +2327,183 @@ def guardar_seleccion_ia(
     )
 
 
+def _request_json_provider(
+    provider: AIProviderConfig,
+    *,
+    system_prompt: str,
+    user_payload,
+    timeout: int,
+    temperature: float = 0.1,
+    requested_output: int = DEFAULT_MAX_OUTPUT_TOKENS,
+) -> tuple[dict, dict]:
+    compacted, was_compacted = _compact_payload_for_provider(
+        provider,
+        system_prompt=system_prompt,
+        user_payload=user_payload,
+        requested_output=requested_output,
+    )
+    user_content = (
+        compacted
+        if isinstance(compacted, str)
+        else json.dumps(compacted, ensure_ascii=False, indent=2)
+    )
+    max_tokens = _dynamic_output_tokens(
+        provider,
+        system_prompt=system_prompt,
+        user_content=user_content,
+        requested=requested_output,
+    )
+    endpoint = provider.base_url.rstrip("/") + "/chat/completions"
+    payload = {
+        "model": provider.model_id,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    response = requests.post(
+        endpoint,
+        headers=_provider_headers(provider),
+        json=payload,
+        timeout=timeout,
+    )
+    context_retry = False
+    if response.status_code >= 400:
+        body_full = response.text or ""
+        context_error = (
+            response.status_code == 400
+            and any(
+                token in body_full.lower()
+                for token in (
+                    "contextwindowexceeded",
+                    "maximum context length",
+                    "context length",
+                    "too many tokens",
+                    "input_tokens",
+                )
+            )
+        )
+        if context_error:
+            # Segunda oportunidad para proveedores pequeños. Reduce salida y
+            # contexto de forma agresiva antes de abandonar al siguiente modelo.
+            context_retry = True
+            compacted_retry = _compact_structure(
+                compacted,
+                max_string=700,
+                max_list=3,
+            )
+            retry_content = (
+                compacted_retry
+                if isinstance(compacted_retry, str)
+                else json.dumps(
+                    compacted_retry,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            retry_requested = min(2048, requested_output)
+            retry_tokens = _dynamic_output_tokens(
+                provider,
+                system_prompt=system_prompt,
+                user_content=retry_content,
+                requested=retry_requested,
+            )
+            retry_payload = {
+                **payload,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": retry_content},
+                ],
+                "max_tokens": retry_tokens,
+            }
+            response = requests.post(
+                endpoint,
+                headers=_provider_headers(provider),
+                json=retry_payload,
+                timeout=timeout,
+            )
+            if response.status_code < 400:
+                payload = retry_payload
+                user_content = retry_content
+                max_tokens = retry_tokens
+                was_compacted = True
+
+    if response.status_code >= 400:
+        body = response.text[:2400]
+        raise RuntimeError(
+            f"{provider.provider_name} · {provider.model_id} respondió "
+            f"HTTP {response.status_code}: {body}"
+        )
+    data = _extraer_json(
+        _extraer_contenido_chat(response.json())
+    )
+    telemetry = {
+        "provider": provider.public_dict(),
+        "max_tokens": max_tokens,
+        "context_compacted": was_compacted,
+        "context_retry": context_retry,
+        "estimated_input_tokens": (
+            _estimate_tokens(system_prompt)
+            + _estimate_tokens(user_content)
+        ),
+    }
+    return data, telemetry
+
+
+def _solicitar_json_con_fallback(
+    preferred: AIProviderConfig | None,
+    *,
+    system_prompt: str,
+    user_payload,
+    timeout: int = 120,
+    temperature: float = 0.1,
+    requested_output: int = DEFAULT_MAX_OUTPUT_TOKENS,
+    task: str = "patch",
+    has_failures: bool = False,
+) -> tuple[dict, AIProviderConfig, list[dict]]:
+    providers = resolver_cadena_proveedores_ia(
+        task=task,
+        preferred=preferred,
+        has_failures=has_failures,
+    )
+    if not providers:
+        raise RuntimeError(
+            "No hay proveedores IA configurados para esta operación."
+        )
+
+    attempts: list[dict] = []
+    errors: list[str] = []
+    for provider in providers:
+        try:
+            data, telemetry = _request_json_provider(
+                provider,
+                system_prompt=system_prompt,
+                user_payload=user_payload,
+                timeout=timeout,
+                temperature=temperature,
+                requested_output=requested_output,
+            )
+            telemetry["status"] = "ok"
+            attempts.append(telemetry)
+            return data, provider, attempts
+        except Exception as exc:
+            attempts.append({
+                "provider": provider.public_dict(),
+                "status": "error",
+                "error": str(exc),
+            })
+            errors.append(
+                f"{provider.profile_name or provider.model_name}: {exc}"
+            )
+
+    raise RuntimeError(
+        "Ningún proveedor IA pudo completar la operación. "
+        + " | ".join(errors)
+    )
+
+
 def _solicitar_json_gemma(
     provider: AIProviderConfig,
     *,
@@ -1951,42 +2511,18 @@ def _solicitar_json_gemma(
     user_payload: dict,
     timeout: int = 120,
 ) -> dict:
-    endpoint = provider.base_url.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": provider.model_id,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": json.dumps(
-                    user_payload,
-                    ensure_ascii=False,
-                    indent=2,
-                ),
-            },
-        ],
-        "temperature": 0.1,
-        "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
-    }
-    headers = {"Content-Type": "application/json"}
-    if provider.api_key:
-        headers["Authorization"] = f"Bearer {provider.api_key}"
-
-    resp = requests.post(
-        endpoint,
-        headers=headers,
-        json=payload,
+    """Compatibilidad histórica: ahora usa routing/fallback multimodelo."""
+    data, _used, _trace = _solicitar_json_con_fallback(
+        provider,
+        system_prompt=system_prompt,
+        user_payload=user_payload,
         timeout=timeout,
+        temperature=0.1,
+        requested_output=DEFAULT_MAX_OUTPUT_TOKENS,
+        task="patch",
+        has_failures=False,
     )
-    if resp.status_code >= 400:
-        raise RuntimeError(
-            "Laboratorio UTB respondió HTTP "
-            f"{resp.status_code}: {resp.text[:1200]}"
-        )
-    texto = _extraer_contenido_chat(resp.json())
-    return _extraer_json(texto)
-
-
+    return data
 def _lista_strings(data: dict, key: str) -> list[str]:
     """Normaliza listas semánticas devueltas por el modelo.
 
@@ -2021,7 +2557,7 @@ def generalizar_correccion_exitosa(
     timeout: int = 120,
 ) -> tuple[RemediationKnowledge, dict, AIProviderConfig]:
     """Extrae la medicina semántica de una corrección ya verificada."""
-    provider = provider or cargar_configuracion_opencode()
+    provider = provider or cargar_configuracion_ia()
 
     contexto = {
         "sistema_origen": cfg.sistema,
@@ -2097,7 +2633,7 @@ def generalizar_correccion_exitosa(
     ):
         if not str(data.get(key) or "").strip():
             raise RuntimeError(
-                f"Gemma no devolvió un valor válido en '{key}'."
+                f"El proveedor IA no devolvió un valor válido en '{key}'."
             )
 
     knowledge = RemediationKnowledge(
