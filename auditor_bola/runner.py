@@ -183,11 +183,44 @@ def diagnosticar(
             "bola_confirmados": sum(item.confirmado_bola for item in bola),
             "acceso_vulnerable": sum(item.vulnerable for item in acceso),
             "agente_vulnerable": sum(item.resultado.vulnerable for item in agente),
-            "pilar2_hallazgos": sum(item.estado == "HALLAZGO" for item in pilar2),
+            "pilar2_controles_ejecutados": len(pilar2),
+            "pilar2_candidatos": len(cfg.candidatos_pilar2),
+            "pilar2_hallazgos": sum(
+                item.estado == "HALLAZGO" for item in pilar2
+            ),
+            "pilar2_vulnerabilidades_confirmadas": sum(
+                item.estado == "HALLAZGO" and item.vulnerable
+                for item in pilar2
+            ),
+            "pilar2_seguros": sum(
+                item.estado == "SIN_HALLAZGO" for item in pilar2
+            ),
+            "pilar2_por_confirmar": sum(
+                item.estado == "POR_CONFIRMAR" for item in pilar2
+            ),
+            "pilar2_duplicados_consolidados": 0,
+            "pilar2_no_ejecutables": sum(
+                item.estado in {"NO_EJECUTABLE", "BLOQUEADO"}
+                for item in pilar2
+            ),
             "errores": sum(item.estado == "ERROR" for item in pilar2),
         },
     }
     resultado = attach_runtime_consolidation(resultado)
+    p2_confirmed_unique = sum(
+        item.get("estado") == "confirmado"
+        and item.get("familia") in {
+            "CORS", "SECRET", "LIMIT_BYPASS", "CONTAINER",
+            "DEBUG", "SESSION", "GENERIC",
+        }
+        for item in resultado.get("hallazgos_consolidados", [])
+    )
+    resultado["resumen"]["pilar2_hallazgos_unicos"] = p2_confirmed_unique
+    resultado["resumen"]["pilar2_duplicados_consolidados"] = max(
+        0,
+        resultado["resumen"]["pilar2_hallazgos"]
+        - p2_confirmed_unique,
+    )
     report("Diagnóstico Pilar 1 + Pilar 2 completado.", force=100)
     return resultado
 
