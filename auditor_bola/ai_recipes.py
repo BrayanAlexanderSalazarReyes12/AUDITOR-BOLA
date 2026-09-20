@@ -8,6 +8,7 @@ motor determinista y queda sometida a preview, backup, verificación y rollback.
 from __future__ import annotations
 
 import ast
+import difflib
 import json
 import os
 import re
@@ -668,6 +669,9 @@ class AIRecipeProposal:
     reemplazar: str
     requiere_reinicio: bool
     consideraciones: str
+    archivo_objetivo: str = ""
+    hipotesis_id: str = ""
+    estrategia_conceptual: str = ""
     validacion_ok: bool = True
     errores_validacion: list[str] = field(default_factory=list)
 
@@ -1032,8 +1036,11 @@ def validar_propuestas_contextuales(
     *,
     source_relative: str,
     source_text: str,
+    source_files: dict[str, str] | None = None,
     metadata_hallazgo: dict | None = None,
     matriz_pruebas: list[dict] | None = None,
+    intentos_fallidos: list[dict] | dict | None = None,
+    strategy_reset: bool = False,
 ) -> list[AIRecipeProposal]:
     """Marca recetas inseguras o no aplicables antes de mostrarlas.
 
@@ -1047,12 +1054,34 @@ def validar_propuestas_contextuales(
         matriz_pruebas,
     )
 
+    files = {
+        source_relative: source_text,
+        **(source_files or {}),
+    }
+    attempts = _normalizar_intentos(intentos_fallidos)
+    failed_proposals = [
+        item.get("propuesta") or {}
+        for item in attempts
+        if isinstance(item, dict)
+    ]
+
     for proposal in propuestas:
         errors: list[str] = []
+        target = str(
+            proposal.archivo_objetivo or source_relative
+        ).replace("\\", "/")
+        proposal.archivo_objetivo = target
+        target_text = files.get(target)
+        if target_text is None:
+            proposal.validacion_ok = False
+            proposal.errores_validacion = [
+                "archivo_objetivo no pertenece al contexto verificado"
+            ]
+            continue
         try:
             patched = _aplicar_propuesta_en_memoria(
                 proposal,
-                source_text,
+                target_text,
             )
         except Exception as exc:
             proposal.validacion_ok = False
@@ -1072,15 +1101,260 @@ def validar_propuestas_contextuales(
 
         errors.extend(
             _validar_sintaxis_basica(
-                source_relative,
+                target,
                 patched,
             )
         )
+
+        for failed in failed_proposals:
+            if not isinstance(failed, dict):
+                continue
+            old_strategy = str(
+                failed.get("estrategia_conceptual")
+                or failed.get("explicacion")
+                or ""
+            )
+            old_patch = str(failed.get("reemplazar") or "")
+            new_strategy = str(
+                proposal.estrategia_conceptual
+                or proposal.explicacion
+                or ""
+            )
+            ratio_strategy = difflib.SequenceMatcher(
+                None,
+                old_strategy.lower(),
+                new_strategy.lower(),
+            ).ratio()
+            ratio_patch = difflib.SequenceMatcher(
+                None,
+                old_patch,
+                proposal.reemplazar,
+            ).ratio()
+            ratio = max(ratio_strategy, ratio_patch)
+            limit = 0.65 if strategy_reset else 0.92
+            if ratio >= limit:
+                errors.append(
+                    "la propuesta es demasiado similar a una estrategia "
+                    f"fallida previa (similitud={ratio:.2f}, límite={limit:.2f})"
+                )
+                break
 
         proposal.validacion_ok = not errors
         proposal.errores_validacion = errors
 
     return propuestas
+
+
+def _recortar_archivos_relacionados(
+    archivos: dict[str, str] | None,
+    pistas: list[str],
+    *,
+    max_archivos: int = 8,
+    max_chars_por_archivo: int = 12000,
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for relative, text in list((archivos or {}).items())[:max_archivos]:
+        result[str(relative)] = recortar_codigo(
+            redactar_secretos(str(text)),
+            pistas,
+            max_chars=max_chars_por_archivo,
+        )
+    return result
+
+
+def _normalizar_intentos(
+    intentos: list[dict] | dict | None,
+) -> list[dict]:
+    if intentos is None:
+        return []
+    if isinstance(intentos, dict):
+        return [intentos]
+    return [
+        dict(item)
+        for item in intentos
+        if isinstance(item, dict)
+    ]
+
+
+def _estrategia_reset_necesaria(
+    intentos: list[dict] | dict | None,
+) -> bool:
+    items = _normalizar_intentos(intentos)
+    if len(items) < 2:
+        return False
+    # Los intentos guardados por el controlador son únicamente fallidos.
+    return True
+
+
+def diagnosticar_causa_raiz(
+    cfg: ConfigObjetivo,
+    *,
+    control_id: str,
+    descripcion: str,
+    detalle: str,
+    source_relative: str,
+    source_text: str,
+    provider: AIProviderConfig | None = None,
+    metadata_hallazgo: dict | None = None,
+    matriz_pruebas: list[dict] | None = None,
+    archivos_relacionados: dict[str, str] | None = None,
+    intentos_fallidos: list[dict] | dict | None = None,
+    strategy_reset: bool = False,
+    timeout: int = 120,
+) -> tuple[dict, AIProviderConfig]:
+    """Diagnostica causa raíz antes de permitir generación de parches."""
+    provider = provider or cargar_configuracion_ia()
+    attempts = _normalizar_intentos(intentos_fallidos)
+    reset = bool(strategy_reset or _estrategia_reset_necesaria(attempts))
+    pistas = _pistas_utiles(
+        control_id,
+        descripcion,
+        detalle,
+        source_relative,
+    )
+    related = _recortar_archivos_relacionados(
+        archivos_relacionados,
+        pistas,
+    )
+    principal = recortar_codigo(
+        redactar_secretos(source_text),
+        pistas,
+        max_chars=22000,
+    )
+
+    expected = {
+        "hallazgo": "resumen del hallazgo real",
+        "comportamiento_observado": "qué sucede actualmente",
+        "comportamiento_esperado": "qué debe suceder",
+        "entrada_reproduccion": "request/entrada que reproduce el problema",
+        "componente_afectado": "componente observado",
+        "archivo_causa_raiz": "archivo existente donde realmente corregir",
+        "simbolos_relevantes": ["clase/método/función existentes"],
+        "archivos_relacionados": ["archivos existentes relevantes"],
+        "flujo_ejecucion": [
+            "entrada",
+            "router/middleware",
+            "controller/handler",
+            "service",
+            "repository/DAO",
+        ],
+        "hipotesis": [
+            {
+                "id": "H1",
+                "descripcion": "hipótesis verificable",
+                "evidencia_a_favor": ["evidencia"],
+                "evidencia_en_contra": ["evidencia"],
+                "estado": "CONFIRMADA|PROBABLE|DESCARTADA",
+            }
+        ],
+        "causa_raiz_probable": "causa general",
+        "causa_raiz_confirmada": "causa respaldada por el código/evidencia",
+        "condicion_explotacion": "qué condición habilita el fallo",
+        "impacto": "impacto técnico",
+        "riesgos_regresion": ["riesgo"],
+        "pruebas_necesarias": [
+            "happy path",
+            "negative path",
+            "security path",
+            "regression path",
+        ],
+        "supuestos_descartados": ["supuesto contradicho por evidencia"],
+        "strategy_reset": reset,
+    }
+
+    system_prompt = (
+        "Actúa como Ingeniero Senior de Software, QA, Debugging y AppSec. "
+        "NO estás haciendo autocompletado. Debes diagnosticar una vulnerabilidad "
+        "real dentro de una aplicación existente ANTES de proponer código. "
+        "No asumas que el archivo inicialmente asociado contiene la causa raíz. "
+        "Reconstruye el flujo usando únicamente archivos y símbolos realmente "
+        "presentes en el contexto. No inventes clases, métodos, tablas, APIs, "
+        "variables, rutas ni dependencias. Diferencia síntoma de causa raíz. "
+        "Los usuarios/cuentas del hallazgo son datos de prueba, no reglas de "
+        "autorización. Identifica qué evidencia confirma o contradice cada "
+        "hipótesis. Si strategy_reset es true, dos intentos ya fallaron: debes "
+        "considerar incorrecto el enfoque anterior, explicar por qué falló y "
+        "buscar una causa/estrategia sustancialmente diferente, incluso en otra "
+        "capa. Responde únicamente JSON válido."
+    )
+
+    payload = {
+        "formato_obligatorio": expected,
+        "sistema": cfg.sistema,
+        "version_objetivo": cfg.version_objetivo,
+        "control_id": control_id,
+        "descripcion_hallazgo": descripcion,
+        "detalle_observado": detalle,
+        "hallazgo_objetivo": _redactar_estructura(metadata_hallazgo or {}),
+        "matriz_pruebas": _redactar_estructura(matriz_pruebas or []),
+        "archivo_inicial": source_relative,
+        "codigo_archivo_inicial": principal,
+        "archivos_relacionados": related,
+        "intentos_fallidos": _redactar_estructura(attempts),
+        "strategy_reset": reset,
+    }
+    data = _solicitar_json_gemma(
+        provider,
+        system_prompt=system_prompt,
+        user_payload=payload,
+        timeout=timeout,
+    )
+
+    probable = str(data.get("causa_raiz_probable") or "").strip()
+    confirmed = str(data.get("causa_raiz_confirmada") or "").strip()
+    if not probable and not confirmed:
+        # Resiliencia: algunos proveedores pueden ignorar el primer formato y
+        # devolver directamente propuestas. No se inventa una causa confirmada;
+        # se conserva una hipótesis explícitamente NO confirmada y el segundo
+        # paso recibe igualmente el código/evidencia para generar estrategias.
+        data = {
+            "hallazgo": descripcion,
+            "comportamiento_observado": detalle,
+            "comportamiento_esperado": (
+                "La prueba de seguridad debe dejar de reproducir el hallazgo "
+                "sin romper flujos legítimos."
+            ),
+            "entrada_reproduccion": metadata_hallazgo or {},
+            "componente_afectado": source_relative,
+            "archivo_causa_raiz": source_relative,
+            "simbolos_relevantes": [],
+            "archivos_relacionados": list(related),
+            "flujo_ejecucion": [],
+            "hipotesis": [
+                {
+                    "id": "H1",
+                    "descripcion": (
+                        "La causa raíz todavía requiere confirmación con el "
+                        "código y la prueba posterior."
+                    ),
+                    "evidencia_a_favor": [detalle],
+                    "evidencia_en_contra": [],
+                    "estado": "PROBABLE",
+                }
+            ],
+            "causa_raiz_probable": (
+                "Causa raíz no confirmada; reanalizar el flujo real antes "
+                "de aceptar cualquier parche."
+            ),
+            "causa_raiz_confirmada": "",
+            "condicion_explotacion": detalle,
+            "impacto": "",
+            "riesgos_regresion": [],
+            "pruebas_necesarias": [
+                "happy path",
+                "security path",
+                "regression path",
+                "rescan",
+            ],
+            "supuestos_descartados": [],
+            "diagnostico_degradado": True,
+        }
+    data["strategy_reset"] = reset
+    data["archivos_contexto_disponibles"] = [
+        source_relative,
+        *[key for key in related if key != source_relative],
+    ]
+    return data, provider
 
 
 def _construir_contexto(
@@ -1093,12 +1367,25 @@ def _construir_contexto(
     source_text: str,
     metadata_hallazgo: dict | None = None,
     matriz_pruebas: list[dict] | None = None,
-    intento_anterior: dict | None = None,
+    intento_anterior: list[dict] | dict | None = None,
     conocimiento_reutilizable: dict | None = None,
+    archivos_relacionados: dict[str, str] | None = None,
+    diagnostico_raiz: dict | None = None,
+    strategy_reset: bool = False,
 ) -> dict:
     pistas = _pistas_utiles(control_id, descripcion, detalle, source_relative)
     limpio = redactar_secretos(source_text)
     recortado = recortar_codigo(limpio, pistas)
+    related = _recortar_archivos_relacionados(
+        archivos_relacionados,
+        pistas,
+    )
+    attempts = _normalizar_intentos(intento_anterior)
+    reset = bool(strategy_reset or _estrategia_reset_necesaria(attempts))
+    allowed = list(dict.fromkeys([
+        source_relative,
+        *related.keys(),
+    ]))
 
     return {
         "sistema": cfg.sistema,
@@ -1110,19 +1397,29 @@ def _construir_contexto(
         "matriz_de_pruebas_del_mismo_control": _redactar_estructura(
             matriz_pruebas or []
         ),
-        "intento_anterior_fallido": _redactar_estructura(intento_anterior),
+        "intentos_anteriores_fallidos": _redactar_estructura(attempts),
+        "intento_anterior_fallido": _redactar_estructura(
+            attempts[-1] if attempts else None
+        ),
+        "strategy_reset": reset,
+        "diagnostico_causa_raiz": _redactar_estructura(
+            diagnostico_raiz or {}
+        ),
         "conocimiento_correctivo_reutilizable": _redactar_estructura(
             conocimiento_reutilizable
         ),
-        "archivo_seleccionado": source_relative,
+        "archivo_inicial": source_relative,
+        "archivos_permitidos_para_parche": allowed,
         "codigo_relevante_redactado": recortado,
+        "archivos_relacionados_redactados": related,
         "criterio_de_exito": (
-            "La fila objetivo debe pasar a SIN_HALLAZGO y ninguna fila del "
-            "mismo control que estaba en SIN_HALLAZGO puede convertirse en "
-            "HALLAZGO o ERROR."
+            "El parche solo es válido si build/validación técnica pasa, "
+            "la explotación original deja de reproducirse, el flujo legítimo "
+            "continúa funcionando, no aparecen regresiones y el reescaneo "
+            "confirma la desaparición del hallazgo."
         ),
         "restricciones": {
-            "solo_archivo_seleccionado": True,
+            "solo_archivos_existentes_del_contexto": True,
             "no_incluir_credenciales": True,
             "tres_propuestas_diferentes": True,
             "verificacion_posterior_obligatoria": True,
@@ -1130,6 +1427,9 @@ def _construir_contexto(
             "no_hardcodear_identidades_de_prueba": True,
             "parche_debe_ser_aplicable_al_archivo_actual": True,
             "conservar_sintaxis_valida": True,
+            "no_inventar_componentes": True,
+            "respetar_versiones_y_convenciones": True,
+            "cambiar_de_estrategia_tras_dos_fallos": True,
         },
     }
 
@@ -1145,12 +1445,34 @@ def generar_tres_recetas(
     provider: AIProviderConfig | None = None,
     metadata_hallazgo: dict | None = None,
     matriz_pruebas: list[dict] | None = None,
-    intento_anterior: dict | None = None,
+    intento_anterior: list[dict] | dict | None = None,
     conocimiento_reutilizable: dict | None = None,
+    archivos_relacionados: dict[str, str] | None = None,
+    diagnostico_raiz: dict | None = None,
+    strategy_reset: bool = False,
     timeout: int = 120,
 ) -> tuple[list[AIRecipeProposal], dict, AIProviderConfig]:
-    """Solicita tres recetas a llmlab/lab-coder vía chat/completions."""
+    """Diagnostica primero y después solicita tres estrategias de parche."""
     provider = provider or cargar_configuracion_ia()
+    attempts = _normalizar_intentos(intento_anterior)
+    reset = bool(strategy_reset or _estrategia_reset_necesaria(attempts))
+
+    if diagnostico_raiz is None:
+        diagnostico_raiz, provider = diagnosticar_causa_raiz(
+            cfg,
+            control_id=control_id,
+            descripcion=descripcion,
+            detalle=detalle,
+            source_relative=source_relative,
+            source_text=source_text,
+            provider=provider,
+            metadata_hallazgo=metadata_hallazgo,
+            matriz_pruebas=matriz_pruebas,
+            archivos_relacionados=archivos_relacionados,
+            intentos_fallidos=attempts,
+            strategy_reset=reset,
+            timeout=timeout,
+        )
 
     contexto = _construir_contexto(
         cfg,
@@ -1161,46 +1483,42 @@ def generar_tres_recetas(
         source_text=source_text,
         metadata_hallazgo=metadata_hallazgo,
         matriz_pruebas=matriz_pruebas,
-        intento_anterior=intento_anterior,
+        intento_anterior=attempts,
         conocimiento_reutilizable=conocimiento_reutilizable,
+        archivos_relacionados=archivos_relacionados,
+        diagnostico_raiz=diagnostico_raiz,
+        strategy_reset=reset,
     )
 
     system_prompt = (
-        "Eres un asistente defensivo de remediación de código para un "
-        "auditor de seguridad. Debes proponer exactamente tres recetas "
-        "diferentes para el mismo hallazgo: "
-        "MINIMA (cambio pequeño y localizado), "
-        "ESTRUCTURAL (mejora de diseño o centralización) y "
-        "ALTERNATIVA (otro enfoque válido). "
-        "Todas deben modificar únicamente el archivo seleccionado. "
-        "No inventes archivos. No incluyas secretos ni credenciales. "
-        "Cuando uses replace_exact, el campo buscar debe ser texto literal "
-        "que aparezca en el código recibido. Cuando uses regex_replace, "
-        "buscar debe ser una expresión regular acotada. "
-        "La IA solo propone; un humano seleccionará una opción y un motor "
-        "determinista hará preview, backup, aplicación y verificación. "
-        "El objetivo NO es solo producir un cambio sintáctico: la receta debe "
-        "hacer que la prueba objetivo pase de HALLAZGO a SIN_HALLAZGO. Usa "
-        "hallazgo_objetivo como contrato exacto (cuenta, método, ruta y "
-        "resultado esperado/observado). Usa matriz_de_pruebas_del_mismo_control "
-        "como conjunto de regresión: cualquier fila que ya estaba en "
-        "SIN_HALLAZGO debe seguir segura después del cambio. Si existe "
-        "intento_anterior_fallido, analiza por qué no resolvió el comportamiento "
-        "y NO repitas la misma solución ni una variante superficial. "
-        "Si existe conocimiento_correctivo_reutilizable, trátalo como una "
-        "medicina semántica previamente verificada: conserva su invariante, "
-        "estrategia y contrato de verificación, pero ADÁPTALA al código actual. "
-        "No copies nombres de archivos, clases, variables ni fragmentos del "
-        "sistema donde se aprendió. "
-        "MUY IMPORTANTE: los nombres de cuenta/usuario presentes en "
-        "hallazgo_objetivo o matriz_de_pruebas_del_mismo_control son datos de "
-        "prueba, NO una política. Nunca hardcodees una identidad concreta para "
-        "permitir o denegar acceso. Corrige la regla general usando identidad "
-        "autenticada, propiedad del recurso, rol, permiso o política existente. "
-        "La receta debe ser general para usuarios equivalentes. "
-        "Prioriza la validación de autorización/propiedad en el punto donde se "
-        "decide el acceso al recurso. Responde únicamente con JSON válido, "
-        "sin Markdown."
+        "Actúa como Ingeniero Senior de Software, QA, Debugging, Secure Coding "
+        "y AppSec. No estás realizando autocompletado: debes resolver una "
+        "vulnerabilidad real a partir del diagnóstico de causa raíz ya generado. "
+        "Propón exactamente tres estrategias técnicamente diferentes: MINIMA, "
+        "ESTRUCTURAL y ALTERNATIVA. Cada propuesta puede modificar UN archivo, "
+        "pero archivo_objetivo debe existir en archivos_permitidos_para_parche. "
+        "No inventes archivos, clases, métodos, servicios, tablas, variables, "
+        "APIs ni dependencias. Respeta lenguaje, versión, framework, arquitectura "
+        "y convenciones observadas. Usa la causa_raiz_confirmada/probable y el "
+        "flujo_ejecucion; no parches solo el síntoma del endpoint. "
+        "Los usuarios/cuentas de las pruebas son evidencia, NO política: nunca "
+        "hardcodees una identidad concreta. Preserva accesos legítimos. "
+        "Cuando uses replace_exact, buscar debe aparecer literalmente en el "
+        "archivo objetivo recibido. Si usas regex_replace, debe ser acotada. "
+        "Incluye hipotesis_id y estrategia_conceptual para poder comparar "
+        "intentos. Si existe conocimiento_correctivo_reutilizable, úsalo como "
+        "medicina semántica previamente verificada: conserva su invariante y "
+        "contrato de verificación, pero ADÁPTALA al código actual. "
+        "Si existen intentos fallidos, analiza exactamente por qué fallaron y "
+        "NO repitas la misma solución ni una variante superficial. "
+        "Si strategy_reset es true, DOS intentos consecutivos ya fallaron: está "
+        "PROHIBIDO producir pequeñas variaciones del mismo enfoque; reubica la "
+        "corrección en otra capa o cambia sustancialmente el mecanismo si la "
+        "evidencia lo exige. El criterio de seguridad exige que la fila "
+        "objetivo pase a SIN_HALLAZGO y que las filas legítimas previamente "
+        "seguras permanezcan en SIN_HALLAZGO. El parche se someterá a build, "
+        "tests, prueba de seguridad, regresión y reescaneo. Responde únicamente "
+        "JSON válido."
     )
 
     formato = {
@@ -1216,6 +1534,9 @@ def generar_tres_recetas(
                 "reemplazar": "texto de reemplazo",
                 "requiere_reinicio": True,
                 "consideraciones": "texto",
+                "archivo_objetivo": "archivo existente del contexto",
+                "hipotesis_id": "H1",
+                "estrategia_conceptual": "descripción técnica del enfoque",
             },
             {
                 "id": "IA-2",
@@ -1228,6 +1549,9 @@ def generar_tres_recetas(
                 "reemplazar": "texto de reemplazo",
                 "requiere_reinicio": True,
                 "consideraciones": "texto",
+                "archivo_objetivo": "archivo existente del contexto",
+                "hipotesis_id": "H1",
+                "estrategia_conceptual": "descripción técnica del enfoque",
             },
             {
                 "id": "IA-3",
@@ -1240,14 +1564,18 @@ def generar_tres_recetas(
                 "reemplazar": "texto de reemplazo",
                 "requiere_reinicio": True,
                 "consideraciones": "texto",
+                "archivo_objetivo": "archivo existente del contexto",
+                "hipotesis_id": "H1",
+                "estrategia_conceptual": "descripción técnica del enfoque",
             },
         ]
     }
 
     user_prompt = (
-        "Analiza el siguiente hallazgo y genera exactamente tres recetas que "
-        "tengan posibilidad real de hacer pasar la prueba de seguridad. "
-        "No repitas una receta fallida incluida en el contexto.\n\n"
+        "Usa el diagnóstico de causa raíz incluido en el contexto y genera "
+        "exactamente tres estrategias de parche aplicables al código real. "
+        "No repitas recetas ni estrategias fallidas. Si strategy_reset=true, "
+        "las propuestas deben cambiar sustancialmente de capa o mecanismo.\n\n"
         "FORMATO JSON OBLIGATORIO:\n"
         + json.dumps(formato, ensure_ascii=False, indent=2)
         + "\n\nCONTEXTO:\n"
@@ -1286,12 +1614,19 @@ def generar_tres_recetas(
     texto = _extraer_contenido_chat(response_json)
     data = _extraer_json(texto)
     propuestas = _validar_propuestas(data)
+    source_files = {
+        source_relative: source_text,
+        **(archivos_relacionados or {}),
+    }
     propuestas = validar_propuestas_contextuales(
         propuestas,
         source_relative=source_relative,
         source_text=source_text,
+        source_files=source_files,
         metadata_hallazgo=metadata_hallazgo,
         matriz_pruebas=matriz_pruebas,
+        intentos_fallidos=attempts,
+        strategy_reset=reset,
     )
     contexto["validacion_local_propuestas"] = [
         {
@@ -1327,7 +1662,10 @@ def propuesta_a_correccion(
 
     return Correccion(
         control_id=control_id,
-        archivo=source_relative,
+        archivo=(
+            propuesta.archivo_objetivo
+            or source_relative
+        ),
         descripcion=(
             f"Receta IA {propuesta.id}: {propuesta.titulo}. "
             f"{propuesta.explicacion}"

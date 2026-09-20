@@ -14,6 +14,7 @@ from .corrective import (
     rollback,
 )
 from .evidence import EvidenceSession, sha256_file
+from .project_validation import validate_project_after_patch
 from .runner import diagnosticar, filas_gui
 
 
@@ -131,6 +132,102 @@ def regresiones_control(
     return regresiones
 
 
+def regresiones_globales(
+    baseline: dict,
+    verificacion: dict,
+) -> list[dict]:
+    """Detecta regresiones en cualquier control previamente seguro."""
+    before = {
+        _clave_fila(row): row
+        for row in filas_gui(baseline)
+        if row.get("estado") == "SIN_HALLAZGO"
+    }
+    after = {
+        _clave_fila(row): row
+        for row in filas_gui(verificacion)
+    }
+    regressions: list[dict] = []
+    for key, old in before.items():
+        new = after.get(key)
+        if new is None:
+            regressions.append(
+                {
+                    "clave": key,
+                    "antes": old,
+                    "despues": None,
+                    "motivo": (
+                        "una prueba previamente segura desapareció "
+                        "durante el reescaneo"
+                    ),
+                }
+            )
+            continue
+        if new.get("estado") in {"HALLAZGO", "ERROR"}:
+            regressions.append(
+                {
+                    "clave": key,
+                    "antes": old,
+                    "despues": new,
+                    "motivo": (
+                        "una prueba previamente segura pasó a "
+                        f"{new.get('estado')}"
+                    ),
+                }
+            )
+    return regressions
+
+
+def _failure_category(*texts: object) -> str:
+    raw = " ".join(str(item or "") for item in texts).lower()
+    patterns = (
+        ("syntax_error", ("syntax", "sintaxis", "indentation", "parse error")),
+        ("missing_import", ("no module named", "cannot import", "importerror")),
+        ("missing_symbol", ("nameerror", "not defined", "cannot find symbol")),
+        ("type_error", ("typeerror", "incompatible types", "cannot convert")),
+        ("version_incompatibility", ("unsupported", "version", "source option")),
+        ("dependency_error", ("dependency", "module not found", "package not found")),
+        ("database_error", ("sql", "database", "ora-", "jdbc")),
+        ("configuration_error", ("config", "environment", "variable")),
+        ("runtime_error", ("exception", "traceback", "runtime")),
+    )
+    for category, needles in patterns:
+        if any(token in raw for token in needles):
+            return category
+    return "logic_error"
+
+
+def _failure_analysis(
+    manifest: dict,
+    *,
+    expected: str,
+    observed: str,
+    evidence: object = None,
+) -> dict:
+    error = manifest.get("error")
+    motive = manifest.get("motivo")
+    return {
+        "que_intentamos": (
+            manifest.get("estrategia")
+            or manifest.get("proposal_id")
+            or manifest.get("control")
+        ),
+        "hipotesis": manifest.get("hipotesis"),
+        "que_esperabamos": expected,
+        "que_ocurrio": observed,
+        "evidencia_contradictoria": evidence,
+        "categoria_error": _failure_category(error, motive, evidence),
+        "por_que_no_resolvio": motive or error,
+        "nueva_informacion": (
+            "El resultado posterior al parche contradice la hipótesis "
+            "o demuestra que la implementación no es técnicamente válida."
+        ),
+        "enfoque_descartado": (
+            manifest.get("estrategia")
+            or manifest.get("proposal_id")
+        ),
+    }
+
+
 def controles_hallazgo(resultado: dict) -> list[str]:
     """Devuelve todos los controles únicos actualmente en HALLAZGO."""
     controles: list[str] = []
@@ -213,6 +310,10 @@ def ciclo_correctivo(
     evidence_base: str | Path = "evidencias",
     reiniciar: Callable[[], None] | None = None,
     selector: dict | None = None,
+    attempt_number: int | None = None,
+    proposal_id: str | None = None,
+    estrategia: str | None = None,
+    hipotesis: str | None = None,
 ) -> dict:
     evidence = EvidenceSession.create(evidence_base)
 
@@ -244,22 +345,30 @@ def ciclo_correctivo(
         "tipo": "CICLO_CORRECTIVO",
         "estado_inicial": estado_inicial,
         "estado_final": None,
+        "estado_patch": None,
+        "attempt_number": attempt_number,
+        "proposal_id": proposal_id,
+        "estrategia": estrategia,
+        "hipotesis": hipotesis,
         "rollback": False,
         "evidencia": str(evidence.root),
     }
 
     if estado_inicial == "SIN_HALLAZGO":
         manifest["estado_final"] = "SIN_HALLAZGO"
+        manifest["estado_patch"] = "PATCH_VERIFIED"
         evidence.write_json("manifest.json", manifest)
         return manifest
 
     if estado_inicial in {None, "ERROR"}:
         manifest["estado_final"] = "ERROR"
+        manifest["estado_patch"] = "MANUAL_REVIEW_REQUIRED"
         evidence.write_json("manifest.json", manifest)
         return manifest
 
     if not correction_available(cfg, control_id):
         manifest["estado_final"] = "PENDIENTE_SIN_RECETA"
+        manifest["estado_patch"] = "MANUAL_REVIEW_REQUIRED"
         manifest["motivo"] = (
             "El hallazgo fue detectado, pero el perfil no declara una receta "
             "automática segura para este control."
@@ -274,10 +383,94 @@ def ciclo_correctivo(
         correccion = apply_correction(cfg, control_id, target_root, evidence)
         evidence.write_json("cambios/correccion.json", correccion.as_dict())
 
+        patched_path = (
+            Path(target_root).resolve() / correccion.archivo
+        ).resolve()
+        if patched_path.is_file():
+            validacion = validate_project_after_patch(
+                target_root,
+                correccion.archivo,
+            )
+            validation_payload = validacion.as_dict()
+            syntax_failed = validacion.sintaxis.estado == "FAILED"
+            build_failed = (
+                validacion.build_aplicable
+                and validacion.build.estado != "OK"
+            )
+            tests_failed = (
+                validacion.tests_aplicables
+                and validacion.tests.estado != "OK"
+            )
+        else:
+            # Compatibilidad con adaptadores/mocks que aplican la corrección
+            # fuera del filesystem local. En ejecución real apply_correction
+            # siempre trabaja sobre un archivo existente.
+            validation_payload = {
+                "archivo": correccion.archivo,
+                "sintaxis": {
+                    "nombre": "sintaxis",
+                    "estado": "NO_APLICA",
+                    "detalle": "archivo no disponible para validación local",
+                },
+                "build": {
+                    "nombre": "build",
+                    "estado": "NO_APLICA",
+                    "detalle": "validación local no aplicable",
+                },
+                "tests": {
+                    "nombre": "tests",
+                    "estado": "NO_APLICA",
+                    "detalle": "validación local no aplicable",
+                },
+                "tecnico_ok": True,
+                "build_aplicable": False,
+                "tests_aplicables": False,
+            }
+            syntax_failed = False
+            build_failed = False
+            tests_failed = False
+
+        manifest["validacion_tecnica"] = validation_payload
+        evidence.write_json(
+            "verification/technical_validation.json",
+            validation_payload,
+        )
+
+        if syntax_failed or build_failed or tests_failed:
+            _rollback_seguro(
+                cfg,
+                correccion,
+                target_root,
+                evidence,
+                reiniciar,
+                manifest,
+            )
+            if syntax_failed or build_failed:
+                manifest["estado_patch"] = "BUILD_FAILED"
+            else:
+                manifest["estado_patch"] = "TEST_FAILED"
+            manifest["estado_final"] = "CORRECCION_FALLIDA"
+            manifest["motivo"] = (
+                "El parche no superó la validación técnica previa al "
+                "reescaneo y fue revertido automáticamente."
+            )
+            manifest["failure_analysis"] = _failure_analysis(
+                manifest,
+                expected=(
+                    "sintaxis/build/tests válidos antes de ejecutar "
+                    "la prueba de seguridad"
+                ),
+                observed=manifest["estado_patch"],
+                evidence=validation_payload,
+            )
+            evidence.write_json("manifest.json", manifest)
+            return manifest
+
         if receta and receta.requiere_reinicio and reiniciar is None:
             rollback(correccion, target_root)
             manifest["rollback"] = True
             manifest["estado_final"] = "REQUIERE_REINICIO"
+            manifest["estado_patch"] = "MANUAL_REVIEW_REQUIRED"
             manifest["motivo"] = (
                 "La receta fue aplicada a la copia local, pero este control "
                 "requiere reiniciar el objetivo antes de verificar. El cambio "
@@ -298,6 +491,10 @@ def ciclo_correctivo(
             verificacion,
             control_id,
         )
+        regresiones_todas = regresiones_globales(
+            baseline,
+            verificacion,
+        )
         errores_verificacion = _errores_control(
             verificacion,
             control_id,
@@ -306,11 +503,54 @@ def ciclo_correctivo(
         manifest["estado_despues"] = estado_despues
         manifest["estado_global_despues"] = estado_global_despues
         manifest["regresiones"] = regresiones
+        manifest["regresiones_globales"] = regresiones_todas
         manifest["errores_verificacion"] = errores_verificacion
         manifest["correccion_aplicada"] = correccion.as_dict()
+        build_state = str(
+            (validation_payload.get("build") or {}).get("estado")
+            or ""
+        )
+        test_state = str(
+            (validation_payload.get("tests") or {}).get("estado")
+            or ""
+        )
+        manifest["criterios_exito"] = {
+            "codigo_modificado": (
+                correccion.before_hash != correccion.after_hash
+            ),
+            "build_success": build_state in {"OK", "NO_APLICA"},
+            "build_aplicable": bool(
+                validation_payload.get("build_aplicable")
+            ),
+            "application_started": (
+                True if cfg.base_url else None
+            ),
+            "functional_test_success": test_state in {
+                "OK", "NO_APLICA"
+            },
+            "tests_aplicables": bool(
+                validation_payload.get("tests_aplicables")
+            ),
+            "security_test_success": (
+                estado_despues == "SIN_HALLAZGO"
+            ),
+            "original_exploit_failed": (
+                estado_despues == "SIN_HALLAZGO"
+            ),
+            "legitimate_flow_success": not bool(regresiones),
+            "regression_detected": bool(regresiones),
+            "rescan_confirmed": (
+                estado_despues == "SIN_HALLAZGO"
+            ),
+            "observaciones_globales": len(regresiones_todas),
+        }
 
-        if estado_despues == "SIN_HALLAZGO" and not regresiones:
+        if (
+            estado_despues == "SIN_HALLAZGO"
+            and not regresiones
+        ):
             manifest["estado_final"] = "CORREGIDO"
+            manifest["estado_patch"] = "PATCH_VERIFIED"
             evidence.write_json("manifest.json", manifest)
             return manifest
 
@@ -319,18 +559,37 @@ def ciclo_correctivo(
         )
         if regresiones:
             manifest["estado_final"] = "NO_CORREGIDO"
+            manifest["estado_patch"] = "REGRESSION_DETECTED"
             manifest["motivo"] = (
                 "La fila objetivo pudo cambiar, pero la receta introdujo "
-                "regresiones en otras pruebas que antes estaban seguras."
+                "regresiones en pruebas que antes estaban seguras."
+            )
+            manifest["failure_analysis"] = _failure_analysis(
+                manifest,
+                expected="resolver el hallazgo sin romper flujos legítimos",
+                observed="REGRESSION_DETECTED",
+                evidence=regresiones,
             )
         elif estado_despues == "HALLAZGO":
             manifest["estado_final"] = "NO_CORREGIDO"
+            manifest["estado_patch"] = "PATCH_FAILED"
             manifest["motivo"] = (
                 "La receta se aplicó y se verificó, pero la fila objetivo "
                 "sigue reproduciendo el hallazgo. El cambio fue revertido."
             )
+            manifest["failure_analysis"] = _failure_analysis(
+                manifest,
+                expected="la explotación original deja de reproducirse",
+                observed="el hallazgo continúa reproduciéndose",
+                evidence=filas_control(
+                    verificacion,
+                    control_id,
+                    selector,
+                ),
+            )
         elif estado_despues == "ERROR":
             manifest["estado_final"] = "CORRECCION_FALLIDA"
+            manifest["estado_patch"] = "TEST_FAILED"
             detail = "; ".join(
                 str(item.get("detalle") or "").strip()
                 for item in errores_verificacion
@@ -341,10 +600,23 @@ def ciclo_correctivo(
                 "El cambio fue revertido automáticamente."
                 + (f" Detalle: {detail}" if detail else "")
             )
+            manifest["failure_analysis"] = _failure_analysis(
+                manifest,
+                expected="prueba de seguridad ejecutable y concluyente",
+                observed="TEST_FAILED",
+                evidence=errores_verificacion,
+            )
         else:
             manifest["estado_final"] = "CORRECCION_FALLIDA"
+            manifest["estado_patch"] = "PATCH_PARTIAL"
             manifest["motivo"] = (
                 "La receta no produjo un estado verificable y fue revertida."
+            )
+            manifest["failure_analysis"] = _failure_analysis(
+                manifest,
+                expected="un resultado concluyente del reescaneo",
+                observed=str(estado_despues),
+                evidence=verificacion.get("resumen"),
             )
         evidence.write_json("manifest.json", manifest)
         return manifest
@@ -354,6 +626,7 @@ def ciclo_correctivo(
 
         if correccion is not None:
             manifest["estado_final"] = "CORRECCION_FALLIDA"
+            manifest["estado_patch"] = "PATCH_FAILED"
             manifest["motivo"] = (
                 "La receta se alcanzó a aplicar, pero falló antes o durante "
                 "la verificación. El cambio fue revertido automáticamente."
@@ -363,11 +636,18 @@ def ciclo_correctivo(
             )
         else:
             manifest["estado_final"] = "RECETA_INVALIDA"
+            manifest["estado_patch"] = "PATCH_FAILED"
             manifest["motivo"] = (
                 "La receta no pudo aplicarse de forma segura al archivo actual; "
                 "no se confirmó ninguna modificación."
             )
 
+        manifest["failure_analysis"] = _failure_analysis(
+            manifest,
+            expected="parche aplicable, validable y verificable",
+            observed=manifest["estado_patch"],
+            evidence=manifest.get("error"),
+        )
         evidence.write_json("manifest.json", manifest)
         return manifest
 
