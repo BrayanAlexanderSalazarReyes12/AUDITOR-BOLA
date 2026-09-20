@@ -119,6 +119,8 @@ def test_diagnose_bloquea_p1_p2_incompleto_antes_del_worker():
     controller.cfg = ConfigObjetivo(
         sistema="solo-p2",
         base_url="http://127.0.0.1:5050",
+        cuentas=[],
+        endpoints=[],
         chequeos_pilar2=[
             ChequeoPilar2(
                 id_control="P2-X",
