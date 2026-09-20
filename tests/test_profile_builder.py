@@ -924,3 +924,49 @@ def test_con_docker_json_prioriza_compose(tmp_path, monkeypatch):
     assert runtime["alternativas"][0]["nombre"] == "Python"
     assert environment["docker_instalado"] is True
     assert environment["runtime_principal"] == "Docker Compose"
+
+
+
+def test_autoperfil_infiere_controles_p2_de_alta_confianza(tmp_path):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "run.py").write_text(
+        "from app import app\n"
+        "app.run(port=5050)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text(
+        "import os\n"
+        "from flask import Flask, request\n"
+        "app = Flask(__name__)\n"
+        "SECRET_KEY=os.getenv(\"APP_SECRET\", \"dev-secret\")\n"
+        "@app.get('/health')\n"
+        "def health(): return 'ok'\n"
+        "@app.after_request\n"
+        "def cors(response):\n"
+        "    origin = request.headers.get(\"Origin\")\n"
+        "    if origin:\n"
+        "        response.headers[\"Access-Control-Allow-Origin\"] = origin\n"
+        "        response.headers[\"Access-Control-Allow-Credentials\"] = \"true\"\n"
+        "    return response\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "Dockerfile").write_text(
+        "FROM python:3.12-slim\nUSER root\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    checks = {
+        item["id_control"]: item
+        for item in profile["chequeos_pilar2"]
+    }
+
+    assert "P2-AUTO-CORS-001" in checks
+    assert checks["P2-AUTO-CORS-001"]["ruta"] == "/health"
+    assert "P2-AUTO-SECRET-001" in checks
+    assert checks["P2-AUTO-SECRET-001"]["archivo"] == "app.py"
+    assert "P2-AUTO-DOCKER-001" in checks
+    assert profile["metadata_detectada"]["total_controles_activos"] == 3
