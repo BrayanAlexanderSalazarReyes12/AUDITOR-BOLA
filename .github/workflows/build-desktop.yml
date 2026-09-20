@@ -1,4 +1,4 @@
-# local-runtime-release: v1.1.11
+# adaptive-local-runtime-release: v1.1.12
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.11' \
+            'Version: 1.1.12' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-11:
-    name: Publicar Release v1.1.11
+  release-v1-1-12:
+    name: Publicar Release v1.1.12
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.11]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.12]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,11 +253,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.11
+          # Aegis Auditor v1.1.12
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.11
+          ## Novedades de v1.1.12
           - Corrige la versión de la aplicación analizada: ya no se asigna
             `1.0.0` por defecto.
           - Detecta la versión real desde package.json, pom.xml, Gradle,
@@ -304,6 +304,9 @@ jobs:
           - La pantalla de Inicio muestra el comando de ejecución, política de arranque y alternativas locales configuradas.
           - Los workflows CI y la interfaz profesional fueron validados después de las correcciones del arranque local y la detección de puertos.
           - El empaquetado macOS reintenta automáticamente la creación del DMG cuando el runner devuelve un error transitorio "Resource busy".
+          - El arranque local detecta la URL/puerto que el propio servidor anuncia y corrige automáticamente una base_url estimada incorrecta.
+          - Si Docker no está instalado, Aegis descarta esa estrategia y selecciona el mejor runtime local disponible según el equipo.
+          - Si el servidor Python anuncia 127.0.0.1:5050 aunque el perfil estimara 5000, Aegis adopta 5050 y continúa sin marcar un falso fallo de inicio.
 
           ## Descargas
 
@@ -352,16 +355,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.11" >/dev/null 2>&1; then
-            gh release upload "v1.1.11" "${files[@]}" --clobber
-            gh release edit "v1.1.11" \
-              --title "Aegis Auditor v1.1.11" \
+          if gh release view "v1.1.12" >/dev/null 2>&1; then
+            gh release upload "v1.1.12" "${files[@]}" --clobber
+            gh release edit "v1.1.12" \
+              --title "Aegis Auditor v1.1.12" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.11" "${files[@]}" \
+            gh release create "v1.1.12" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.11" \
+              --title "Aegis Auditor v1.1.12" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
