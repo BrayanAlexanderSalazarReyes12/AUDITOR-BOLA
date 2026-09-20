@@ -13,6 +13,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -28,6 +29,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QPushButton,
     QSplitter,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -853,6 +855,7 @@ class AIPage(QWidget):
         self.target_row: dict | None = None
         self.source_path: Path | None = None
         self.proposals: list[dict] = []
+        self._code_viewer = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -940,17 +943,27 @@ class AIPage(QWidget):
         self.detail.setMaximumHeight(230)
         right_l.addWidget(self.detail)
 
-        right_l.addWidget(
+        preview_header = QHBoxLayout()
+        preview_header.addWidget(
             SectionHeader(
                 "Vista previa del código",
                 (
                     "Rojo = código anterior · Verde = código nuevo. "
-                    "Esta vista es calculada por Aegis sobre el archivo real."
+                    "La vista completa se abre en una ventana independiente."
                 ),
-            )
+            ),
+            1,
         )
+        self.open_code_btn = QPushButton("▣  Ver código completo")
+        self.open_code_btn.setObjectName("SecondaryButton")
+        self.open_code_btn.clicked.connect(self._open_full_preview)
+        self.open_code_btn.setEnabled(False)
+        preview_header.addWidget(self.open_code_btn)
+        right_l.addLayout(preview_header)
+
         self.diff_view = QTextEdit()
         self.diff_view.setReadOnly(True)
+        self.diff_view.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.diff_view.setObjectName("CodeDiffPreview")
         self.diff_view.setStyleSheet(
             "QTextEdit#CodeDiffPreview {"
@@ -1169,6 +1182,34 @@ class AIPage(QWidget):
             )
         )
         self._render_code_preview(proposal)
+        self.open_code_btn.setEnabled(
+            bool(proposal.get("preview_cambios"))
+        )
+        if proposal.get("preview_cambios"):
+            self._open_full_preview(auto=True)
+
+    def _open_full_preview(self, auto: bool = False):
+        index = self.list.currentRow()
+        if index < 0 or index >= len(self.proposals):
+            return
+        proposal = self.proposals[index]
+        previews = [
+            item
+            for item in proposal.get("preview_cambios") or []
+            if isinstance(item, dict)
+        ]
+        if not previews:
+            return
+
+        if self._code_viewer is None:
+            self._code_viewer = RecipeCodeViewerDialog(self)
+        self._code_viewer.set_proposal(
+            proposal,
+            selected_index=index,
+        )
+        self._code_viewer.showMaximized()
+        self._code_viewer.raise_()
+        self._code_viewer.activateWindow()
 
     def _render_code_preview(self, proposal: dict) -> None:
         previews = [
@@ -1239,7 +1280,7 @@ class AIPage(QWidget):
                 f"{archivo}</div>"
                 f"<div style='color:#8AA9BC;margin-bottom:6px;'>"
                 f"{lenguaje}{subtitle}</div>"
-                "<pre style='white-space:pre-wrap;"
+                "<pre style='white-space:pre;overflow-x:auto;"
                 "font-family:Consolas,&quot;Courier New&quot;,monospace;'>"
                 + "\n".join(rows)
                 + "</pre></div>"
@@ -1251,6 +1292,224 @@ class AIPage(QWidget):
         index = self.list.currentRow()
         if index >= 0:
             self.controller.apply_ai_proposal(index)
+
+
+class RecipeCodeViewerDialog(QDialog):
+    """Ventana independiente para inspeccionar una medicina IA completa."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Aegis Auditor · Vista completa de la medicina")
+        self.setModal(False)
+        self.setMinimumSize(1050, 700)
+        self.resize(1500, 900)
+        self._previews: list[dict] = []
+        self._proposal: dict = {}
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(10)
+
+        title = QLabel("Vista completa de la corrección IA")
+        title.setObjectName("PageTitle")
+        layout.addWidget(title)
+
+        self.summary = QLabel(
+            "Selecciona un archivo para revisar exactamente qué código "
+            "se eliminaría y qué código se agregaría."
+        )
+        self.summary.setObjectName("Subheading")
+        self.summary.setWordWrap(True)
+        layout.addWidget(self.summary)
+
+        selector_row = QHBoxLayout()
+        selector_row.addWidget(QLabel("Archivo:"))
+        self.file_combo = QComboBox()
+        self.file_combo.setMinimumWidth(520)
+        self.file_combo.currentIndexChanged.connect(self._load_file)
+        selector_row.addWidget(self.file_combo, 1)
+
+        self.copy_button = QPushButton("Copiar código nuevo")
+        self.copy_button.clicked.connect(self._copy_new_code)
+        selector_row.addWidget(self.copy_button)
+
+        close_button = QPushButton("Cerrar")
+        close_button.clicked.connect(self.close)
+        selector_row.addWidget(close_button)
+        layout.addLayout(selector_row)
+
+        self.file_meta = QLabel("Sin archivo seleccionado")
+        self.file_meta.setObjectName("Muted")
+        self.file_meta.setWordWrap(True)
+        layout.addWidget(self.file_meta)
+
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs, 1)
+
+        self.diff_view = QTextEdit()
+        self.diff_view.setReadOnly(True)
+        self.diff_view.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        self.diff_view.setObjectName("FullCodeDiff")
+        self.diff_view.setStyleSheet(
+            "QTextEdit#FullCodeDiff {"
+            "background:#06141F;"
+            "border:1px solid #164765;"
+            "border-radius:10px;"
+            "padding:12px;"
+            "font-family:Consolas, 'Courier New', monospace;"
+            "font-size:13px;"
+            "}"
+        )
+        self.tabs.addTab(self.diff_view, "Cambios (diff)")
+
+        self.before_view = self._make_code_editor()
+        self.tabs.addTab(self.before_view, "Código antes")
+
+        self.after_view = self._make_code_editor()
+        self.tabs.addTab(self.after_view, "Código nuevo")
+
+        self.recipe_view = self._make_code_editor()
+        self.tabs.addTab(self.recipe_view, "Receta / estrategia")
+
+    @staticmethod
+    def _make_code_editor() -> QPlainTextEdit:
+        editor = QPlainTextEdit()
+        editor.setReadOnly(True)
+        editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        editor.setObjectName("FullCodeEditor")
+        editor.setStyleSheet(
+            "QPlainTextEdit#FullCodeEditor {"
+            "background:#06141F;"
+            "border:1px solid #164765;"
+            "border-radius:10px;"
+            "padding:12px;"
+            "font-family:Consolas, 'Courier New', monospace;"
+            "font-size:13px;"
+            "selection-background-color:#155E82;"
+            "}"
+        )
+        return editor
+
+    def set_proposal(self, proposal: dict, selected_index: int = 0) -> None:
+        self._proposal = dict(proposal or {})
+        self._previews = [
+            dict(item)
+            for item in self._proposal.get("preview_cambios") or []
+            if isinstance(item, dict)
+        ]
+
+        self.file_combo.blockSignals(True)
+        self.file_combo.clear()
+        for item in self._previews:
+            self.file_combo.addItem(
+                str(item.get("archivo") or "archivo"),
+            )
+        self.file_combo.blockSignals(False)
+
+        enfoque = str(
+            self._proposal.get("enfoque")
+            or "PROPUESTA"
+        ).upper()
+        titulo = str(
+            self._proposal.get("titulo")
+            or "Corrección propuesta"
+        )
+        self.summary.setText(
+            f"{enfoque} · {titulo}  |  "
+            f"{len(self._previews)} archivo(s) afectados"
+        )
+
+        self.recipe_view.setPlainText(
+            json.dumps(
+                {
+                    key: value
+                    for key, value in self._proposal.items()
+                    if key != "preview_cambios"
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+
+        if self._previews:
+            safe_index = max(
+                0,
+                min(selected_index, len(self._previews) - 1),
+            )
+            self.file_combo.setCurrentIndex(safe_index)
+            self._load_file(safe_index)
+        else:
+            self.file_meta.setText(
+                "La propuesta no tiene cambios previsualizables."
+            )
+            self.diff_view.clear()
+            self.before_view.clear()
+            self.after_view.clear()
+
+    def _load_file(self, index: int) -> None:
+        if index < 0 or index >= len(self._previews):
+            return
+        preview = self._previews[index]
+        archivo = str(preview.get("archivo") or "archivo")
+        lenguaje = str(preview.get("lenguaje") or "desconocido")
+        frameworks = ", ".join(
+            str(item)
+            for item in preview.get("frameworks") or []
+        )
+        meta = f"{archivo} · {lenguaje}"
+        if frameworks:
+            meta += f" · {frameworks}"
+        ops = preview.get("operaciones_aplicables")
+        if ops is not None:
+            meta += f" · {ops} operación(es)"
+        self.file_meta.setText(meta)
+
+        before = str(preview.get("codigo_antes") or "")
+        after = str(preview.get("codigo_despues") or "")
+        self.before_view.setPlainText(before)
+        self.after_view.setPlainText(after)
+
+        rows: list[str] = []
+        diff = str(preview.get("diff") or "")
+        for raw_line in diff.splitlines():
+            escaped = html.escape(raw_line)
+            if raw_line.startswith("---"):
+                style = "color:#FF7B86;font-weight:700;"
+            elif raw_line.startswith("+++"):
+                style = "color:#62E6A7;font-weight:700;"
+            elif raw_line.startswith("-"):
+                style = "color:#FF8A94;background:#35161C;"
+            elif raw_line.startswith("+"):
+                style = "color:#77F2B8;background:#0D3025;"
+            elif raw_line.startswith("@@"):
+                style = "color:#59C7FF;font-weight:700;"
+            else:
+                style = "color:#D7E5EE;"
+            rows.append(
+                f"<span style='{style}'>{escaped}</span>"
+            )
+
+        if not rows:
+            rows.append(
+                "<span style='color:#8AA9BC;'>"
+                "No hay diferencias deterministas para este archivo."
+                "</span>"
+            )
+
+        self.diff_view.setHtml(
+            "<pre style='white-space:pre;margin:0;"
+            "font-family:Consolas,&quot;Courier New&quot;,monospace;"
+            "font-size:13px;'>"
+            + "\n".join(rows)
+            + "</pre>"
+        )
+
+    def _copy_new_code(self) -> None:
+        self.after_view.selectAll()
+        self.after_view.copy()
+        self.after_view.moveCursor(
+            self.after_view.textCursor().MoveOperation.End
+        )
 
 
 class KnowledgePage(QWidget):
