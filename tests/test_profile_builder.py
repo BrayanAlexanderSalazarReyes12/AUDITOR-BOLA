@@ -769,3 +769,37 @@ def test_flask_run_py_detecta_puerto_explicito(tmp_path):
     assert runtime["comando_inicio"] == ["python", "run.py"]
     assert runtime["base_url"] == "http://127.0.0.1:9090"
     assert base_url == "http://127.0.0.1:9090"
+
+
+
+def test_perfil_json_expone_plan_de_ejecucion_local(tmp_path):
+    (tmp_path / "compose.yml").write_text(
+        "services:\n"
+        "  app:\n"
+        "    image: demo\n"
+        "    ports:\n"
+        "      - \"8080:5000\"\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "run.py").write_text(
+        "from app import app\napp.run(port=5000)\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    runtime = profile["runtime"]
+    plan = profile["metadata_detectada"]["plan_ejecucion"]
+
+    assert runtime["preferencia_arranque"] == "auto"
+    assert runtime["permitir_fallback_local"] is True
+    assert runtime["nombre"] == "Docker Compose"
+    assert runtime["alternativas"][0]["nombre"] == "Python"
+    assert plan["principal"]["comando_inicio"][0] == "docker"
+    assert plan["alternativas"][0]["comando_inicio"] == [
+        "python",
+        "run.py",
+    ]
