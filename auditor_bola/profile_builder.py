@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import csv
 import json
 import re
@@ -568,32 +569,56 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
         suffix = path.suffix.lower()
         name = path.name.lower()
 
-        # Flask / FastAPI / Starlette.
+        # Flask / FastAPI / Starlette. Para Blueprint conservamos
+        # url_prefix, porque una ruta "/<id>" no es ejecutable sin su prefijo.
+        blueprint_prefixes: dict[str, str] = {}
+        for bp_match in re.finditer(
+            r"(?m)^\s*(\w+)\s*=\s*Blueprint\s*\("
+            r".{0,800}?\burl_prefix\s*=\s*['\"]([^'\"]+)['\"]",
+            text,
+            re.I | re.S,
+        ):
+            blueprint_prefixes[bp_match.group(1)] = bp_match.group(2)
+
         for match in re.finditer(
-            r"@(?:app|router|bp|blueprint|\w+)"
+            r"@(app|router|bp|blueprint|\w+)"
             r"\.(get|post|put|patch|delete|options|head)"
             r"\(\s*['\"]([^'\"]+)['\"]",
             text,
             re.I,
         ):
+            receiver = match.group(1)
+            route = match.group(3)
+            if receiver in blueprint_prefixes:
+                route = _join_route_paths(
+                    blueprint_prefixes[receiver],
+                    route,
+                )
             add(
-                match.group(1),
                 match.group(2),
+                route,
                 source,
                 "python-router",
             )
 
         for match in re.finditer(
-            r"@(?:app|router|bp|blueprint|\w+)\.route"
+            r"@(app|router|bp|blueprint|\w+)\.route"
             r"\(\s*['\"]([^'\"]+)['\"]([^)]*)\)",
             text,
             re.I | re.S,
         ):
-            methods = _literal_methods(match.group(2)) or ["GET"]
+            receiver = match.group(1)
+            route = match.group(2)
+            if receiver in blueprint_prefixes:
+                route = _join_route_paths(
+                    blueprint_prefixes[receiver],
+                    route,
+                )
+            methods = _literal_methods(match.group(3)) or ["GET"]
             for method in methods:
                 add(
                     method,
-                    match.group(1),
+                    route,
                     source,
                     "python-route",
                 )
@@ -1826,6 +1851,7 @@ _ROLE_KEYS = {
 _PRIVILEGED_ROLES = {
     "admin", "administrator", "administrador", "root",
     "superadmin", "super_admin", "manager", "gerente",
+    "coordinator", "coordinador", "supervisor",
 }
 
 
@@ -2992,6 +3018,651 @@ def _infer_p1_candidates(
     return candidates
 
 
+def _is_p1_evidence_source(relative: Path) -> bool:
+    parts = {part.lower() for part in relative.parts}
+    name = relative.name.lower()
+    stem = relative.stem.lower()
+    tokens = {
+        "test", "tests", "spec", "specs", "fixture", "fixtures",
+        "seed", "seeds", "sample", "samples", "support", "mock",
+        "mocks", "data", "datos",
+    }
+    return (
+        bool(parts & tokens)
+        or any(token in stem for token in tokens)
+        or name.startswith(("test_", "spec_"))
+        or name.endswith(("_test.py", ".spec.js", ".test.js"))
+    )
+
+
+def _parameter_to_profile_route(route: str) -> str:
+    value = str(route or "").strip()
+    value = re.sub(r"<(?:[^:<>]+:)?[^<>]+>", "{id}", value)
+    value = re.sub(r"\{[^{}]+\}", "{id}", value)
+    value = re.sub(r":(?:id|\w+_id)(?=/|$)", "{id}", value, flags=re.I)
+    return _normalize_route_path(value)
+
+
+def _route_matches_literal(
+    parameterized: str,
+    literal: str,
+    object_id: str,
+) -> bool:
+    normalized = _parameter_to_profile_route(parameterized)
+    expected = normalized.replace("{id}", str(object_id))
+    return _normalize_route_path(literal) == expected
+
+
+def _extract_owner_samples(
+    detection: ProjectDetection,
+) -> list[dict[str, Any]]:
+    """Extrae pares objeto-propietario desde tests/fixtures/seeds.
+
+    Solo acepta campos con semántica explícita de propiedad; una declaración
+    normal de cuenta con "username" no basta para inferir propiedad.
+    """
+    usernames = {
+        str(item.get("username") or "").strip()
+        for item in detection.accounts
+        if str(item.get("username") or "").strip()
+    }
+    if not usernames:
+        return []
+
+    owner_keys = (
+        "propietario", "propietario_esperado", "owner", "owner_username",
+        "owned_by", "created_by", "creado_por", "usuario_propietario",
+        "user_owner",
+    )
+    id_keys = (
+        "id", "object_id", "resource_id", "solicitud_id", "request_id",
+        "ticket_id", "post_id", "item_id", "record_id",
+    )
+    owner_key = r"(?:" + "|".join(re.escape(x) for x in owner_keys) + r")"
+    id_key = r"(?:" + "|".join(re.escape(x) for x in id_keys) + r")"
+    samples: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    for path, relative in _iter_source_files(
+        detection.root,
+        max_files=None,
+    ):
+        if not _is_p1_evidence_source(relative):
+            continue
+        text = _read_text(path, limit=MAX_TEXT_SCAN_BYTES)
+        if not text:
+            continue
+        source = relative.as_posix()
+
+        # JSON/Python/YAML-like mappings, regardless of key order.
+        for username in usernames:
+            user_re = re.escape(username)
+            owner_matches = list(
+                re.finditer(
+                    rf"""(?ix)
+                    ["']?{owner_key}["']?\s*[:=]\s*
+                    ["']{user_re}["']
+                    """,
+                    text,
+                )
+            )
+            for owner_match in owner_matches:
+                start = max(0, owner_match.start() - 700)
+                end = min(len(text), owner_match.end() + 700)
+                window = text[start:end]
+                id_matches = list(
+                    re.finditer(
+                        rf"""(?ix)
+                        ["']?{id_key}["']?\s*[:=]\s*
+                        ["']?([A-Za-z0-9._-]+)["']?
+                        """,
+                        window,
+                    )
+                )
+                if not id_matches:
+                    continue
+                absolute_owner = owner_match.start() - start
+                chosen = min(
+                    id_matches,
+                    key=lambda item: abs(
+                        item.start() - absolute_owner
+                    ),
+                )
+                object_id = chosen.group(1)
+                key = (object_id, username, source)
+                if key in seen:
+                    continue
+                seen.add(key)
+                samples.append(
+                    {
+                        "id_prueba": object_id,
+                        "propietario_esperado": username,
+                        "archivo": source,
+                        "confianza": "alta",
+                        "detector": "test-fixture-seed-owner",
+                    }
+                )
+
+        # INSERT ... (id, propietario, ...) VALUES (..., 'usuario', ...)
+        for match in re.finditer(
+            r"INSERT\s+INTO\s+[\w.\"-]+\s*"
+            r"\(([^)]+)\)\s*VALUES\s*\(([^;]+?)\)",
+            text,
+            re.I | re.S,
+        ):
+            columns = [
+                column.strip().strip('"').strip("'").lower()
+                for column in match.group(1).split(",")
+            ]
+            values = _split_sql_values(match.group(2))
+            if len(columns) != len(values):
+                continue
+            mapping = dict(zip(columns, values))
+            owner_col = next(
+                (key for key in columns if key in owner_keys),
+                None,
+            )
+            id_col = next(
+                (key for key in columns if key in id_keys),
+                None,
+            )
+            if not owner_col or not id_col:
+                continue
+            username = str(
+                _clean_literal(mapping.get(owner_col)) or ""
+            )
+            object_id = str(
+                _clean_literal(mapping.get(id_col)) or ""
+            )
+            if username not in usernames or not object_id:
+                continue
+            key = (object_id, username, source)
+            if key in seen:
+                continue
+            seen.add(key)
+            samples.append(
+                {
+                    "id_prueba": object_id,
+                    "propietario_esperado": username,
+                    "archivo": source,
+                    "confianza": "alta",
+                    "detector": "seed-sql-owner",
+                }
+            )
+
+    return samples
+
+
+def _safe_literal_dict(value: str) -> dict[str, Any] | None:
+    try:
+        parsed = ast.literal_eval(value)
+    except (ValueError, SyntaxError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _extract_http_test_contracts(
+    detection: ProjectDetection,
+) -> list[dict[str, Any]]:
+    """Obtiene contratos HTTP expresados por tests del proyecto."""
+    usernames = [
+        str(item.get("username") or "")
+        for item in detection.accounts
+        if item.get("username")
+    ]
+    contracts: list[dict[str, Any]] = []
+
+    request_re = re.compile(
+        r"""(?ix)
+        \b(?P<var>[A-Za-z_]\w*)\s*=\s*
+        [A-Za-z_][\w.]*\.
+        (?P<method>get|post|put|patch|delete)\s*\(
+        \s*["'](?P<route>/[^"']+)["']
+        """
+    )
+
+    security_name_tokens = (
+        "access", "acceso", "auth", "authorization", "autoriz",
+        "role", "rol", "rbac", "abac", "forbid", "denied", "deny",
+        "unauthor", "permiso", "permission", "admin", "audit",
+        "auditoria", "coordin", "supervisor", "prioriz", "bola",
+        "owner", "propiet", "scope", "alcance", "escalada",
+        "identity", "identidad", "agent", "agente", "asistente",
+    )
+
+    for path, relative in _iter_source_files(
+        detection.root,
+        max_files=None,
+    ):
+        if not _is_p1_evidence_source(relative):
+            continue
+        text = _read_text(path, limit=MAX_TEXT_SCAN_BYTES)
+        if not text:
+            continue
+        source = relative.as_posix()
+
+        for match in request_re.finditer(text):
+            start = max(0, match.start() - 1000)
+            end = min(len(text), match.start() + 2200)
+            window = text[start:end]
+
+            before = text[max(0, match.start() - 1200):match.start()]
+            test_names = list(
+                re.finditer(
+                    r"(?im)^\s*(?:def|async\s+def)\s+"
+                    r"(test_[A-Za-z0-9_]+)\s*\(",
+                    before,
+                )
+            )
+            test_name = (
+                test_names[-1].group(1)
+                if test_names
+                else ""
+            )
+            security_intent = any(
+                token in (test_name + " " + window[:500]).lower()
+                for token in security_name_tokens
+            )
+
+            username = next(
+                (item for item in usernames if item in window),
+                None,
+            )
+            var = re.escape(match.group("var"))
+            status: int | None = None
+            status_patterns = (
+                rf"\b{var}\.status_code\s*==\s*(\d{{3}})",
+                rf"\bassert\s+(\d{{3}})\s*==\s*{var}\.status_code",
+                rf"\b{var}\.status(?:_code)?\s*==\s*(\d{{3}})",
+            )
+            for pattern in status_patterns:
+                status_match = re.search(
+                    pattern,
+                    window,
+                    re.I,
+                )
+                if status_match:
+                    status = int(status_match.group(1))
+                    break
+
+            body = None
+            body_match = re.search(
+                r"\bjson\s*=\s*(\{.{0,800}?\})",
+                window,
+                re.S,
+            )
+            if body_match:
+                body = _safe_literal_dict(body_match.group(1))
+
+            contracts.append(
+                {
+                    "metodo": match.group("method").upper(),
+                    "ruta": match.group("route"),
+                    "cuenta": username,
+                    "http_esperado": status,
+                    "cuerpo": body,
+                    "archivo": source,
+                    "test": test_name,
+                    "intencion_seguridad": security_intent,
+                }
+            )
+
+    return contracts
+
+
+def _infer_agent_scope_checks(
+    detection: ProjectDetection,
+    endpoint_inventory: list[dict[str, Any]],
+    contracts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    agent_tokens = ("agent", "agente", "assistant", "asistente")
+    get_routes = {
+        str(item.get("ruta") or "")
+        for item in endpoint_inventory
+        if str(item.get("metodo") or "").upper() == "GET"
+    }
+
+    evidence_files: dict[str, list[dict[str, Any]]] = {}
+    for contract in contracts:
+        evidence_files.setdefault(
+            str(contract.get("archivo") or ""),
+            [],
+        ).append(contract)
+
+    for source, items in evidence_files.items():
+        agent = next(
+            (
+                item for item in items
+                if item.get("metodo") == "POST"
+                and any(
+                    token in str(item.get("ruta") or "").lower()
+                    for token in agent_tokens
+                )
+                and item.get("intencion_seguridad")
+            ),
+            None,
+        )
+        if not agent or not agent.get("cuenta"):
+            continue
+
+        direct = next(
+            (
+                item for item in items
+                if item.get("metodo") == "GET"
+                and item.get("ruta") in get_routes
+                and not any(
+                    token in str(item.get("ruta") or "").lower()
+                    for token in agent_tokens
+                )
+            ),
+            None,
+        )
+        if not direct:
+            continue
+
+        source_text = _read_text(
+            detection.root / source,
+            limit=MAX_TEXT_SCAN_BYTES,
+        )
+        if not all(
+            token in source_text
+            for token in ("pasos", "devueltas")
+        ):
+            continue
+
+        task_match = re.search(
+            r"""(?is)["']tarea["']\s*:\s*
+            ["']([^"']{1,300})["']""",
+            source_text,
+        )
+        if not task_match:
+            continue
+
+        tool_match = re.search(
+            r"""(?is)["']herramienta["']\s*
+            (?:==|:)\s*["']([^"']+)["']""",
+            source_text,
+        )
+        tool_name = (
+            tool_match.group(1)
+            if tool_match
+            else "listar_solicitudes"
+        )
+
+        checks.append(
+            {
+                "tipo": "alcance_agente",
+                "id_control": "P1-AUTO-SCOPE-001",
+                "nombre": (
+                    "El agente conserva el alcance de la identidad solicitante"
+                ),
+                "cuenta": agent["cuenta"],
+                "direct_metodo": "GET",
+                "direct_ruta": direct["ruta"],
+                "agent_ruta": agent["ruta"],
+                "agent_cuerpo": {"tarea": task_match.group(1)},
+                "direct_json_path": "$",
+                "steps_json_path": "$.pasos",
+                "tool_name": tool_name,
+                "tool_field": "herramienta",
+                "count_field": "devueltas",
+                "id_field": "id",
+                "archivos_fuente": [source],
+                "pistas_codigo": [
+                    "pasos",
+                    "herramienta",
+                    "devueltas",
+                ],
+                "autogenerado": True,
+                "confianza": "alta",
+                "fuentes_evidencia": [source],
+            }
+        )
+        break
+
+    return checks
+
+
+def _infer_automatic_p1_checks(
+    detection: ProjectDetection,
+    endpoint_inventory: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Reconstruye controles P1 desde rutas + tests/fixtures/seeds."""
+    checks: list[dict[str, Any]] = []
+    owner_samples = _extract_owner_samples(detection)
+    contracts = _extract_http_test_contracts(detection)
+
+    privileged_roles = {
+        str(account.get("role") or "").lower()
+        for account in detection.accounts
+        if str(account.get("role") or "").lower()
+        in _PRIVILEGED_ROLES
+    }
+    usernames = {
+        str(account.get("username") or "")
+        for account in detection.accounts
+    }
+
+    # BOLA: requiere una relación objeto -> propietario explícita.
+    bola_index = 1
+    for item in endpoint_inventory:
+        method = str(item.get("metodo") or "").upper()
+        raw_route = str(item.get("ruta") or "")
+        if method not in {"GET", "PATCH", "PUT", "DELETE"}:
+            continue
+        if not any(token in raw_route for token in ("<", "{")) and not re.search(
+            r":(?:id|\w+_id)(?=/|$)",
+            raw_route,
+            re.I,
+        ):
+            continue
+
+        profile_route = _parameter_to_profile_route(raw_route)
+        if "{id}" not in profile_route:
+            continue
+
+        sample = next(
+            (
+                evidence for evidence in owner_samples
+                if evidence.get("propietario_esperado") in usernames
+            ),
+            None,
+        )
+        if not sample:
+            continue
+
+        object_id = str(sample["id_prueba"])
+        matching_contract = next(
+            (
+                contract
+                for contract in contracts
+                if contract.get("metodo") == method
+                and _route_matches_literal(
+                    profile_route,
+                    str(contract.get("ruta") or ""),
+                    object_id,
+                )
+            ),
+            None,
+        )
+        body = (
+            matching_contract.get("cuerpo")
+            if matching_contract
+            else None
+        )
+        # Escrituras sin cuerpo de prueba verificable suelen producir 400 y
+        # esconder un BOLA real. En ese caso se conserva como candidato.
+        if method in {"PATCH", "PUT"} and body is None:
+            continue
+
+        control_id = f"P1-AUTO-BOLA-{bola_index:03d}"
+        bola_index += 1
+        route_sources = list(item.get("archivos") or [])
+        evidence_sources = list(
+            dict.fromkeys(
+                route_sources
+                + [str(sample["archivo"])]
+                + (
+                    [str(matching_contract["archivo"])]
+                    if matching_contract
+                    else []
+                )
+            )
+        )
+        checks.append(
+            {
+                "tipo": "bola",
+                "id_control": control_id,
+                "nombre": (
+                    f"Control de propiedad sobre {method} {profile_route}"
+                ),
+                "descripcion": (
+                    "El acceso al objeto debe respetar propietario o "
+                    "rol privilegiado."
+                ),
+                "metodo": method,
+                "ruta": profile_route,
+                "id_prueba": object_id,
+                "propietario_esperado": sample[
+                    "propietario_esperado"
+                ],
+                "cuerpo_prueba": body,
+                "codigos_permitidos": [200, 201, 204],
+                "archivos_fuente": route_sources,
+                "pistas_codigo": [
+                    "propietario",
+                    "owner",
+                    "autorización por objeto",
+                ],
+                "autogenerado": True,
+                "confianza": "alta",
+                "fuentes_evidencia": evidence_sources,
+            }
+        )
+
+    # RBAC/ABAC: solo usamos tests con intención de seguridad y status esperado.
+    sensitive_tokens = (
+        "admin", "audit", "auditoria", "prioriz", "role", "rol",
+        "permission", "permiso", "manage", "gestion", "config",
+    )
+    access_index = 1
+    seen_access: set[tuple[str, str, str]] = set()
+    for contract in contracts:
+        route = str(contract.get("ruta") or "")
+        username = str(contract.get("cuenta") or "")
+        status = contract.get("http_esperado")
+        method = str(contract.get("metodo") or "").upper()
+        if (
+            not contract.get("intencion_seguridad")
+            or not username
+            or username not in usernames
+            or not isinstance(status, int)
+            or not any(token in route.lower() for token in sensitive_tokens)
+        ):
+            continue
+        if status in {401, 403}:
+            expected = False
+        elif 200 <= status < 300:
+            expected = True
+        else:
+            continue
+
+        key = (username, method, route)
+        if key in seen_access:
+            continue
+        seen_access.add(key)
+        control_id = f"P1-AUTO-ACCESS-{access_index:03d}"
+        access_index += 1
+        checks.append(
+            {
+                "tipo": "acceso",
+                "id_control": control_id,
+                "nombre": (
+                    f"Política de acceso {method} {route} para {username}"
+                ),
+                "cuenta": username,
+                "metodo": method,
+                "ruta": route,
+                "acceso_esperado": expected,
+                "cuerpo": contract.get("cuerpo"),
+                "codigos_permitidos": [200, 201, 204],
+                "archivos_fuente": [contract["archivo"]],
+                "pistas_codigo": [
+                    "rol",
+                    "permiso",
+                    "status esperado en test",
+                ],
+                "autogenerado": True,
+                "confianza": "alta",
+                "fuentes_evidencia": [contract["archivo"]],
+            }
+        )
+
+    checks.extend(
+        _infer_agent_scope_checks(
+            detection,
+            endpoint_inventory,
+            contracts,
+        )
+    )
+
+    return checks
+
+
+def _materialize_p1_registry(
+    registry: list[dict[str, Any]],
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+]:
+    endpoints: list[dict[str, Any]] = []
+    access: list[dict[str, Any]] = []
+    agent: list[dict[str, Any]] = []
+
+    for raw in registry:
+        tipo = str(raw.get("tipo") or "").lower()
+        if tipo == "bola":
+            endpoint = {
+                key: raw[key]
+                for key in (
+                    "metodo", "ruta", "id_prueba",
+                    "propietario_esperado", "cuerpo_prueba",
+                    "codigos_permitidos", "id_control",
+                    "descripcion", "archivos_fuente", "pistas_codigo",
+                )
+                if key in raw
+            }
+            endpoints.append(endpoint)
+        elif tipo == "acceso":
+            item = {
+                key: raw[key]
+                for key in (
+                    "id_control", "nombre", "cuenta", "metodo", "ruta",
+                    "acceso_esperado", "cuerpo", "codigos_permitidos",
+                    "archivos_fuente", "pistas_codigo",
+                )
+                if key in raw
+            }
+            access.append(item)
+        elif tipo == "alcance_agente":
+            item = {
+                key: raw[key]
+                for key in (
+                    "nombre", "cuenta", "direct_metodo", "direct_ruta",
+                    "agent_ruta", "agent_cuerpo", "direct_json_path",
+                    "steps_json_path", "tool_name", "tool_field",
+                    "count_field", "id_field", "agent_items_json_path",
+                    "id_control", "archivos_fuente", "pistas_codigo",
+                )
+                if key in raw
+            }
+            agent.append(item)
+
+    return endpoints, access, agent
+
+
 def _infer_automatic_p2_checks(
     detection: ProjectDetection,
     endpoint_inventory: list[dict[str, Any]],
@@ -3157,6 +3828,15 @@ def build_profile_draft(
         detection,
         endpoint_inventory,
     )
+    inferred_p1_checks = _infer_automatic_p1_checks(
+        detection,
+        endpoint_inventory,
+    )
+    (
+        inferred_endpoints,
+        inferred_access_checks,
+        inferred_agent_checks,
+    ) = _materialize_p1_registry(inferred_p1_checks)
     inferred_p2_checks = _infer_automatic_p2_checks(
         detection,
         endpoint_inventory,
@@ -3180,10 +3860,11 @@ def build_profile_draft(
             }
         ),
         "runtime": detection.runtime,
-        "endpoints": [],
+        "chequeos_pilar1": inferred_p1_checks,
+        "endpoints": inferred_endpoints,
         "endpoints_detectados": endpoint_inventory,
-        "chequeos_agente": [],
-        "chequeos_acceso": [],
+        "chequeos_agente": inferred_agent_checks,
+        "chequeos_acceso": inferred_access_checks,
         "chequeos_pilar2": inferred_p2_checks,
         "correcciones": [],
         "metadata_detectada": {
@@ -3206,6 +3887,20 @@ def build_profile_draft(
             "perfil_generado_automaticamente": True,
             "candidatos_pilar1": inferred_p1_candidates,
             "total_candidatos_pilar1": len(inferred_p1_candidates),
+            "controles_pilar1_inferidos_automaticamente": [
+                {
+                    "id_control": item.get("id_control"),
+                    "nombre": item.get("nombre"),
+                    "tipo": item.get("tipo"),
+                    "confianza": item.get("confianza"),
+                    "fuentes_evidencia": item.get(
+                        "fuentes_evidencia",
+                        [],
+                    ),
+                }
+                for item in inferred_p1_checks
+            ],
+            "total_controles_pilar1_activos": len(inferred_p1_checks),
             "controles_inferidos_automaticamente": [
                 {
                     "id_control": item.get("id_control"),
@@ -3214,7 +3909,11 @@ def build_profile_draft(
                 }
                 for item in inferred_p2_checks
             ],
-            "total_controles_activos": len(inferred_p2_checks),
+            "total_controles_pilar2_activos": len(inferred_p2_checks),
+            "total_controles_activos": (
+                len(inferred_p1_checks)
+                + len(inferred_p2_checks)
+            ),
             "entorno_ejecucion": {
                 "docker_instalado": _docker_available_on_host(),
                 "runtime_principal": detection.runtime.get("nombre"),
