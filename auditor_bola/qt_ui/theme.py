@@ -634,6 +634,41 @@ QTextEdit, QPlainTextEdit {
     font-family: "Cascadia Mono", "Consolas", monospace;
     font-size: 10px;
 }
+QListWidget#AIProposalList {
+    background: #061722;
+    color: #DDEBF3;
+    border: 1px solid #173E58;
+    border-radius: 10px;
+    padding: 8px;
+    outline: 0;
+    selection-background-color: transparent;
+    selection-color: #FFFFFF;
+}
+QListWidget#AIProposalList::item {
+    background: #0A2232;
+    color: #C8DDE9;
+    border: 1px solid #17445F;
+    border-radius: 9px;
+    padding: 10px 12px;
+    margin: 1px 0;
+}
+QListWidget#AIProposalList::item:hover {
+    background: #0E2E43;
+    color: #F0F8FC;
+    border-color: #22658B;
+}
+QListWidget#AIProposalList::item:selected {
+    background: #124E73;
+    color: #FFFFFF;
+    border: 1px solid #39C7FF;
+}
+QListWidget#AIProposalList::item:selected:active,
+QListWidget#AIProposalList::item:selected:!active {
+    background: #124E73;
+    color: #FFFFFF;
+    border: 1px solid #39C7FF;
+}
+
 QTableWidget, QTreeWidget {
     background: #071824;
     alternate-background-color: #0A1D2B;
@@ -807,4 +842,3 @@ QMessageBox QPushButton:hover {
 
 def color(name: str) -> str:
     return COLORS[name]
-
