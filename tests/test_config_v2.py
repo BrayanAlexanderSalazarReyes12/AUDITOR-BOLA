@@ -160,3 +160,28 @@ def test_perfil_legacy_construye_registro_pilar1_en_memoria(tmp_path):
     assert len(cfg.chequeos_pilar1) == 1
     assert cfg.chequeos_pilar1[0]["tipo"] == "bola"
     assert cfg.chequeos_pilar1[0]["id_control"] == "P1-BOLA-LEGACY"
+
+
+
+def test_carga_inventario_para_matriz_endpoint_usuario(tmp_path):
+    path = tmp_path / "cfg-matrix.json"
+    path.write_text(json.dumps({
+        "sistema": "x",
+        "base_url": "http://127.0.0.1:5050",
+        "cuentas": [{
+            "username": "ana",
+            "password": "x",
+            "role": "member"
+        }],
+        "endpoints": [],
+        "endpoints_detectados": [
+            {"metodo": "GET", "ruta": "/api/items"},
+            {"metodo": "POST", "ruta": "/api/search"}
+        ],
+        "probar_todos_endpoints_con_todos_usuarios": True
+    }), encoding="utf-8")
+
+    cfg = cargar_config(path)
+
+    assert len(cfg.endpoints_detectados) == 2
+    assert cfg.probar_todos_endpoints_con_todos_usuarios is True
