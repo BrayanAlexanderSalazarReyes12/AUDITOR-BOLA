@@ -4263,6 +4263,7 @@ def _discover_automatic_p2(
         endpoint_inventory,
         languages=detection.languages,
         frameworks=detection.frameworks,
+        accounts=detection.accounts,
     )
 
 
