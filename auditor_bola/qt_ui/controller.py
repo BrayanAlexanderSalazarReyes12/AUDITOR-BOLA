@@ -359,7 +359,11 @@ class AuditorController(QObject):
     def start_target(self) -> None:
         def work():
             process = self._ensure_process()
-            return process.start()
+            return process.start(
+                progress_callback=lambda value, message: (
+                    self.task_progress.emit(value, message)
+                ),
+            )
 
         def success(status):
             self._apply_runtime_status(status or {})
