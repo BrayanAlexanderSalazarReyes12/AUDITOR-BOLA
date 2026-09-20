@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -904,6 +904,18 @@ class AIPage(QWidget):
             )
         )
         self.list = QListWidget()
+        self.list.setObjectName("AIProposalList")
+        self.list.setWordWrap(True)
+        self.list.setSpacing(8)
+        self.list.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.list.setVerticalScrollMode(
+            QAbstractItemView.ScrollMode.ScrollPerPixel
+        )
+        self.list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self.list.currentRowChanged.connect(self._show_proposal)
         left_l.addWidget(self.list, 1)
 
@@ -926,7 +938,10 @@ class AIPage(QWidget):
 
         split.addWidget(left)
         split.addWidget(right)
-        split.setSizes([380, 720])
+        left.setMinimumWidth(410)
+        split.setStretchFactor(0, 5)
+        split.setStretchFactor(1, 7)
+        split.setSizes([500, 700])
         layout.addWidget(split, 1)
 
         self.refresh_provider()
@@ -1011,13 +1026,45 @@ class AIPage(QWidget):
     def set_proposals(self, proposals: list[dict]) -> None:
         self.proposals = list(proposals)
         self.list.clear()
-        for proposal in proposals:
-            item = QListWidgetItem(
-                f"{proposal.get('enfoque')} · "
-                f"{proposal.get('titulo')} · "
-                f"riesgo {proposal.get('riesgo')}"
+
+        for index, proposal in enumerate(proposals, start=1):
+            enfoque = str(
+                proposal.get("enfoque") or f"OPCIÓN {index}"
+            ).upper()
+            titulo = str(
+                proposal.get("titulo") or "Propuesta sin título"
+            ).strip()
+            riesgo = str(
+                proposal.get("riesgo") or "NO DEFINIDO"
+            ).upper()
+            explicacion = str(
+                proposal.get("explicacion") or ""
+            ).strip()
+
+            # La lista funciona como selector visual, no como volcado JSON.
+            # Se muestran las tres propuestas con jerarquía clara y sin
+            # obligar al usuario a desplazarse horizontalmente.
+            preview = explicacion
+            if len(preview) > 115:
+                preview = preview[:112].rstrip() + "…"
+
+            lines = [
+                f"{index}. {enfoque}    •    Riesgo {riesgo}",
+                titulo,
+            ]
+            if preview:
+                lines.append(preview)
+
+            item = QListWidgetItem("\n".join(lines))
+            item.setToolTip(
+                f"{enfoque} · Riesgo {riesgo}\n{titulo}"
+                + (f"\n\n{explicacion}" if explicacion else "")
+            )
+            item.setSizeHint(
+                QSize(0, 92 if preview else 70)
             )
             self.list.addItem(item)
+
         if proposals:
             self.list.setCurrentRow(0)
 
