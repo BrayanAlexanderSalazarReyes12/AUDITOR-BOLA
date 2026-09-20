@@ -4678,6 +4678,7 @@ def build_profile_draft(
         "chequeos_pilar1": inferred_p1_checks,
         "endpoints": inferred_endpoints,
         "endpoints_detectados": endpoint_inventory,
+        "probar_todos_endpoints_con_todos_usuarios": True,
         "chequeos_agente": inferred_agent_checks,
         "chequeos_acceso": inferred_access_checks,
         "chequeos_pilar2": inferred_p2_checks,
@@ -4696,6 +4697,16 @@ def build_profile_draft(
                 route.as_dict() for route in detection.routes
             ],
             "total_endpoints_detectados": len(endpoint_inventory),
+            "matriz_endpoint_usuario": {
+                "habilitada": True,
+                "combinaciones_previstas": (
+                    len(endpoint_inventory) * len(detection.accounts)
+                ),
+                "politica_mutaciones": (
+                    "GET/HEAD/OPTIONS directos; POST/PUT/PATCH con cuerpo "
+                    "vacio; DELETE omitido para evitar perdida de datos"
+                ),
+            },
             "total_coincidencias_endpoint": len(detection.routes),
             "cuentas_candidatas": list(detection.account_sources),
             "archivos_cuentas_escaneados": True,
