@@ -830,3 +830,71 @@ def test_comando_python_generado_usa_venv_del_proyecto(tmp_path, monkeypatch):
 
     assert command[0] == str(python.resolve())
     assert command[1:] == ["run.py"]
+
+
+
+def test_detecta_url_local_real_desde_salida_del_servidor(tmp_path):
+    runtime = RuntimeConfig(
+        comando_inicio=["python", "run.py"],
+        base_url="http://127.0.0.1:5000",
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+    manager._reset_output_buffer()
+    try:
+        manager._output.write(
+            (
+                "Tramitia 2.4.0-rc1 en http://127.0.0.1:5050 "
+                "(debug=False)\n"
+                " * Running on http://127.0.0.1:5050\n"
+            ).encode("utf-8")
+        )
+        assert (
+            manager._detect_local_url_from_output()
+            == "http://127.0.0.1:5050"
+        )
+    finally:
+        manager._close_output_buffer()
+
+
+def test_readiness_corrige_puerto_estimado_con_url_anunciada(
+    tmp_path,
+):
+    runtime = RuntimeConfig(
+        comando_inicio=["python", "run.py"],
+        base_url="http://127.0.0.1:5000",
+        espera_inicio=0,
+        timeout_inicio=2,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    class FakeProcess:
+        returncode = None
+
+        def poll(self):
+            return None
+
+    manager.process = FakeProcess()
+
+    connection = type(
+        "Connection",
+        (),
+        {
+            "__enter__": lambda self: self,
+            "__exit__": lambda self, *args: False,
+        },
+    )()
+
+    with patch.object(
+        manager,
+        "_detect_local_url_from_output",
+        return_value="http://127.0.0.1:5050",
+    ), patch(
+        "auditor_bola.process_manager.socket.create_connection",
+        return_value=connection,
+    ) as connect:
+        ready, detail = manager._wait_until_target_ready()
+
+    assert ready is True
+    assert "5050" in detail
+    assert manager.runtime.base_url == "http://127.0.0.1:5050"
+    connect.assert_called_with(("127.0.0.1", 5050), timeout=0.8)
