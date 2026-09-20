@@ -403,6 +403,27 @@ class AuditorController(QObject):
 
         self._persist_runtime_plan()
 
+    def _enforce_profile_base_url(self) -> None:
+        """Sincroniza runtimes con la IP/puerto autorizados por config JSON."""
+        if not self.cfg:
+            return
+
+        authorized = str(
+            self.cfg.base_url or ""
+        ).strip().rstrip("/")
+        if not authorized:
+            return
+
+        runtime = self.cfg.runtime
+        runtime.base_url = authorized
+
+        for item in runtime.alternativas or []:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("modo") or "process").lower() == "external":
+                continue
+            item["base_url"] = authorized
+
     def _ensure_process(self) -> LocalTargetProcess:
         if not self.cfg:
             raise RuntimeError("Carga primero un perfil JSON.")
@@ -411,9 +432,12 @@ class AuditorController(QObject):
 
         if self.proceso is None:
             self._augment_runtime_from_target()
+            self._enforce_profile_base_url()
+            self._persist_runtime_plan()
             self.proceso = LocalTargetProcess(
                 self.target_root,
                 self.cfg.runtime,
+                authorized_base_url=self.cfg.base_url,
             )
         return self.proceso
 
@@ -507,42 +531,28 @@ class AuditorController(QObject):
         mode = str(status.get("modo") or "")
         command = status.get("comando_inicio") or []
 
-        if runtime_url:
-            self.cfg.base_url = runtime_url
+        authorized_profile_url = str(
+            self.cfg.base_url or ""
+        ).strip().rstrip("/")
 
-            # Si el runtime seleccionado fue una alternativa local y descubrió
+        if runtime_url and not authorized_profile_url:
+            self.cfg.base_url = runtime_url
+            authorized_profile_url = runtime_url
+
+            # Si no había URL autorizada, el runtime descubierto se convierte
+            # en la URL del perfil.
             # un puerto real distinto (ej. 5000 -> 5050), guardar ese valor en
             # el perfil para no repetir la detección equivocada en el próximo
             # arranque de Aegis.
-            matched = False
+        if authorized_profile_url:
             current = self.cfg.runtime
-            if (
-                (not mode or current.modo == mode)
-                and (
-                    not origin
-                    or origin == "-"
-                    or current.origen == origin
-                )
-            ):
-                current.base_url = runtime_url
-                matched = True
-
-            if not matched:
-                for item in current.alternativas or []:
-                    if not isinstance(item, dict):
-                        continue
-                    if mode and str(item.get("modo") or "") != mode:
-                        continue
-                    if (
-                        origin
-                        and origin != "-"
-                        and str(item.get("origen") or "") != origin
-                    ):
-                        continue
-                    item["base_url"] = runtime_url
-                    matched = True
-                    break
-
+            current.base_url = authorized_profile_url
+            for item in current.alternativas or []:
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("modo") or "process").lower() == "external":
+                    continue
+                item["base_url"] = authorized_profile_url
             self._persist_runtime_plan()
 
         command = status.get("comando_inicio") or []
