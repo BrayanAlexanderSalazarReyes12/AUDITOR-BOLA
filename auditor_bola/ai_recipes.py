@@ -1398,6 +1398,9 @@ def _construir_contexto(
             matriz_pruebas or []
         ),
         "intentos_anteriores_fallidos": _redactar_estructura(attempts),
+        "intento_anterior_fallido": _redactar_estructura(
+            attempts[-1] if attempts else None
+        ),
         "strategy_reset": reset,
         "diagnostico_causa_raiz": _redactar_estructura(
             diagnostico_raiz or {}
@@ -1898,29 +1901,3 @@ def generalizar_correccion_exitosa(
             data, "señales_aplicabilidad"
         ),
         requisitos_implementacion=_lista_strings(
-            data, "requisitos_implementacion"
-        ),
-        anti_patrones=_lista_strings(data, "anti_patrones"),
-        contrato_verificacion=_lista_strings(
-            data, "contrato_verificacion"
-        ),
-        consideraciones=_lista_strings(
-            data, "consideraciones"
-        ),
-        lenguajes_observados=_lista_strings(
-            data, "lenguajes_observados"
-        ),
-        frameworks_observados=_lista_strings(
-            data, "frameworks_observados"
-        ),
-        familia_control=normalizar_familia_control(control_id),
-        tipo_control=(
-            str(metadata_hallazgo.get("tipo_control")).strip()
-            if metadata_hallazgo.get("tipo_control")
-            else None
-        ),
-        verificada=True,
-        casos_exitosos=1,
-    )
-    knowledge.ensure_id()
-    return knowledge, contexto, provider
