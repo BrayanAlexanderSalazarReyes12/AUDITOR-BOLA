@@ -29,6 +29,15 @@ VALID_STATES = {
     "descartado",
     "no_aplicable",
     "no_ejecutable",
+    "ejecutable",
+    "ejecutado",
+    "vulnerable",
+    "seguro",
+    "bloqueado",
+    "error",
+    "correccion_pendiente",
+    "corregido",
+    "correccion_fallida",
 }
 
 
@@ -127,7 +136,7 @@ DEFAULT_FAMILIES = FamilyRegistry(
         ),
         FamilyDefinition(
             "LIMIT_BYPASS",
-            "P1",
+            "P2",
             "Bypass de límites u opciones excepcionales",
             ("parametro_o_rama", "limite", "identidad", "autorizacion"),
             "Comparar operación normal, opción especial con bajo privilegio y "
@@ -373,6 +382,11 @@ def _evidence_summary(raw: dict[str, Any]) -> list[dict[str, Any]]:
     motive = raw.get("motivo")
     if motive:
         evidence.append({"tipo": "hipotesis_origen", "valor": str(motive)})
+    structured = raw.get("evidencia")
+    if isinstance(structured, list):
+        for item in structured:
+            if isinstance(item, dict) and item not in evidence:
+                evidence.append(dict(item))
     return evidence
 
 
@@ -425,10 +439,19 @@ def _state_rank(state: str) -> int:
         "evidencia_insuficiente": 0,
         "candidato": 1,
         "no_ejecutable": 1,
+        "bloqueado": 1,
+        "error": 1,
         "por_confirmar": 2,
+        "correccion_pendiente": 2,
+        "ejecutable": 3,
+        "ejecutado": 3,
         "prueba_preparada": 3,
         "descartado": 4,
+        "seguro": 4,
+        "corregido": 4,
         "confirmado": 5,
+        "vulnerable": 5,
+        "correccion_fallida": 5,
     }.get(state, 0)
 
 
@@ -722,7 +745,7 @@ def enrich_profile(profile: dict[str, Any]) -> dict[str, Any]:
                     "recurso", "propietario", "hipotesis", "causa_raiz",
                     "id_control",
                 )},
-                "componente": raw.get("archivo"),
+                "componente": raw.get("componente") or raw.get("archivo"),
                 "evidencia": item["evidencia"],
                 "caso_prueba": item["casos_prueba"][0],
             }
@@ -752,6 +775,42 @@ def enrich_profile(profile: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    for raw in profile.get("candidatos_pilar2") or []:
+        if not isinstance(raw, dict):
+            continue
+        raw_state = str(raw.get("estado") or "candidato").lower()
+        state = (
+            raw_state
+            if raw_state in VALID_STATES
+            else "candidato"
+        )
+        item = _explain_control(
+            raw,
+            state=state,
+            role_by_user=role_by_user,
+        )
+        item["componente"] = raw.get("componente")
+        item["estrategia_correccion"] = raw.get(
+            "estrategia_correccion"
+        )
+        explained.append(item)
+        hypotheses.append(
+            {
+                **{key: item.get(key) for key in (
+                    "familia", "estado", "confianza", "endpoint", "metodo",
+                    "recurso", "propietario", "hipotesis", "causa_raiz",
+                    "id_control",
+                )},
+                "componente": raw.get("componente"),
+                "evidencia": _evidence_summary(raw),
+                "caso_prueba": (
+                    (raw.get("casos_prueba") or [None])[0]
+                    if isinstance(raw.get("casos_prueba"), list)
+                    else None
+                ),
+            }
+        )
+
     profile["modelo_seguridad"] = build_security_model(profile)
     profile["familias_controles"] = DEFAULT_FAMILIES.as_dict()
     profile["controles_explicados"] = explained
@@ -761,7 +820,7 @@ def enrich_profile(profile: dict[str, Any]) -> dict[str, Any]:
     engine = dict(metadata.get("motor_evidencia") or {})
     engine.update(
         {
-            "version": 3,
+            "version": 4,
             "modo": "evidencia-correlacionada-iterativa",
             "separa_hallazgo_evidencia_caso": True,
             "deduplicacion_semantica": True,
@@ -777,6 +836,10 @@ def enrich_profile(profile: dict[str, Any]) -> dict[str, Any]:
                 "actualizar_modelo",
                 "generar_pruebas_adicionales",
                 "consolidar",
+                "proponer_correccion_contextual",
+                "reprobar",
+                "regresion",
+                "aprender_receta_abstracta",
             ],
         }
     )
@@ -970,7 +1033,7 @@ def consolidate_runtime_results(result: dict[str, Any]) -> list[dict[str, Any]]:
                 account=raw.get("cuenta"),
                 role=None,
                 detail=raw.get("detalle") or raw.get("nombre"),
-                component=raw.get("archivo"),
+                component=raw.get("componente") or raw.get("archivo"),
                 confidence=raw.get("confianza"),
                 severity=raw.get("severidad"),
                 recommendation=raw.get("recomendacion"),
@@ -981,6 +1044,11 @@ def consolidate_runtime_results(result: dict[str, Any]) -> list[dict[str, Any]]:
                     "severidad": raw.get("severidad"),
                     "confianza": raw.get("confianza"),
                     "evidencia_estructurada": structured_evidence,
+                    "configuracion_detectada": raw.get(
+                        "configuracion_detectada"
+                    ),
+                    "casos_prueba": raw.get("casos_prueba") or [],
+                    "origen": raw.get("origen"),
                 },
             )
         )

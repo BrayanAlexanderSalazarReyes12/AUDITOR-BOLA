@@ -23,6 +23,7 @@ from .security_semantics import (
 
 
 from .security_model import enrich_profile
+from .pilar2_engine import discover_pilar2
 
 
 TEXT_EXTENSIONS = {
@@ -4682,10 +4683,12 @@ def build_profile_draft(
         inferred_access_checks,
         inferred_agent_checks,
     ) = _materialize_p1_registry(inferred_p1_checks)
-    inferred_p2_checks = _infer_automatic_p2_checks(
-        detection,
+    p2_discovery = discover_pilar2(
+        detection.root,
         endpoint_inventory,
     )
+    inferred_p2_checks = list(p2_discovery["controles"])
+    inferred_p2_candidates = list(p2_discovery["candidatos"])
 
     profile = {
         "sistema": _slug(name),
@@ -4713,6 +4716,10 @@ def build_profile_draft(
         "chequeos_agente": inferred_agent_checks,
         "chequeos_acceso": inferred_access_checks,
         "chequeos_pilar2": inferred_p2_checks,
+        "candidatos_pilar2": inferred_p2_candidates,
+        "estrategias_correccion_pilar2": list(
+            p2_discovery["estrategias_correccion"]
+        ),
         "correcciones": [],
         "metadata_detectada": {
             "nombre_proyecto": detection.name,
@@ -4760,12 +4767,12 @@ def build_profile_draft(
                     "alcance de agente desde API directa vs agente",
                 ],
                 "capacidades_pilar2": [
-                    "CORS",
-                    "secretos por defecto",
-                    "debug explicito",
-                    "cookies Secure=false",
-                    "bypass de limites sin guardia",
-                    "contenedor no-root",
+                    "CORS estatico + GET/OPTIONS dinamico",
+                    "secretos/fallbacks con contexto de entorno",
+                    "bypass de limites como candidato diferencial",
+                    "contenedor multi-stage + overrides runtime",
+                    "debug y sesion extensibles por familia",
+                    "deduplicacion hallazgo != caso de prueba",
                 ],
                 "politica_confianza": (
                     "solo activar controles cuando la evidencia es "
@@ -4796,6 +4803,12 @@ def build_profile_draft(
                 }
                 for item in inferred_p2_checks
             ],
+            "candidatos_pilar2": inferred_p2_candidates,
+            "total_candidatos_pilar2": len(inferred_p2_candidates),
+            "descubrimiento_pilar2": dict(p2_discovery["estadisticas"]),
+            "estrategias_correccion_pilar2": list(
+                p2_discovery["estrategias_correccion"]
+            ),
             "total_controles_pilar2_activos": len(inferred_p2_checks),
             "total_controles_activos": (
                 len(inferred_p1_checks)
