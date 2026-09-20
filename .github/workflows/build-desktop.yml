@@ -1,4 +1,4 @@
-# matrix-policy-evaluation-release: v1.1.24
+# matrix-policy-evaluation-release: v1.2.0
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.24' \
+            'Version: 1.2.0' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -230,12 +230,12 @@ jobs:
 
 
   release-v1-1-23:
-    name: Publicar Release v1.1.24
+    name: Publicar Release v1.2.0
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.24]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.0]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,11 +253,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.24
+          # Aegis Auditor v1.2.0
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.24
+          ## Novedades de v1.2.0
           - Nuevo motor de seguridad basado en evidencia y relaciones semánticas.
           - Modelo explícito Identidad → Rol/Atributos → Endpoint → Recurso → Propiedad.
           - Deduplicación semántica de hallazgos por familia, recurso y causa raíz.
@@ -416,16 +416,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.24" >/dev/null 2>&1; then
-            gh release upload "v1.1.24" "${files[@]}" --clobber
-            gh release edit "v1.1.24" \
-              --title "Aegis Auditor v1.1.24" \
+          if gh release view "v1.2.0" >/dev/null 2>&1; then
+            gh release upload "v1.2.0" "${files[@]}" --clobber
+            gh release edit "v1.2.0" \
+              --title "Aegis Auditor v1.2.0" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.24" "${files[@]}" \
+            gh release create "v1.2.0" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.24" \
+              --title "Aegis Auditor v1.2.0" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
