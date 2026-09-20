@@ -12,6 +12,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import BinaryIO, Callable
+from urllib.parse import urlparse
 
 from .config import RuntimeConfig
 
@@ -44,6 +45,7 @@ class LocalTargetProcess:
         self._runtime_selected = False
         self._started_successfully = False
         self._selection_notes: list[str] = []
+        self._cleanup_notes: list[str] = []
         self._progress_callback: Callable[[int, str], None] | None = None
 
     def _emit_progress(self, value: int, message: str) -> None:
@@ -306,6 +308,7 @@ class LocalTargetProcess:
             "alternativas_descartadas": list(
                 self._selection_notes
             ),
+            "limpieza_previa": list(self._cleanup_notes),
         }
 
     def has_started(self) -> bool:
@@ -532,6 +535,249 @@ class LocalTargetProcess:
                 f"(código {completed.returncode}).\n\n{detail}"
             )
 
+    def _local_port_from_runtime(self) -> int | None:
+        """Devuelve el puerto local explícito usado por el runtime."""
+        raw_url = str(self.runtime.base_url or "").strip()
+        if not raw_url:
+            return None
+
+        try:
+            parsed = urlparse(raw_url)
+            host = (parsed.hostname or "").lower()
+            port = parsed.port
+        except (ValueError, TypeError):
+            return None
+
+        local_hosts = {
+            "localhost",
+            "127.0.0.1",
+            "0.0.0.0",
+            "::1",
+            "::",
+        }
+        if host not in local_hosts or port is None:
+            return None
+
+        # Evita cerrar por accidente servicios del sistema en puertos
+        # privilegiados. Los perfiles generados por Aegis usan puertos
+        # explícitos de desarrollo (3000, 5000, 8000, 8080, etc.).
+        if port < 1024:
+            return None
+        return int(port)
+
+    def _windows_listener_pids(self, port: int) -> set[int]:
+        try:
+            completed = subprocess.run(
+                ["netstat", "-ano", "-p", "tcp"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return set()
+
+        if completed.returncode != 0:
+            return set()
+
+        pids: set[int] = set()
+        suffix = f":{port}"
+        for raw_line in completed.stdout.splitlines():
+            line = raw_line.strip()
+            if not line or "LISTENING" not in line.upper():
+                continue
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            local_address = parts[1]
+            if not local_address.endswith(suffix):
+                continue
+            try:
+                pid = int(parts[-1])
+            except ValueError:
+                continue
+            if pid > 4 and pid != os.getpid():
+                pids.add(pid)
+        return pids
+
+    def _posix_listener_pids(self, port: int) -> set[int]:
+        env = os.environ.copy()
+        lsof = self._which("lsof", env)
+        if lsof:
+            try:
+                completed = subprocess.run(
+                    [
+                        lsof,
+                        "-nP",
+                        "-t",
+                        f"-iTCP:{port}",
+                        "-sTCP:LISTEN",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                if completed.returncode in {0, 1}:
+                    return {
+                        int(item)
+                        for item in completed.stdout.split()
+                        if item.isdigit()
+                        and int(item) > 1
+                        and int(item) != os.getpid()
+                    }
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+        fuser = self._which("fuser", env)
+        if fuser:
+            try:
+                completed = subprocess.run(
+                    [fuser, "-n", "tcp", str(port)],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                output = f"{completed.stdout} {completed.stderr}"
+                return {
+                    int(item)
+                    for item in output.replace(f"{port}/tcp:", " ").split()
+                    if item.isdigit()
+                    and int(item) > 1
+                    and int(item) != os.getpid()
+                }
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+        return set()
+
+    def _terminate_stale_listener(self, port: int) -> list[int]:
+        """Elimina procesos huérfanos que mantienen ocupado el puerto objetivo."""
+        if _is_windows():
+            pids = self._windows_listener_pids(port)
+            killed: list[int] = []
+            for pid in sorted(pids):
+                try:
+                    completed = subprocess.run(
+                        [
+                            "taskkill",
+                            "/PID",
+                            str(pid),
+                            "/T",
+                            "/F",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                    )
+                    if completed.returncode == 0:
+                        killed.append(pid)
+                except (OSError, subprocess.SubprocessError):
+                    continue
+            return killed
+
+        pids = self._posix_listener_pids(port)
+        killed: list[int] = []
+        for pid in sorted(pids):
+            try:
+                pgid = os.getpgid(pid)
+            except (ProcessLookupError, PermissionError, OSError):
+                pgid = None
+
+            try:
+                if pgid == pid:
+                    os.killpg(pgid, signal.SIGTERM)
+                else:
+                    os.kill(pid, signal.SIGTERM)
+                killed.append(pid)
+            except (ProcessLookupError, PermissionError, OSError):
+                continue
+
+        if killed:
+            time.sleep(0.35)
+            for pid in killed:
+                try:
+                    os.kill(pid, 0)
+                except (ProcessLookupError, PermissionError, OSError):
+                    continue
+                try:
+                    pgid = os.getpgid(pid)
+                except (ProcessLookupError, PermissionError, OSError):
+                    pgid = None
+                try:
+                    if pgid == pid:
+                        os.killpg(pgid, signal.SIGKILL)
+                    else:
+                        os.kill(pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError, OSError):
+                    pass
+
+        return killed
+
+    def _cleanup_previous_instance(self) -> None:
+        """Limpia instancias anteriores antes de cualquier nuevo arranque.
+
+        Esto cubre cierres forzados de Aegis donde el proceso objetivo o un
+        servicio (por ejemplo Docker Compose) pudo quedar vivo.
+        """
+        self._cleanup_notes = []
+        self._emit_progress(
+            25,
+            "Buscando y cerrando instancias anteriores del objetivo…",
+        )
+
+        # Si esta instancia de Aegis todavía conserva un proceso administrado,
+        # se detiene primero de forma normal.
+        if self.has_started():
+            try:
+                self.stop()
+                self._cleanup_notes.append(
+                    "Se detuvo la instancia administrada que seguía activa."
+                )
+            except Exception as exc:
+                self._cleanup_notes.append(
+                    f"No se pudo detener la instancia administrada: {exc}"
+                )
+
+        mode = self._modo()
+        stop_command = self._command_for("detener")
+
+        # En modo service el comando de parada es la forma más precisa de
+        # limpiar servicios huérfanos (docker compose down, systemctl, etc.).
+        if mode == "service" and stop_command:
+            try:
+                self._run_control_command(
+                    stop_command,
+                    action_name="limpiar instancia anterior",
+                )
+                self._cleanup_notes.append(
+                    "Se ejecutó el comando de limpieza del servicio anterior."
+                )
+            except Exception as exc:
+                # Una parada puede fallar simplemente porque no había servicio.
+                # No debe impedir probar el arranque nuevo.
+                self._cleanup_notes.append(
+                    "El comando de limpieza previa no encontró un servicio "
+                    f"detenible o falló: {exc}"
+                )
+
+        port = self._local_port_from_runtime()
+        if port is not None:
+            killed = self._terminate_stale_listener(port)
+            if killed:
+                self._cleanup_notes.append(
+                    f"Se cerraron procesos huérfanos en el puerto {port}: "
+                    + ", ".join(str(pid) for pid in killed)
+                )
+            else:
+                self._cleanup_notes.append(
+                    f"Puerto {port} libre; no se detectaron procesos huérfanos."
+                )
+
+        self._service_running = False
+        self._started_successfully = False
+        self.process = None
+        self._close_output_buffer()
+        self._emit_progress(32, "Limpieza previa completada.")
+
     def _prepare_if_needed(self) -> None:
         if not self.runtime.preparar_automaticamente or self._prepared:
             self._emit_progress(35, "Dependencias listas.")
@@ -591,10 +837,6 @@ class LocalTargetProcess:
     ) -> dict[str, object]:
         self._progress_callback = progress_callback
         self._emit_progress(5, "Iniciando aplicación objetivo…")
-        if self.is_running():
-            self._emit_progress(100, "La aplicación objetivo ya está en ejecución.")
-            return self.runtime_status()
-
         self._select_runtime_if_needed()
         mode = self._modo()
 
@@ -605,7 +847,7 @@ class LocalTargetProcess:
                 "ejecuta el diagnóstico contra base_url."
             )
 
-        self._started_successfully = False
+        self._cleanup_previous_instance()
         self._prepare_if_needed()
 
         start_command = self._command_for("inicio")
