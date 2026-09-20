@@ -13,11 +13,11 @@ from .corrective import (
     correction_available,
     rollback,
 )
-from .evidence import EvidenceSession
+from .evidence import EvidenceSession, sha256_file
 from .language_detection import (
     detect_source_language,
     requires_service_restart,
-), sha256_file
+)
 from .project_validation import validate_project_after_patch
 from .runner import diagnosticar, filas_gui
 
