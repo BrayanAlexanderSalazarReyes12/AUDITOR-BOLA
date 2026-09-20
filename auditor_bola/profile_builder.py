@@ -4208,7 +4208,11 @@ def _infer_automatic_p2_checks(
         \s*=\s*
         os\.(?:getenv|environ\.get)\(
         [^,\n]+,\s*
-        (["'])(?!none\1|null\1)[^"'\n]{3,}\1
+        (?:
+            (["'])(?!none\1|null\1)[^"'\n]{3,}\1
+            |
+            [A-Za-z_][A-Za-z0-9_]*
+        )
         \)
         """
     )
@@ -4331,9 +4335,30 @@ def _infer_automatic_p2_checks(
             ):
                 match = pattern.search(text)
                 if match:
+                    literal = match.group(0).strip()
+                    # Si el fallback es un identificador simbólico, solo lo
+                    # consideramos inseguro cuando su nombre comunica valor
+                    # por defecto/desarrollo/secreto reutilizable.
+                    fallback_match = re.search(
+                        r",\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*$",
+                        literal,
+                        re.I,
+                    )
+                    if fallback_match:
+                        fallback_name = fallback_match.group(1).lower()
+                        suspicious = (
+                            "default", "defecto", "dev", "secret",
+                            "secreto", "token", "password", "passwd",
+                            "clave", "key",
+                        )
+                        if not any(
+                            token in fallback_name
+                            for token in suspicious
+                        ):
+                            continue
                     secret_match = (
                         source,
-                        match.group(0).strip(),
+                        literal,
                     )
                     break
 
