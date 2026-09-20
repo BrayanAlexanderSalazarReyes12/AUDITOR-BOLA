@@ -17,12 +17,12 @@ VSVersionInfo(
         [
           StringStruct(u'CompanyName', u'Aegis Auditor Project'),
           StringStruct(u'FileDescription', u'Aegis Auditor - Security Remediation Studio'),
-          StringStruct(u'FileVersion', u'1.1.4'),
+          StringStruct(u'FileVersion', u'1.1.24'),
           StringStruct(u'InternalName', u'AegisAuditor'),
           StringStruct(u'LegalCopyright', u'Aegis Auditor Project'),
           StringStruct(u'OriginalFilename', u'AegisAuditor.exe'),
           StringStruct(u'ProductName', u'Aegis Auditor'),
-          StringStruct(u'ProductVersion', u'1.1.4')
+          StringStruct(u'ProductVersion', u'1.1.24')
         ]
       )
     ]),
