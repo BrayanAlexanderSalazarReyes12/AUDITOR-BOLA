@@ -94,6 +94,51 @@ def _items(payload: Any) -> list[dict[str, Any]]:
     return [payload] if isinstance(payload, dict) else []
 
 
+def _noop_patch_body(
+    item: dict[str, Any],
+    *,
+    id_field: str,
+    owner_field: str,
+) -> dict[str, Any] | None:
+    """Construye un PATCH de mismo valor para minimizar efectos laterales.
+
+    Solo usa escalares simples y evita identidad, secretos, roles, timestamps
+    e identificadores. El control no se ejecuta durante descubrimiento; se
+    guarda para la auditoría posterior.
+    """
+    blocked_tokens = (
+        "id", "uuid", "code", "codigo", "owner", "author", "creator",
+        "propiet", "user", "usuario", "role", "rol", "permission",
+        "password", "passwd", "secret", "token", "key", "created",
+        "updated", "timestamp", "fecha", "date", "time",
+    )
+    preferred_tokens = (
+        "summary", "resumen", "title", "titulo", "subject", "asunto",
+        "description", "descripcion", "detalle", "status", "estado",
+        "name", "nombre",
+    )
+
+    candidates: list[tuple[int, str, Any]] = []
+    for key, value in item.items():
+        if isinstance(value, (dict, list)) or value is None:
+            continue
+        normalized = str(key).lower()
+        if key in {id_field, owner_field}:
+            continue
+        if any(token in normalized for token in blocked_tokens):
+            continue
+        score = 10
+        if any(token in normalized for token in preferred_tokens):
+            score = 100
+        candidates.append((score, str(key), value))
+
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)
+    _score, key, value = candidates[0]
+    return {key: value}
+
+
 def resolve_live_bola_candidates(
     cfg: ConfigObjetivo,
     metadata: dict[str, Any],
@@ -145,6 +190,7 @@ def resolve_live_bola_candidates(
         evidence_account = ""
         evidence_id_field = ""
         evidence_owner_field = ""
+        found_item: dict[str, Any] | None = None
 
         for account in cfg.cuentas:
             if not account.username:
@@ -186,6 +232,7 @@ def resolve_live_bola_candidates(
                 evidence_owner_field = str(
                     evidence.get("campo_propietario") or ""
                 )
+                found_item = dict(item)
                 break
             if found_id:
                 break
@@ -225,5 +272,69 @@ def resolve_live_bola_candidates(
         )
         resolved.append(endpoint)
         existing.add(key)
+
+        # Si existe un candidato PATCH sobre la misma ruta, la evidencia GET
+        # ya demuestra qué objeto y propietario usar. Construimos un cuerpo
+        # de mismo valor a partir del objeto leído para que el control de
+        # escritura sea ejecutable sin inventar datos del dominio.
+        patch_body = (
+            _noop_patch_body(
+                found_item,
+                id_field=evidence_id_field,
+                owner_field=evidence_owner_field,
+            )
+            if found_item
+            else None
+        )
+        if patch_body:
+            for sibling in metadata.get("candidatos_pilar1") or []:
+                if not isinstance(sibling, dict):
+                    continue
+                if str(sibling.get("familia") or "").upper() != "BOLA":
+                    continue
+                if str(sibling.get("metodo") or "").upper() != "PATCH":
+                    continue
+                sibling_route, _collection = _profile_route(
+                    str(sibling.get("ruta_detectada") or "")
+                )
+                if sibling_route != route:
+                    continue
+
+                patch_key = (
+                    "PATCH",
+                    route,
+                    found_id,
+                    found_owner,
+                )
+                if patch_key in existing:
+                    continue
+                resolved.append(
+                    Endpoint(
+                        metodo="PATCH",
+                        ruta=route,
+                        id_prueba=found_id,
+                        propietario_esperado=found_owner,
+                        cuerpo_prueba=patch_body,
+                        id_control=(
+                            "P1-AUTO-LIVE-BOLA-"
+                            + str(len(resolved) + 1).zfill(3)
+                        ),
+                        descripcion=(
+                            "BOLA de escritura derivado de propiedad GET "
+                            "con PATCH de mismo valor"
+                        ),
+                        archivos_fuente=list(
+                            sibling.get("archivos_fuente") or []
+                        ),
+                        pistas_codigo=[
+                            "candidato BOLA PATCH",
+                            f"objeto {found_id}",
+                            f"propietario {found_owner}",
+                            "cuerpo PATCH de mismo valor",
+                            f"campo actualizado {next(iter(patch_body))}",
+                        ],
+                    )
+                )
+                existing.add(patch_key)
 
     return resolved
