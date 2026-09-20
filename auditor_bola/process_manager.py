@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -432,6 +433,39 @@ class LocalTargetProcess:
             requested,
         )
 
+    def _python_interpreter(self, env: dict[str, str]) -> str | None:
+        """Busca Python del proyecto/sistema sin reutilizar AegisAuditor.exe."""
+        candidates: list[Path] = []
+        if _is_windows():
+            candidates.extend(
+                [
+                    self.root / ".venv" / "Scripts" / "python.exe",
+                    self.root / "venv" / "Scripts" / "python.exe",
+                    self.root / "env" / "Scripts" / "python.exe",
+                ]
+            )
+        else:
+            candidates.extend(
+                [
+                    self.root / ".venv" / "bin" / "python",
+                    self.root / "venv" / "bin" / "python",
+                    self.root / "env" / "bin" / "python",
+                ]
+            )
+
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate.resolve())
+
+        for name in ("python", "python3"):
+            resolved = self._which(name, env)
+            if resolved:
+                return resolved
+
+        if not getattr(sys, "frozen", False) and sys.executable:
+            return sys.executable
+        return None
+
     def _resolver_interprete(
         self,
         resolved: str,
@@ -481,7 +515,16 @@ class LocalTargetProcess:
             return command
 
         if suffix == ".py":
-            return [sys.executable, resolved, *args]
+            python = self._python_interpreter(env)
+            if not python:
+                raise FileNotFoundError(
+                    errno.ENOENT,
+                    "El objetivo requiere Python, pero no se encontró un "
+                    "intérprete real. El ejecutable empaquetado de Aegis no "
+                    "puede usarse como intérprete del proyecto.",
+                    "python",
+                )
+            return [python, resolved, *args]
 
         if suffix == ".sh":
             shell = self._which("bash", env) or self._which("sh", env)
@@ -1214,15 +1257,132 @@ class LocalTargetProcess:
 
         return raw.decode("utf-8", errors="replace").strip()
 
-    def start(
-        self,
-        progress_callback: Callable[[int, str], None] | None = None,
-    ) -> dict[str, object]:
-        self._progress_callback = progress_callback
-        self._emit_progress(5, "Iniciando aplicación objetivo…")
-        self._select_runtime_if_needed()
-        mode = self._modo()
+    def _readiness_endpoint(self) -> tuple[str, int] | None:
+        raw = str(self.runtime.base_url or "").strip()
+        if not raw:
+            return None
+        try:
+            parsed = urlparse(raw)
+            host = (parsed.hostname or "").strip()
+            if not host:
+                return None
+            port = parsed.port
+            if port is None:
+                if parsed.scheme == "https":
+                    port = 443
+                elif parsed.scheme == "http":
+                    port = 80
+                else:
+                    return None
+        except (ValueError, TypeError):
+            return None
 
+        if host in {"0.0.0.0", "::"}:
+            host = "127.0.0.1" if host == "0.0.0.0" else "::1"
+        return host, int(port)
+
+    def _wait_until_target_ready(self) -> tuple[bool, str]:
+        """No declara éxito hasta que el servidor realmente acepte conexiones."""
+        endpoint = self._readiness_endpoint()
+        minimum_wait = max(0.0, float(self.runtime.espera_inicio or 0.0))
+        timeout = max(
+            minimum_wait,
+            float(getattr(self.runtime, "timeout_inicio", 30.0) or 30.0),
+        )
+
+        # Sin endpoint comprobable conservamos compatibilidad, pero verificamos
+        # que un proceso administrado no haya terminado durante el arranque.
+        if endpoint is None:
+            if minimum_wait:
+                time.sleep(minimum_wait)
+            if self.process is not None and self.process.poll() is not None:
+                return False, "el proceso terminó durante el arranque"
+            return True, "sin endpoint de disponibilidad configurado"
+
+        host, port = endpoint
+        started = time.monotonic()
+        deadline = started + timeout
+        last_error = ""
+
+        while time.monotonic() <= deadline:
+            if self.process is not None and self.process.poll() is not None:
+                detail = self.runtime_output_tail()
+                message = (
+                    f"el proceso terminó con código {self.process.returncode}"
+                )
+                if detail:
+                    message += f"\n\nSalida del proceso:\n{detail}"
+                return False, message
+
+            try:
+                with socket.create_connection(
+                    (host, port),
+                    timeout=0.8,
+                ):
+                    return True, f"{host}:{port} disponible"
+            except OSError as exc:
+                last_error = str(exc)
+
+            elapsed = max(0.0, time.monotonic() - started)
+            fraction = min(1.0, elapsed / max(timeout, 0.1))
+            progress = 85 + int(fraction * 14)
+            self._emit_progress(
+                min(99, progress),
+                "Esperando servidor objetivo en "
+                f"{host}:{port}…",
+            )
+            time.sleep(0.35)
+
+        return (
+            False,
+            "el comando de inicio terminó, pero el servidor no abrió "
+            f"{host}:{port} dentro de {timeout:.0f} s"
+            + (f" ({last_error})" if last_error else ""),
+        )
+
+    def _select_fallback_after_failure(
+        self,
+        failed_runtime: RuntimeConfig,
+        reason: str,
+    ) -> bool:
+        """Selecciona la siguiente estrategia ejecutable después de un fallo real."""
+        options = self._runtime_options()
+        seen_failed = False
+        for candidate in options:
+            if not seen_failed:
+                if candidate == failed_runtime:
+                    seen_failed = True
+                continue
+
+            if self._runtime_mode(candidate) == "external":
+                continue
+
+            label = self._runtime_label(candidate)
+            try:
+                self._validate_runtime_candidate(candidate)
+            except Exception as exc:
+                self._selection_notes.append(
+                    f"{label}: alternativa no disponible — {exc}"
+                )
+                continue
+
+            self._selection_notes.append(
+                f"{self._runtime_label(failed_runtime)}: falló al iniciar — "
+                f"{reason}"
+            )
+            self.runtime = candidate
+            self._runtime_selected = True
+            self._prepared = False
+            self._emit_progress(
+                20,
+                "El runtime anterior no levantó el servidor. "
+                f"Probando alternativa: {label}",
+            )
+            return True
+        return False
+
+    def _start_current_runtime(self) -> dict[str, object]:
+        mode = self._modo()
         if mode == "external":
             raise RuntimeError(
                 "Este perfil requiere un runtime externo. "
@@ -1246,11 +1406,31 @@ class LocalTargetProcess:
                 start_command,
                 action_name="iniciar",
             )
+            self._emit_progress(
+                85,
+                "Verificando que el servidor objetivo esté disponible…",
+            )
+            ready, detail = self._wait_until_target_ready()
+            if not ready:
+                stop_command = self._command_for("detener")
+                if stop_command:
+                    try:
+                        self._run_control_command(
+                            stop_command,
+                            action_name="detener servicio fallido",
+                        )
+                    except Exception:
+                        pass
+                self._service_running = False
+                self._started_successfully = False
+                raise RuntimeError(detail)
+
             self._service_running = True
             self._started_successfully = True
-            self._emit_progress(85, "Esperando estabilización del servicio…")
-            time.sleep(self.runtime.espera_inicio)
-            self._emit_progress(100, "Aplicación objetivo iniciada.")
+            self._emit_progress(
+                100,
+                "Servidor objetivo iniciado y disponible.",
+            )
             return self.runtime_status()
 
         cwd, env = self._context()
@@ -1298,32 +1478,60 @@ class LocalTargetProcess:
                 command[0],
             ) from exc
 
-        self._emit_progress(85, "Esperando que la aplicación quede estable…")
-        time.sleep(self.runtime.espera_inicio)
-
-        if self.process.poll() is not None:
-            return_code = self.process.returncode
-            detail = self.runtime_output_tail()
+        self._emit_progress(
+            85,
+            "Verificando que el servidor objetivo esté disponible…",
+        )
+        ready, detail = self._wait_until_target_ready()
+        if not ready:
+            output = self.runtime_output_tail()
+            self._terminate_process_tree()
             self.process = None
             self._clear_runtime_state()
             self._close_output_buffer()
-
-            message = (
-                "el sistema objetivo terminó durante el arranque "
-                f"(código {return_code})."
-            )
-            if detail:
-                message += f"\n\nSalida del proceso:\n{detail}"
-            else:
-                message += (
-                    "\nNo produjo salida. Verifica el comando y las "
-                    "dependencias del proyecto."
-                )
+            message = detail
+            if output and output not in message:
+                message += f"\n\nSalida del proceso:\n{output}"
             raise RuntimeError(message)
 
         self._started_successfully = True
-        self._emit_progress(100, "Aplicación objetivo iniciada.")
+        self._emit_progress(
+            100,
+            "Servidor objetivo iniciado y disponible.",
+        )
         return self.runtime_status()
+
+    def start(
+        self,
+        progress_callback: Callable[[int, str], None] | None = None,
+    ) -> dict[str, object]:
+        self._progress_callback = progress_callback
+        self._emit_progress(5, "Iniciando aplicación objetivo…")
+        self._select_runtime_if_needed()
+
+        failures: list[str] = []
+        while True:
+            current = self.runtime
+            label = self._runtime_label(current)
+            try:
+                return self._start_current_runtime()
+            except Exception as exc:
+                reason = str(exc).strip() or exc.__class__.__name__
+                failures.append(f"{label}: {reason}")
+                self._started_successfully = False
+                self._service_running = False
+
+                if self._select_fallback_after_failure(current, reason):
+                    continue
+
+                detail = "\n\n".join(failures)
+                raise RuntimeError(
+                    "Aegis ejecutó el comando de inicio, pero no confirmó "
+                    "que el servidor objetivo estuviera disponible. "
+                    "No se marcará como iniciado hasta que la base URL "
+                    "realmente acepte conexiones.\n\n"
+                    f"{detail}"
+                ) from exc
 
     def _terminate_process_tree(self) -> None:
         """Detiene el proceso administrado y todos sus descendientes.
