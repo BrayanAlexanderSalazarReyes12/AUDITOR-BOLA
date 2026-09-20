@@ -998,6 +998,8 @@ def test_receta_python_valida_import_local_del_simbolo_que_agrega():
     )[0]
 
     assert result.validacion_ok is True
+    assert result.lenguaje_objetivo == "Python"
+    assert "Flask" in result.frameworks_objetivo
 
 
 def test_receta_python_rechaza_import_local_inexistente():
