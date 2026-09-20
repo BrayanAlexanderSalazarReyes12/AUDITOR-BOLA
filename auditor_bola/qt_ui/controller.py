@@ -351,6 +351,12 @@ class AuditorController(QObject):
                 f"Runtime descartado: {item}"
             )
 
+        cleanup = status.get("limpieza_previa") or []
+        for item in cleanup:
+            self.log_message.emit(
+                f"Limpieza previa: {item}"
+            )
+
         if runtime_url:
             self.log_message.emit(
                 f"Base URL activa: {runtime_url}"
