@@ -8,6 +8,7 @@ motor determinista y queda sometida a preview, backup, verificación y rollback.
 from __future__ import annotations
 
 import ast
+import builtins
 import difflib
 import json
 import os
@@ -31,7 +32,7 @@ from .remediation_knowledge import (
 DEFAULT_PROVIDER_ID = "llmlab"
 DEFAULT_MODEL_ID = "lab-coder"
 # lab-coder reporta una ventana máxima de 20.480 tokens. Pedir 8.192 de
-# salida deja demasiado poco espacio para código/evidencia y provoca HTTP 400.
+# salida dejaba muy poco espacio para código/evidencia y provocaba HTTP 400.
 LLMLAB_CONTEXT_WINDOW = 20480
 DEFAULT_MAX_OUTPUT_TOKENS = 4096
 MIN_OUTPUT_TOKENS = 1024
@@ -678,6 +679,8 @@ class AIRecipeProposal:
     archivo_objetivo: str = ""
     hipotesis_id: str = ""
     estrategia_conceptual: str = ""
+    lenguaje_objetivo: str = ""
+    frameworks_objetivo: list[str] = field(default_factory=list)
     # Plan multiarchivo opcional. Cada cambio usa:
     # {"archivo": "...", "estrategia": "replace_exact|regex_replace",
     #  "buscar": "...", "reemplazar": "..."}
@@ -882,7 +885,7 @@ def _json_schema() -> dict:
         "additionalProperties": False,
     }
 def _estimate_tokens(text: str) -> int:
-    """Estimación conservadora para código/JSON sin tokenizer externo."""
+    """Estimación conservadora para código/JSON sin depender de tokenizer."""
     return max(1, (len(text or "") + 2) // 3)
 
 
@@ -970,6 +973,8 @@ def _post_chat_json(
         timeout=timeout,
     )
 
+    # Si el servidor calcula más tokens que nuestra estimación, hacemos un
+    # segundo intento automático con menos contexto y solo 2.048 de salida.
     if (
         resp.status_code == 400
         and any(
@@ -1253,6 +1258,158 @@ def _validar_sintaxis_basica(
     return errors
 
 
+def _python_symbol_sets(text: str) -> tuple[set[str], set[str], bool]:
+    """Nombres definidos/cargados para detectar dependencias nuevas obvias."""
+    tree = ast.parse(text)
+    defined = set(dir(builtins))
+    loaded: set[str] = set()
+    has_star_import = False
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                defined.add(alias.asname or alias.name.split(".", 1)[0])
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name == "*":
+                    has_star_import = True
+                else:
+                    defined.add(alias.asname or alias.name)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined.add(node.name)
+        elif isinstance(node, ast.arg):
+            defined.add(node.arg)
+        elif isinstance(node, ast.Name):
+            if isinstance(node.ctx, ast.Store):
+                defined.add(node.id)
+            elif isinstance(node.ctx, ast.Load):
+                loaded.add(node.id)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            defined.add(str(node.name))
+
+    return defined, loaded, has_star_import
+
+
+def _validar_python_nombres_nuevos(
+    original_text: str,
+    patched_text: str,
+) -> list[str]:
+    """Rechaza símbolos nuevos que el parche usa sin definir/importar.
+
+    No pretende sustituir a un linter completo; se limita a dependencias
+    introducidas por el parche para evitar recetas como @wraps/jsonify sin
+    importarlos.
+    """
+    try:
+        original_defined, original_loaded, _ = _python_symbol_sets(original_text)
+        patched_defined, patched_loaded, has_star = _python_symbol_sets(
+            patched_text
+        )
+    except SyntaxError:
+        return []
+
+    if has_star:
+        return []
+
+    introduced = patched_loaded - original_loaded
+    unresolved = sorted(
+        name
+        for name in introduced
+        if name not in patched_defined
+        and name not in original_defined
+    )
+    if not unresolved:
+        return []
+    return [
+        "el parche introduce símbolos Python sin definición/import visible: "
+        + ", ".join(unresolved)
+    ]
+
+
+def _python_top_level_exports(text: str) -> set[str]:
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return set()
+
+    exports: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            exports.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            targets = (
+                node.targets
+                if isinstance(node, ast.Assign)
+                else [node.target]
+            )
+            for target in targets:
+                for child in ast.walk(target):
+                    if isinstance(child, ast.Name):
+                        exports.add(child.id)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                exports.add(alias.asname or alias.name.split(".", 1)[0])
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name != "*":
+                    exports.add(alias.asname or alias.name)
+    return exports
+
+
+def _validar_imports_python_locales(
+    relative: str,
+    patched_text: str,
+    files: dict[str, str],
+) -> list[str]:
+    """Comprueba imports relativos cuando el módulo local está en el contexto."""
+    try:
+        tree = ast.parse(patched_text)
+    except SyntaxError:
+        return []
+
+    current = Path(relative)
+    errors: list[str] = []
+    normalized_files = {
+        str(Path(key).as_posix()): value
+        for key, value in files.items()
+    }
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.level <= 0:
+            continue
+        if not node.module:
+            continue
+
+        base = current.parent
+        for _ in range(max(0, node.level - 1)):
+            base = base.parent
+
+        module_path = Path(*node.module.split("."))
+        candidate = (base / module_path).with_suffix(".py").as_posix()
+        package_candidate = (base / module_path / "__init__.py").as_posix()
+
+        target = None
+        if candidate in normalized_files:
+            target = candidate
+        elif package_candidate in normalized_files:
+            target = package_candidate
+        if target is None:
+            continue
+
+        exports = _python_top_level_exports(normalized_files[target])
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            if alias.name not in exports:
+                errors.append(
+                    f"import local inválido: {relative} intenta importar "
+                    f"{alias.name!r} desde {target}, pero ese símbolo no "
+                    "existe después del parche"
+                )
+
+    return errors
+
+
 def validar_propuestas_contextuales(
     propuestas: list[AIRecipeProposal],
     *,
@@ -1335,6 +1492,21 @@ def validar_propuestas_contextuales(
             proposal.estrategia = str(first.get("estrategia") or "")
             proposal.buscar = str(first.get("buscar") or "")
             proposal.reemplazar = str(first.get("reemplazar") or "")
+            detected = detect_language_context(
+                touched[0],
+                working[touched[0]],
+                {
+                    target: working[target]
+                    for target in touched[1:]
+                },
+            )
+            principal_language = detected.get("principal") or {}
+            proposal.lenguaje_objetivo = str(
+                principal_language.get("language") or ""
+            )
+            proposal.frameworks_objetivo = list(
+                detected.get("frameworks_contexto") or []
+            )
 
         for identity in sorted(test_identities):
             if not identity:
@@ -1358,6 +1530,28 @@ def validar_propuestas_contextuales(
                     working[target],
                 )
             )
+
+            if Path(target).suffix.lower() == ".py":
+                original_text = files.get(target, "")
+                errors.extend(
+                    f"{target}: {message}"
+                    for message in _validar_python_nombres_nuevos(
+                        original_text,
+                        working[target],
+                    )
+                )
+
+        # Se valida el plan completo después de simular todos los cambios.
+        # Esto permite comprobar imports entre archivos modificados.
+        for target in touched:
+            if Path(target).suffix.lower() == ".py":
+                errors.extend(
+                    _validar_imports_python_locales(
+                        target,
+                        working[target],
+                        working,
+                    )
+                )
 
         for failed in failed_proposals:
             if not isinstance(failed, dict):
