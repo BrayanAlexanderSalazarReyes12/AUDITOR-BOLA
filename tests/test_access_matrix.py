@@ -1,4 +1,9 @@
-from auditor_bola.config import ConfigObjetivo, Cuenta, Endpoint
+from auditor_bola.config import (
+    ChequeoAcceso,
+    ConfigObjetivo,
+    Cuenta,
+    Endpoint,
+)
 from auditor_bola.engine import auditar_matriz_acceso
 
 
@@ -155,3 +160,129 @@ def test_matriz_no_inventa_id_para_ruta_parametrizada(monkeypatch):
     assert len(rows) == 1
     assert calls == []
     assert rows[0].clasificacion == "NO_EJECUTABLE"
+
+
+
+def test_matriz_clasifica_hallazgo_con_politica_rbac_explicita(
+    monkeypatch,
+):
+    cfg = ConfigObjetivo(
+        sistema="demo",
+        base_url="http://127.0.0.1:5050",
+        cuentas=[
+            Cuenta("ana", "x", "member"),
+            Cuenta("admin", "x", "admin"),
+        ],
+        endpoints=[],
+        roles_privilegiados=["admin"],
+        chequeos_acceso=[
+            ChequeoAcceso(
+                id_control="P1-RBAC-001",
+                nombre="admin restringido",
+                cuenta="ana",
+                metodo="GET",
+                ruta="/api/admin",
+                acceso_esperado=False,
+            )
+        ],
+        endpoints_detectados=[
+            {"metodo": "GET", "ruta": "/api/admin"}
+        ],
+    )
+
+    monkeypatch.setattr(
+        "auditor_bola.engine.request_http",
+        lambda *args, **kwargs: FakeResponse(200),
+    )
+
+    rows = auditar_matriz_acceso(cfg)
+    ana = next(row for row in rows if row.cuenta == "ana")
+
+    assert ana.vulnerable is True
+    assert ana.acceso_esperado is False
+    assert ana.clasificacion == "HALLAZGO_CONFIRMADO"
+    assert ana.fuente_politica == "control_acceso"
+    assert ana.id_control_referencia == "P1-RBAC-001"
+
+
+def test_matriz_marca_posible_hallazgo_desde_candidato_rbac(
+    monkeypatch,
+):
+    cfg = ConfigObjetivo(
+        sistema="demo",
+        base_url="http://127.0.0.1:5050",
+        cuentas=[
+            Cuenta("ana", "x", "member"),
+            Cuenta("admin", "x", "admin"),
+        ],
+        endpoints=[],
+        roles_privilegiados=["admin"],
+        endpoints_detectados=[
+            {"metodo": "GET", "ruta": "/api/management/report"}
+        ],
+        candidatos_pilar1=[
+            {
+                "familia": "RBAC_ABAC",
+                "metodo": "GET",
+                "ruta_detectada": "/api/management/report",
+            }
+        ],
+    )
+
+    monkeypatch.setattr(
+        "auditor_bola.engine.request_http",
+        lambda *args, **kwargs: FakeResponse(200),
+    )
+
+    rows = auditar_matriz_acceso(cfg)
+    ana = next(row for row in rows if row.cuenta == "ana")
+    admin = next(row for row in rows if row.cuenta == "admin")
+
+    assert ana.vulnerable is True
+    assert ana.clasificacion == "POSIBLE_HALLAZGO"
+    assert ana.fuente_politica == "candidato_rbac"
+    assert ana.confianza == "media"
+    assert admin.vulnerable is None
+    assert admin.clasificacion == "ACCESO"
+
+
+def test_matriz_reutiliza_politica_de_otro_usuario_del_mismo_rol(
+    monkeypatch,
+):
+    cfg = ConfigObjetivo(
+        sistema="demo",
+        base_url="http://127.0.0.1:5050",
+        cuentas=[
+            Cuenta("ana", "x", "member"),
+            Cuenta("bruno", "x", "member"),
+        ],
+        endpoints=[],
+        chequeos_acceso=[
+            ChequeoAcceso(
+                id_control="P1-RBAC-BASE",
+                nombre="reporte restringido",
+                cuenta="ana",
+                metodo="GET",
+                ruta="/api/report",
+                acceso_esperado=False,
+            )
+        ],
+        endpoints_detectados=[
+            {"metodo": "GET", "ruta": "/api/report"}
+        ],
+    )
+
+    def fake_request(method, url, *, cuenta, **kwargs):
+        return FakeResponse(403 if cuenta.username == "ana" else 200)
+
+    monkeypatch.setattr(
+        "auditor_bola.engine.request_http",
+        fake_request,
+    )
+
+    rows = auditar_matriz_acceso(cfg)
+    bruno = next(row for row in rows if row.cuenta == "bruno")
+
+    assert bruno.vulnerable is True
+    assert bruno.clasificacion == "HALLAZGO_CONFIRMADO"
+    assert bruno.fuente_politica == "politica_mismo_rol"
