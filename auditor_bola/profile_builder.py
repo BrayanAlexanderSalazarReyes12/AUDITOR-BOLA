@@ -3168,8 +3168,10 @@ def _extract_owner_samples(
 ) -> list[dict[str, Any]]:
     """Extrae pares objeto-propietario desde tests/fixtures/seeds.
 
-    Solo acepta campos con semántica explícita de propiedad; una declaración
-    normal de cuenta con "username" no basta para inferir propiedad.
+    Primero usa estructuras JSON reales con inferencia semántica genérica.
+    Después aplica un fallback textual para Python/YAML/SQL. No depende de un
+    nombre de dominio concreto como "solicitud" ni exige la palabra exacta
+    "propietario".
     """
     usernames = {
         str(item.get("username") or "").strip()
@@ -3179,19 +3181,61 @@ def _extract_owner_samples(
     if not usernames:
         return []
 
-    owner_keys = (
-        "propietario", "propietario_esperado", "owner", "owner_username",
-        "owned_by", "created_by", "creado_por", "usuario_propietario",
-        "user_owner",
-    )
-    id_keys = (
-        "id", "object_id", "resource_id", "solicitud_id", "request_id",
-        "ticket_id", "post_id", "item_id", "record_id",
-    )
-    owner_key = r"(?:" + "|".join(re.escape(x) for x in owner_keys) + r")"
-    id_key = r"(?:" + "|".join(re.escape(x) for x in id_keys) + r")"
     samples: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
+
+    def add_sample(
+        evidence: dict[str, Any],
+        source: str,
+        detector: str,
+        context: str,
+    ) -> None:
+        object_id = str(evidence.get("id_prueba") or "").strip()
+        owner = str(
+            evidence.get("propietario_esperado") or ""
+        ).strip()
+        if not object_id or owner not in usernames:
+            return
+        key = (object_id, owner, source)
+        if key in seen:
+            return
+        seen.add(key)
+        samples.append(
+            {
+                "id_prueba": object_id,
+                "propietario_esperado": owner,
+                "archivo": source,
+                "confianza": evidence.get("confianza") or "alta",
+                "detector": detector,
+                "campo_id": evidence.get("campo_id"),
+                "campo_propietario": evidence.get(
+                    "campo_propietario"
+                ),
+                "contexto": context.lower(),
+            }
+        )
+
+    def walk_json(value: Any, source: str) -> None:
+        if isinstance(value, dict):
+            evidence = infer_object_identity(
+                value,
+                usernames,
+            )
+            if evidence:
+                add_sample(
+                    evidence,
+                    source,
+                    "structured-fixture-owner",
+                    json.dumps(
+                        value,
+                        ensure_ascii=False,
+                    )[:1600],
+                )
+            for nested in value.values():
+                walk_json(nested, source)
+        elif isinstance(value, list):
+            for nested in value:
+                walk_json(nested, source)
 
     for path, relative in _iter_source_files(
         detection.root,
@@ -3204,57 +3248,78 @@ def _extract_owner_samples(
             continue
         source = relative.as_posix()
 
-        # JSON/Python/YAML-like mappings, regardless of key order.
+        # Evidencia estructurada: soporta aliases como codigo/creador,
+        # author/record_id, created_by/uuid, etc.
+        if path.suffix.lower() == ".json":
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                payload = None
+            if payload is not None:
+                walk_json(payload, source)
+
+        # Fallback textual genérico: descubre el nombre del campo que contiene
+        # una cuenta conocida y lo puntúa por semántica de propiedad.
         for username in usernames:
             user_re = re.escape(username)
-            owner_matches = list(
-                re.finditer(
-                    rf"""(?ix)
-                    ["']?{owner_key}["']?\s*[:=]\s*
-                    ["']{user_re}["']
+            for owner_match in re.finditer(
+                rf"""(?ix)
+                ["']?([A-Za-z_][A-Za-z0-9_.-]{{1,100}})["']?
+                \s*[:=]\s*["']{user_re}["']
+                """,
+                text,
+            ):
+                owner_field = owner_match.group(1)
+                owner_score = owner_key_score(owner_field)
+                if owner_score <= 0:
+                    continue
+
+                start_window = max(0, owner_match.start() - 900)
+                end_window = min(len(text), owner_match.end() + 900)
+                window = text[start_window:end_window]
+                id_candidates: list[
+                    tuple[int, str, str]
+                ] = []
+
+                for id_match in re.finditer(
+                    r"""(?ix)
+                    ["']?([A-Za-z_][A-Za-z0-9_.-]{0,100})["']?
+                    \s*[:=]\s*
+                    ["']?([A-Za-z0-9._:-]{1,160})["']?
                     """,
-                    text,
-                )
-            )
-            for owner_match in owner_matches:
-                start = max(0, owner_match.start() - 700)
-                end = min(len(text), owner_match.end() + 700)
-                window = text[start:end]
-                id_matches = list(
-                    re.finditer(
-                        rf"""(?ix)
-                        ["']?{id_key}["']?\s*[:=]\s*
-                        ["']?([A-Za-z0-9._-]+)["']?
-                        """,
-                        window,
-                    )
-                )
-                if not id_matches:
+                    window,
+                ):
+                    field = id_match.group(1)
+                    value = id_match.group(2)
+                    score = id_key_score(field)
+                    if score > 0:
+                        id_candidates.append(
+                            (score, field, value)
+                        )
+
+                if not id_candidates:
                     continue
-                absolute_owner = owner_match.start() - start
-                chosen = min(
-                    id_matches,
-                    key=lambda item: abs(
-                        item.start() - absolute_owner
-                    ),
-                )
-                object_id = chosen.group(1)
-                key = (object_id, username, source)
-                if key in seen:
-                    continue
-                seen.add(key)
-                samples.append(
+                id_candidates.sort(reverse=True)
+                score, id_field, object_id = id_candidates[0]
+                add_sample(
                     {
                         "id_prueba": object_id,
                         "propietario_esperado": username,
-                        "archivo": source,
-                        "confianza": "alta",
-                        "detector": "test-fixture-seed-owner",
-                        "contexto": window.lower(),
-                    }
+                        "campo_id": id_field,
+                        "campo_propietario": owner_field,
+                        "confianza": (
+                            "alta"
+                            if owner_score >= 80 and score >= 85
+                            else "media"
+                        ),
+                    },
+                    source,
+                    "text-semantic-owner",
+                    window,
                 )
 
-        # INSERT ... (id, propietario, ...) VALUES (..., 'usuario', ...)
+        # Seeds SQL: transforma cada fila en un mapping y usa el mismo motor
+        # semántico que JSON en vez de una lista fija de columnas.
         for match in re.finditer(
             r"INSERT\s+INTO\s+[\w.\"-]+\s*"
             r"\(([^)]+)\)\s*VALUES\s*\(([^;]+?)\)",
@@ -3262,45 +3327,28 @@ def _extract_owner_samples(
             re.I | re.S,
         ):
             columns = [
-                column.strip().strip('"').strip("'").lower()
+                column.strip().strip('"').strip("'")
                 for column in match.group(1).split(",")
             ]
             values = _split_sql_values(match.group(2))
             if len(columns) != len(values):
                 continue
-            mapping = dict(zip(columns, values))
-            owner_col = next(
-                (key for key in columns if key in owner_keys),
-                None,
+
+            mapping = {
+                column: _clean_literal(value)
+                for column, value in zip(columns, values)
+            }
+            evidence = infer_object_identity(
+                mapping,
+                usernames,
             )
-            id_col = next(
-                (key for key in columns if key in id_keys),
-                None,
-            )
-            if not owner_col or not id_col:
-                continue
-            username = str(
-                _clean_literal(mapping.get(owner_col)) or ""
-            )
-            object_id = str(
-                _clean_literal(mapping.get(id_col)) or ""
-            )
-            if username not in usernames or not object_id:
-                continue
-            key = (object_id, username, source)
-            if key in seen:
-                continue
-            seen.add(key)
-            samples.append(
-                {
-                    "id_prueba": object_id,
-                    "propietario_esperado": username,
-                    "archivo": source,
-                    "confianza": "alta",
-                    "detector": "seed-sql-owner",
-                    "contexto": match.group(0).lower(),
-                }
-            )
+            if evidence:
+                add_sample(
+                    evidence,
+                    source,
+                    "seed-sql-semantic-owner",
+                    match.group(0),
+                )
 
     return samples
 
