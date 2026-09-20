@@ -1493,15 +1493,14 @@ def _detect_native_runtime(
         return base, base["base_url"]
 
     if "python" in languages:
-        base_url = (
-            "http://127.0.0.1:5000"
-            if "flask" in frameworks
-            else "http://127.0.0.1:8000"
-        )
+        # No asumir 5000 para Flask. Muchos proyectos toman el puerto de
+        # config/.env/variables o código indirecto. Si run.py no contiene un
+        # literal verificable, Aegis descubrirá el listener real después de
+        # lanzar Python.
         base = _runtime_template(
             name="Python",
             origin="python-project",
-            base_url=base_url,
+            base_url="",
         )
         base["preparar_automaticamente"] = True
         base["descripcion_ejecucion"] = (
