@@ -1002,3 +1002,133 @@ def test_autoperfil_expone_candidatos_pilar1(tmp_path):
     assert profile["endpoints"] == []
     assert profile["chequeos_acceso"] == []
     assert profile["chequeos_agente"] == []
+
+
+
+def test_autoperfil_reconstruye_pilar1_desde_tests_fixtures_y_semillas(
+    tmp_path,
+):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "run.py").write_text(
+        "from app import app\napp.run(port=5050)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text(
+        "from flask import Flask, Blueprint\n"
+        "app = Flask(__name__)\n"
+        "bp = Blueprint('solicitudes', __name__, "
+        "url_prefix='/api/solicitudes')\n"
+        "@bp.get('/<int:solicitud_id>')\n"
+        "def get_one(solicitud_id): return {'id': solicitud_id}\n"
+        "@bp.patch('/<int:solicitud_id>')\n"
+        "def patch_one(solicitud_id): return {'id': solicitud_id}\n"
+        "@bp.get('/')\n"
+        "def list_all(): return []\n"
+        "app.register_blueprint(bp)\n"
+        "@app.get('/api/admin/auditoria')\n"
+        "def audit(): return {'eventos': []}\n"
+        "@app.post('/api/asistente/ejecutar')\n"
+        "def assistant(): return {'pasos': []}\n",
+        encoding="utf-8",
+    )
+
+    fixtures = tmp_path / "tests" / "fixtures"
+    fixtures.mkdir(parents=True)
+    (fixtures / "accounts.json").write_text(
+        json.dumps({
+            "accounts": [
+                {
+                    "username": "ana.vargas",
+                    "password": "ana123",
+                    "role": "analista"
+                },
+                {
+                    "username": "bruno.mejia",
+                    "password": "bruno123",
+                    "role": "analista"
+                },
+                {
+                    "username": "carla.osorio",
+                    "password": "carla123",
+                    "role": "coordinador"
+                }
+            ]
+        }),
+        encoding="utf-8",
+    )
+    (fixtures / "solicitudes_seed.json").write_text(
+        json.dumps({
+            "solicitudes": [
+                {
+                    "id": 1,
+                    "propietario": "ana.vargas",
+                    "resumen": "demo"
+                }
+            ]
+        }),
+        encoding="utf-8",
+    )
+
+    (tmp_path / "tests" / "test_security.py").write_text(
+        "def test_bola_patch_contract(client):\n"
+        "    response = client.patch("
+        "'/api/solicitudes/1', "
+        "headers=auth('bruno.mejia'), "
+        "json={'resumen': 'editado'})\n"
+        "    assert response.status_code == 403\n\n"
+        "def test_admin_access_denied_for_analyst(client):\n"
+        "    response = client.get("
+        "'/api/admin/auditoria', "
+        "headers=auth('bruno.mejia'))\n"
+        "    assert response.status_code == 403\n\n"
+        "def test_agent_scope_identity(client):\n"
+        "    direct = client.get("
+        "'/api/solicitudes', "
+        "headers=auth('bruno.mejia'))\n"
+        "    agent = client.post("
+        "'/api/asistente/ejecutar', "
+        "headers=auth('bruno.mejia'), "
+        "json={'tarea': 'lista las solicitudes'})\n"
+        "    assert agent.json['pasos'][0]['devueltas'] >= 0\n"
+        "    assert agent.json['pasos'][0]['herramienta'] == "
+        "'listar_solicitudes'\n",
+        encoding="utf-8",
+    )
+
+    detection = detect_project(tmp_path)
+    profile = build_profile_draft(detection)
+
+    registry = profile["chequeos_pilar1"]
+    types = [item["tipo"] for item in registry]
+
+    assert types.count("bola") >= 2
+    assert "acceso" in types
+    assert "alcance_agente" in types
+
+    bola_routes = {
+        (item["metodo"], item["ruta"])
+        for item in registry
+        if item["tipo"] == "bola"
+    }
+    assert ("GET", "/api/solicitudes/{id}") in bola_routes
+    assert ("PATCH", "/api/solicitudes/{id}") in bola_routes
+
+    bola = next(
+        item
+        for item in registry
+        if item["tipo"] == "bola" and item["metodo"] == "GET"
+    )
+    assert bola["id_prueba"] == "1"
+    assert bola["propietario_esperado"] == "ana.vargas"
+    assert bola["confianza"] == "alta"
+
+    assert profile["endpoints"]
+    assert profile["chequeos_acceso"]
+    assert profile["chequeos_agente"]
+    assert (
+        profile["metadata_detectada"]["total_controles_pilar1_activos"]
+        == len(registry)
+    )
