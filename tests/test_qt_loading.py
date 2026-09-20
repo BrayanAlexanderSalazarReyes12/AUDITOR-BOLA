@@ -13,6 +13,7 @@ from auditor_bola.config import (
 )
 from auditor_bola.qt_ui.controller import AuditorController
 from auditor_bola.qt_ui.loading import StartupSplash, TaskProgressOverlay
+from auditor_bola.qt_ui.pages import RecipeCodeViewerDialog
 from auditor_bola.qt_ui.theme import QSS
 from auditor_bola.version import __version__
 
@@ -307,3 +308,46 @@ def test_promueve_hallazgo_rbac_de_matriz_a_control_activo(tmp_path):
     assert persisted["metadata_detectada"][
         "total_controles_pilar1_activos"
     ] == 1
+
+def test_recipe_code_viewer_muestra_codigo_antes_despues_y_diff():
+    _app()
+    dialog = RecipeCodeViewerDialog()
+    proposal = {
+        "enfoque": "MINIMA",
+        "titulo": "Validación de rol",
+        "preview_cambios": [
+            {
+                "archivo": "app.py",
+                "lenguaje": "Python",
+                "frameworks": ["Flask"],
+                "operaciones_aplicables": 1,
+                "codigo_antes": 'def audit():\\n    return "ok"\\n',
+                "codigo_despues": (
+                    'def audit():\\n'
+                    '    if current_user.role != "admin":\\n'
+                    '        abort(403)\\n'
+                    '    return "ok"\\n'
+                ),
+                "diff": (
+                    "--- app.py.before\\n"
+                    "+++ app.py.after\\n"
+                    "@@ -1,2 +1,4 @@\\n"
+                    "-def audit():\\n"
+                    "-    return \"ok\"\\n"
+                    "+def audit():\\n"
+                    '+    if current_user.role != "admin":\\n'
+                    "+        abort(403)\\n"
+                    '+    return "ok"\\n'
+                ),
+            }
+        ],
+    }
+
+    dialog.set_proposal(proposal)
+
+    assert dialog.file_combo.count() == 1
+    assert "current_user.role" in dialog.after_view.toPlainText()
+    assert 'return "ok"' in dialog.before_view.toPlainText()
+    assert "app.py" in dialog.file_meta.text()
+    assert dialog.tabs.count() == 4
+    dialog.close()
