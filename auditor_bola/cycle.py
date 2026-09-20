@@ -395,6 +395,7 @@ def ciclo_correctivo(
             validacion = validate_project_after_patch(
                 target_root,
                 modified_files,
+                run_tests=False,
             )
             validation_payload = validacion.as_dict()
             syntax_failed = validacion.sintaxis.estado == "FAILED"
@@ -402,10 +403,7 @@ def ciclo_correctivo(
                 validacion.build_aplicable
                 and validacion.build.estado != "OK"
             )
-            tests_failed = (
-                validacion.tests_aplicables
-                and validacion.tests.estado != "OK"
-            )
+            tests_failed = False
         else:
             # Compatibilidad con adaptadores/mocks que aplican la corrección
             # fuera del filesystem local. En ejecución real apply_correction
@@ -441,7 +439,7 @@ def ciclo_correctivo(
             validation_payload,
         )
 
-        if syntax_failed or build_failed or tests_failed:
+        if syntax_failed or build_failed:
             _rollback_seguro(
                 cfg,
                 correccion,
@@ -450,10 +448,7 @@ def ciclo_correctivo(
                 reiniciar,
                 manifest,
             )
-            if syntax_failed or build_failed:
-                manifest["estado_patch"] = "BUILD_FAILED"
-            else:
-                manifest["estado_patch"] = "TEST_FAILED"
+            manifest["estado_patch"] = "BUILD_FAILED"
             manifest["estado_final"] = "CORRECCION_FALLIDA"
             manifest["motivo"] = (
                 "El parche no superó la validación técnica previa al "
@@ -462,7 +457,7 @@ def ciclo_correctivo(
             manifest["failure_analysis"] = _failure_analysis(
                 manifest,
                 expected=(
-                    "sintaxis/build/tests válidos antes de ejecutar "
+                    "sintaxis y build válidos antes de ejecutar "
                     "la prueba de seguridad"
                 ),
                 observed=manifest["estado_patch"],
@@ -559,8 +554,70 @@ def ciclo_correctivo(
             estado_despues == "SIN_HALLAZGO"
             and not regresiones
         ):
-            manifest["estado_final"] = "CORREGIDO"
-            manifest["estado_patch"] = "PATCH_VERIFIED"
+            # La condición primaria es de seguridad: el exploit original ya no
+            # se reproduce y las filas previamente seguras del mismo control
+            # siguen seguras. Solo después ejecutamos la suite funcional.
+            qa_validation = validate_project_after_patch(
+                target_root,
+                modified_files,
+                run_build=False,
+                run_tests=True,
+            )
+            qa_payload = qa_validation.as_dict()
+            manifest["validacion_qa_posterior"] = qa_payload
+            evidence.write_json(
+                "verification/post_security_qa.json",
+                qa_payload,
+            )
+
+            qa_warning = bool(
+                qa_validation.tests_aplicables
+                and qa_validation.tests.estado != "OK"
+            )
+            manifest["qa_advertencias"] = []
+            if qa_warning:
+                manifest["qa_advertencias"].append(
+                    {
+                        "tipo": "SUITE_FUNCIONAL",
+                        "estado": qa_validation.tests.estado,
+                        "detalle": qa_validation.tests.detalle,
+                        "nota": (
+                            "El exploit original dejó de reproducirse. "
+                            "La suite funcional falló después del cambio; "
+                            "puede contener una prueba que todavía espera el "
+                            "comportamiento vulnerable o una regresión que "
+                            "requiere revisión. El parche NO se revierte "
+                            "automáticamente por este motivo."
+                        ),
+                    }
+                )
+
+            manifest["criterios_exito"]["functional_test_success"] = (
+                qa_validation.tests.estado in {"OK", "NO_APLICA"}
+            )
+            manifest["criterios_exito"]["tests_aplicables"] = bool(
+                qa_validation.tests_aplicables
+            )
+
+            if qa_warning:
+                manifest["estado_final"] = "CORREGIDO_CON_ADVERTENCIAS"
+                manifest["estado_patch"] = "PATCH_VERIFIED_WITH_WARNINGS"
+                manifest["motivo"] = (
+                    "El código fue modificado y la vulnerabilidad ya no se "
+                    "reproduce. Se conserva el parche. La suite funcional "
+                    "reportó fallos posteriores que deben revisarse por "
+                    "separado; no se usaron para restaurar el comportamiento "
+                    "vulnerable."
+                )
+            else:
+                manifest["estado_final"] = "CORREGIDO"
+                manifest["estado_patch"] = "PATCH_VERIFIED"
+                manifest["motivo"] = (
+                    "El código fue modificado, el exploit original dejó de "
+                    "reproducirse y las validaciones posteriores no detectaron "
+                    "fallos funcionales ejecutables."
+                )
+
             evidence.write_json("manifest.json", manifest)
             return manifest
 
