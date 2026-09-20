@@ -2084,8 +2084,8 @@ class AuditorController(QObject):
                 (
                     f"{self.ai_source_relative} cambió después de que la IA "
                     "lo cargó. Por seguridad Aegis no aplicará una receta "
-                    "generada sobre una versión distinta. Vuelve a generar "
-                    "las propuestas."
+                    "generada sobre una versión distinta. Regenera las "
+                    "propuestas sobre el archivo actual."
                 ),
             )
             return
