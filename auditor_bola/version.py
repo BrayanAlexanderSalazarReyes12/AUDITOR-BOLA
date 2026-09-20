@@ -1,3 +1,3 @@
 """Versión pública de Aegis Auditor."""
 
-__version__ = "1.1.8"
+__version__ = "1.1.9"
