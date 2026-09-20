@@ -3034,16 +3034,37 @@ def _infer_p1_candidates(
         "role", "rol", "permission", "permiso", "priorizar",
         "priorit", "manage", "gestion", "gestión", "config",
     )
+    auth_source_tokens = (
+        "authorize", "authorized", "authorization", "authenticated",
+        "login_required", "current_user", "has_role", "has_permission",
+        "permission", "permiso", "role", "rol", "policy", "guard",
+        "principal", "securitycontext", "[authorize", "@preauthorize",
+        "@secured", "is_authenticated", "request.user",
+    )
     agent_tokens = (
         "assistant", "asistente", "agent", "agente", "chat",
-        "herramienta", "tool",
+        "herramienta", "tool", "copilot", "function_call",
     )
+    source_cache: dict[str, str] = {}
+
+    def source_texts(files: list[str]) -> str:
+        chunks: list[str] = []
+        for source in files:
+            if source not in source_cache:
+                source_cache[source] = _read_text(
+                    detection.root / source,
+                    limit=MAX_TEXT_SCAN_BYTES,
+                ).lower()
+            if source_cache[source]:
+                chunks.append(source_cache[source])
+        return "\n".join(chunks)
 
     for item in endpoint_inventory:
         method = str(item.get("metodo") or "").upper()
         route = str(item.get("ruta") or "")
         source_files = list(item.get("archivos") or [])
         lower_route = route.lower()
+        lower_source = source_texts(source_files)
 
         has_object_parameter = (
             "<" in route
@@ -3079,7 +3100,10 @@ def _infer_p1_candidates(
                     }
                 )
 
-        if any(token in lower_route for token in sensitive_tokens):
+        if (
+            any(token in lower_route for token in sensitive_tokens)
+            or any(token in lower_source for token in auth_source_tokens)
+        ):
             key = ("rbac", method, route)
             if key not in seen:
                 seen.add(key)
@@ -3101,7 +3125,10 @@ def _infer_p1_candidates(
                     }
                 )
 
-        if any(token in lower_route for token in agent_tokens):
+        if (
+            any(token in lower_route for token in agent_tokens)
+            or any(token in lower_source for token in agent_tokens)
+        ):
             key = ("scope", method, route)
             if key not in seen:
                 seen.add(key)
