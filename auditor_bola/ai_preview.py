@@ -60,31 +60,75 @@ def preview_recipe(
     receta: Correccion,
     target_root: str | Path,
 ) -> dict:
+    """Previsualiza una receta de uno o varios archivos sin escribir cambios."""
     root = Path(target_root).resolve()
-    archivo = (root / receta.archivo).resolve()
-
-    if archivo != root and root not in archivo.parents:
-        raise ValueError("ruta fuera de la carpeta objetivo")
-    if not archivo.exists():
-        raise FileNotFoundError(archivo)
-
-    antes = archivo.read_text(encoding="utf-8")
-    despues, aplicadas = _aplicar_en_memoria(antes, receta)
-
-    diff = "".join(
-        difflib.unified_diff(
-            antes.splitlines(keepends=True),
-            despues.splitlines(keepends=True),
-            fromfile=f"{receta.archivo}.before",
-            tofile=f"{receta.archivo}.after",
-        )
-    )
-
-    return {
+    raw_changes = [
+        dict(item)
+        for item in (receta.cambios or [])
+        if isinstance(item, dict)
+    ]
+    plan = raw_changes or [{
         "archivo": receta.archivo,
-        "operaciones_aplicables": aplicadas,
-        "cambia_archivo": antes != despues,
-        "codigo_antes": antes,
-        "codigo_despues": despues,
-        "diff": diff,
+        "operaciones": list(receta.operaciones or []),
+    }]
+
+    previews: list[dict] = []
+    total_ops = 0
+    for change in plan:
+        relative = str(change.get("archivo") or "").replace("\\", "/")
+        operaciones = [
+            dict(item)
+            for item in (change.get("operaciones") or [])
+            if isinstance(item, dict)
+        ]
+        if not relative or not operaciones:
+            raise ValueError("cambio de receta incompleto")
+
+        archivo = (root / relative).resolve()
+        if archivo == root or root not in archivo.parents:
+            raise ValueError("ruta fuera de la carpeta objetivo")
+        if not archivo.exists():
+            raise FileNotFoundError(archivo)
+
+        antes = archivo.read_text(encoding="utf-8")
+        local = Correccion(
+            control_id=receta.control_id,
+            archivo=relative,
+            operaciones=operaciones,
+        )
+        despues, aplicadas = _aplicar_en_memoria(antes, local)
+        total_ops += aplicadas
+        diff = "".join(
+            difflib.unified_diff(
+                antes.splitlines(keepends=True),
+                despues.splitlines(keepends=True),
+                fromfile=f"{relative}.before",
+                tofile=f"{relative}.after",
+            )
+        )
+        previews.append({
+            "archivo": relative,
+            "operaciones_aplicables": aplicadas,
+            "cambia_archivo": antes != despues,
+            "codigo_antes": antes,
+            "codigo_despues": despues,
+            "diff": diff,
+        })
+
+    first = previews[0]
+    return {
+        "archivo": first["archivo"],
+        "operaciones_aplicables": total_ops,
+        "cambia_archivo": any(
+            item["cambia_archivo"]
+            for item in previews
+        ),
+        "codigo_antes": first["codigo_antes"],
+        "codigo_despues": first["codigo_despues"],
+        "diff": "\n".join(
+            item["diff"]
+            for item in previews
+            if item.get("diff")
+        ),
+        "archivos": previews,
     }
