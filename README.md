@@ -31,7 +31,7 @@ Aegis analiza la carpeta seleccionada y construye un borrador compatible con `co
 - endpoints candidatos en Flask, Express, Servlet/Spring y Django;
 - configuración base multiplataforma.
 
-El perfil incluye un registro canónico `chequeos_pilar1` para BOLA, RBAC/ABAC y alcance de agentes. Durante la auto-configuración Aegis intenta reconstruir controles ejecutables del Pilar 1 a partir de **tests, fixtures, datos semilla y archivos de soporte**: relaciones objeto-propietario, contratos HTTP por rol y comparaciones API directa ↔ agente. Las decisiones que no tienen evidencia suficiente quedan como candidatos para confirmación humana. Pilar 2 se infiere de forma independiente a partir de controles verificables de arquitectura y configuración.
+El perfil incluye un registro canónico `chequeos_pilar1` para BOLA, RBAC/ABAC y alcance de agentes. Durante la auto-configuración Aegis reconstruye evidencia desde **código, tests, fixtures, datos semilla, configuración, documentación y el objetivo vivo en modo de solo lectura**. La inferencia es semántica: busca relaciones entre identificadores e identidad/propiedad sin depender de nombres de una aplicación concreta, extrae contratos HTTP de tests Python y JavaScript/TypeScript y conserva como candidatos los casos que aún no tienen evidencia suficiente. Pilar 2 se infiere de forma independiente e incluye CORS, secretos con fallback, debug explícito, cookies inseguras, bypass de límites sin guardia y contenedores no-root.
 
 ### Arranque local sin Docker
 
