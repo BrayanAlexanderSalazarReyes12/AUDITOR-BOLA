@@ -135,6 +135,52 @@ def _source_contains(
     return _resultado(cfg, chequeo, vulnerable, detalle)
 
 
+def _source_regex(
+    cfg: ConfigObjetivo,
+    chequeo: ChequeoPilar2,
+    source_root: Path | None,
+) -> ResultadoPilar2:
+    if source_root is None:
+        raise ValueError(
+            f"{chequeo.id_control} requiere --target-root para inspección estática"
+        )
+    if not chequeo.archivo or not chequeo.patron_inseguro:
+        raise ValueError(
+            f"{chequeo.id_control}: archivo/patron_inseguro son obligatorios"
+        )
+
+    ruta = source_root / chequeo.archivo
+    texto = ruta.read_text(encoding="utf-8", errors="ignore")
+
+    try:
+        inseguro = bool(
+            re.search(
+                chequeo.patron_inseguro,
+                texto,
+                re.I | re.M | re.S,
+            )
+        )
+        seguro = bool(
+            chequeo.patron_seguro
+            and re.search(
+                chequeo.patron_seguro,
+                texto,
+                re.I | re.M | re.S,
+            )
+        )
+    except re.error as exc:
+        raise ValueError(
+            f"{chequeo.id_control}: regex inválida: {exc}"
+        ) from exc
+
+    vulnerable = inseguro and not seguro
+    detalle = (
+        f"archivo={chequeo.archivo}; regex insegura presente={inseguro}; "
+        f"regex segura presente={seguro}"
+    )
+    return _resultado(cfg, chequeo, vulnerable, detalle)
+
+
 def _docker_non_root(
     cfg: ConfigObjetivo, chequeo: ChequeoPilar2, source_root: Path | None
 ) -> ResultadoPilar2:
@@ -167,6 +213,8 @@ def auditar_pilar2(
                 resultado = _http_status_policy(cfg, chequeo)
             elif chequeo.tipo == "source_contains":
                 resultado = _source_contains(cfg, chequeo, root)
+            elif chequeo.tipo == "source_regex":
+                resultado = _source_regex(cfg, chequeo, root)
             elif chequeo.tipo == "docker_non_root":
                 resultado = _docker_non_root(cfg, chequeo, root)
             else:
