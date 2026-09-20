@@ -521,7 +521,7 @@ def _parse_docker_runtime(text: str) -> dict[str, Any]:
         if not line or line.startswith("#"):
             continue
         from_match = re.match(
-            r"(?i)^FROM\\s+([^\\s]+)(?:\\s+AS\\s+([^\\s]+))?",
+            r"(?i)^FROM\s+([^\s]+)(?:\s+AS\s+([^\s]+))?",
             line,
         )
         if from_match:
@@ -532,7 +532,7 @@ def _parse_docker_runtime(text: str) -> dict[str, Any]:
             }
             stages.append(current)
             continue
-        user_match = re.match(r"(?i)^USER\\s+([^\\s#]+)", line)
+        user_match = re.match(r"(?i)^USER\s+([^\s#]+)", line)
         if user_match and current is not None:
             current["user"] = user_match.group(1)
     final = stages[-1] if stages else {
@@ -561,35 +561,35 @@ def _runtime_manifest_evidence(
         item = {
             "archivo": relative,
             "privileged_true": bool(
-                re.search(r"(?im)^\\s*privileged\\s*:\\s*true\\s*$", text)
+                re.search(r"(?im)^\s*privileged\s*:\s*true\s*$", text)
             ),
             "run_as_user_0": bool(
-                re.search(r"(?im)\\brunasuser\\s*:\\s*0\\b", text)
+                re.search(r"(?im)\brunasuser\s*:\s*0\b", text)
             ),
             "run_as_non_root_true": bool(
-                re.search(r"(?im)\\brunasnonroot\\s*:\\s*true\\b", text)
+                re.search(r"(?im)\brunasnonroot\s*:\s*true\b", text)
             ),
             "run_as_non_root_false": bool(
-                re.search(r"(?im)\\brunasnonroot\\s*:\\s*false\\b", text)
+                re.search(r"(?im)\brunasnonroot\s*:\s*false\b", text)
             ),
             "compose_user_root": bool(
                 re.search(
-                    r"(?im)^\\s*user\\s*:\\s*[\"']?(?:root|0(?::0)?)[\"']?\\s*$",
+                    r"(?im)^\s*user\s*:\s*[\"']?(?:root|0(?::0)?)[\"']?\s*$",
                     text,
                 )
             ),
             "docker_socket_mount": "/var/run/docker.sock" in lower,
             "host_network": bool(
-                re.search(r"(?im)\\bhostnetwork\\s*:\\s*true\\b", text)
+                re.search(r"(?im)\bhostnetwork\s*:\s*true\b", text)
             )
             or bool(
-                re.search(r"(?im)^\\s*network_mode\\s*:\\s*host\\s*$", text)
+                re.search(r"(?im)^\s*network_mode\s*:\s*host\s*$", text)
             ),
             "host_pid": bool(
-                re.search(r"(?im)\\bhostpid\\s*:\\s*true\\b", text)
+                re.search(r"(?im)\bhostpid\s*:\s*true\b", text)
             ),
             "dangerous_capability": bool(
-                re.search(r"(?i)\\b(?:SYS_ADMIN|NET_ADMIN)\\b", text)
+                re.search(r"(?i)\b(?:SYS_ADMIN|NET_ADMIN)\b", text)
             ),
         }
         evidence.append(item)
