@@ -1,5 +1,6 @@
 import json
 
+import auditor_bola.profile_builder as profile_builder
 from auditor_bola.profile_builder import (
     build_profile_draft,
     detect_project,
@@ -695,7 +696,15 @@ def test_detecta_version_en_constante_python(tmp_path):
     assert profile["version_objetivo"] == "8.0.1"
 
 
-def test_docker_compose_conserva_runtime_nativo_como_alternativa(tmp_path):
+def test_docker_compose_conserva_runtime_nativo_como_alternativa(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        profile_builder,
+        "_docker_available_on_host",
+        lambda: True,
+    )
     (tmp_path / "compose.yml").write_text(
         "services:\n  app:\n    image: demo\n",
         encoding="utf-8",
@@ -729,7 +738,15 @@ def test_docker_compose_conserva_runtime_nativo_como_alternativa(tmp_path):
 
 
 
-def test_docker_compose_detecta_puerto_publicado(tmp_path):
+def test_docker_compose_detecta_puerto_publicado(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        profile_builder,
+        "_docker_available_on_host",
+        lambda: True,
+    )
     (tmp_path / "compose.yml").write_text(
         "services:\n"
         "  app:\n"
@@ -773,7 +790,15 @@ def test_flask_run_py_detecta_puerto_explicito(tmp_path):
 
 
 
-def test_perfil_json_expone_plan_de_ejecucion_local(tmp_path):
+def test_perfil_json_expone_plan_de_ejecucion_local(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        profile_builder,
+        "_docker_available_on_host",
+        lambda: True,
+    )
     (tmp_path / "compose.yml").write_text(
         "services:\n"
         "  app:\n"
@@ -795,7 +820,7 @@ def test_perfil_json_expone_plan_de_ejecucion_local(tmp_path):
     runtime = profile["runtime"]
     plan = profile["metadata_detectada"]["plan_ejecucion"]
 
-    assert runtime["preferencia_arranque"] == "auto"
+    assert runtime["preferencia_arranque"] == "contenedor"
     assert runtime["permitir_fallback_local"] is True
     assert runtime["nombre"] == "Docker Compose"
     assert runtime["alternativas"][0]["nombre"] == "Python"
@@ -825,3 +850,77 @@ def test_flask_run_py_sin_puerto_no_inventa_5000(tmp_path):
     assert runtime["comando_inicio"] == ["python", "run.py"]
     assert runtime["base_url"] == ""
     assert base_url == ""
+
+
+
+def test_sin_docker_json_prioriza_python_local(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        profile_builder,
+        "_docker_available_on_host",
+        lambda: False,
+    )
+    (tmp_path / "compose.yml").write_text(
+        "services:\n"
+        "  app:\n"
+        "    image: demo\n"
+        "    ports:\n"
+        "      - \"5050:5050\"\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "run.py").write_text(
+        "from app import app\n"
+        "app.run(host='127.0.0.1', port=5050)\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    runtime = profile["runtime"]
+    environment = profile["metadata_detectada"]["entorno_ejecucion"]
+
+    assert runtime["nombre"] == "Python"
+    assert runtime["preferencia_arranque"] == "local"
+    assert runtime["comando_inicio"] == ["python", "run.py"]
+    assert runtime["base_url"] == "http://127.0.0.1:5050"
+    assert runtime["alternativas"][0]["nombre"] == "Docker Compose"
+    assert profile["base_url"] == "http://127.0.0.1:5050"
+    assert environment["docker_instalado"] is False
+    assert environment["runtime_principal"] == "Python"
+
+
+def test_con_docker_json_prioriza_compose(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        profile_builder,
+        "_docker_available_on_host",
+        lambda: True,
+    )
+    (tmp_path / "compose.yml").write_text(
+        "services:\n"
+        "  app:\n"
+        "    image: demo\n"
+        "    ports:\n"
+        "      - \"8088:5000\"\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "run.py").write_text(
+        "from app import app\napp.run(port=5000)\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    runtime = profile["runtime"]
+    environment = profile["metadata_detectada"]["entorno_ejecucion"]
+
+    assert runtime["nombre"] == "Docker Compose"
+    assert runtime["preferencia_arranque"] == "contenedor"
+    assert runtime["base_url"] == "http://127.0.0.1:8088"
+    assert runtime["alternativas"][0]["nombre"] == "Python"
+    assert environment["docker_instalado"] is True
+    assert environment["runtime_principal"] == "Docker Compose"
