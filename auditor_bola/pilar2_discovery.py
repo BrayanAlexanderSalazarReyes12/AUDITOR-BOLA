@@ -327,7 +327,6 @@ def _discover_cors(
                     },
                 }
             )
-        break
 
     return checks, candidates
 
