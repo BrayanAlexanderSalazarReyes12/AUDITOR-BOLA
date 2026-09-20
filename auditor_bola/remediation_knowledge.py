@@ -21,9 +21,34 @@ KNOWLEDGE_SCHEMA_VERSION = 2
 
 
 def normalizar_familia_control(control_id: str) -> str:
-    """Agrupa variantes numeradas sin amarrarse a un perfil concreto."""
+    """Agrupa controles por concepto, no por su ID concreto.
+
+    Los IDs autogenerados pueden incorporar hashes/fingerprints. La familia
+    aprendida debe seguir siendo portable entre aplicaciones.
+    """
     value = (control_id or "").strip().upper()
+    semantic = (
+        ("BOLA", "P1-BOLA"),
+        ("RBAC", "P1-RBAC_ABAC"),
+        ("ABAC", "P1-RBAC_ABAC"),
+        ("AGENT", "P1-AGENT_SCOPE"),
+        ("SCOPE", "P1-AGENT_SCOPE"),
+        ("CORS", "P2-CORS"),
+        ("SECRET", "P2-SECRET"),
+        ("CONTAINER", "P2-CONTAINER"),
+        ("DOCKER", "P2-CONTAINER"),
+        ("BYPASS", "P2-LIMIT_BYPASS"),
+        ("LIMIT", "P2-LIMIT_BYPASS"),
+        ("DEBUG", "P2-DEBUG"),
+        ("SESSION", "P2-SESSION"),
+        ("COOKIE", "P2-SESSION"),
+    )
+    for token, family in semantic:
+        if token in value:
+            return family
     value = re.sub(r"[-_.](?:V)?\d+$", "", value)
+    # Elimina un fingerprint hexadecimal final de controles AUTO.
+    value = re.sub(r"[-_.][0-9A-F]{8,64}(?:[-_.]\d+)?$", "", value)
     return value or "CONTROL"
 
 
@@ -150,17 +175,48 @@ def crear_conocimiento_respaldo_verificado(
         "eran seguros deben permanecer seguros."
     )
 
-    knowledge = RemediationKnowledge(
-        control_id=control_id,
-        titulo=titulo,
-        causa_raiz=causa,
-        invariante_seguridad=invariante,
-        estrategia_general=[
+    family_strategies = {
+        "P2-CORS": [
+            "Localizar el componente que decide la política CORS efectiva.",
+            "Sustituir reflexión/patrones permisivos por una allowlist explícita.",
+            "Habilitar credenciales únicamente para orígenes confiables.",
+            "Conservar Vary: Origin cuando la respuesta dependa del origen.",
+        ],
+        "P2-SECRET": [
+            "Identificar entorno y fuente externa del secreto.",
+            "En producción fallar de forma cerrada si el secreto está ausente.",
+            "Rechazar en producción valores default/fallback inseguros.",
+            "Permitir comportamiento local solo según una política explícita.",
+        ],
+        "P2-LIMIT_BYPASS": [
+            "Identificar la capacidad que modifica u omite la política.",
+            "Resolver identidad, rol/permisos o atributos antes de la excepción.",
+            "Autorizar explícitamente la excepción y rechazar de forma cerrada.",
+            "Registrar el uso de la capacidad excepcional.",
+        ],
+        "P2-CONTAINER": [
+            "Resolver usuario y privilegios efectivos del runtime final.",
+            "Usar un usuario no privilegiado con ownership mínimo necesario.",
+            "Eliminar privileged, capabilities, host modes y mounts innecesarios.",
+            "Validar que volúmenes, puertos y directorios requeridos sigan operando.",
+        ],
+    }
+    strategy = family_strategies.get(
+        familia,
+        [
             "Identificar el punto donde se toma la decisión de seguridad.",
             "Aplicar la validación o autorización antes del efecto sensible.",
             "Rechazar de forma segura cuando la condición no se cumpla.",
             "Preservar el comportamiento de los casos previamente seguros.",
         ],
+    )
+
+    knowledge = RemediationKnowledge(
+        control_id=control_id,
+        titulo=titulo,
+        causa_raiz=causa,
+        invariante_seguridad=invariante,
+        estrategia_general=strategy,
         señales_aplicabilidad=[
             f"Hallazgo de la familia {familia}.",
             f"Control semántico: {categoria}.",
