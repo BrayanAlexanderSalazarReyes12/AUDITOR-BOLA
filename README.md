@@ -127,15 +127,7 @@ La guía cubre carga del perfil, diagnóstico, corrección individual y múltipl
 Aegis puede administrar **varios perfiles de IA directamente desde la
 aplicación**. En **Configuración → Inteligencia artificial** se pueden crear,
 editar, duplicar, eliminar y seleccionar perfiles con nombre, URL base,
-modelo, rol y API key.
-
-La configuración rápida incorpora dos presets:
-- **Qwen3-Coder Free · OpenRouter** como `coder_primary`;
-- **Gemini 2.5 Flash · Google AI** como `analyst_secondary`.
-
-Los perfiles existentes de **Laboratorio UTB / lab-coder** se reconocen como
-`fallback`. Las API keys siguen siendo locales y deben ser suministradas por
-el usuario.
+modelo y API key. El perfil activo es el que usa el Asistente IA.
 
 Esto permite conservar, por ejemplo, un perfil **UTB - Gemma**, otro para
 **Ollama local**, otro para **LM Studio** o cualquier endpoint compatible con
@@ -165,7 +157,7 @@ aplicarla o guardarla en el perfil. La ventana principal conserva el botón
 Después, la receta seleccionada se somete al ciclo determinista de backup,
 aplicación, reinicio, verificación y rollback.
 
-**El motor multimodelo propone; el usuario decide; el auditor verifica.**
+**Gemma propone; el usuario decide; el auditor verifica.**
 
 Ejecute normalmente:
 
@@ -233,7 +225,7 @@ Una receta solo queda en `CORREGIDO` cuando:
 Si una receta no soluciona la fila objetivo o introduce una regresión, se hace
 rollback y se marca `NO_CORREGIDO`.
 
-Para mejorar una receta fallida, el motor multimodelo recibe en la siguiente ronda:
+Para mejorar una receta fallida, Gemma recibe en la siguiente ronda:
 
 - la fila objetivo exacta;
 - la matriz de pruebas del mismo control;
@@ -242,11 +234,8 @@ Para mejorar una receta fallida, el motor multimodelo recibe en la siguiente ron
 - el diff que se intentó aplicar;
 - el resultado de verificación y las regresiones detectadas.
 
-La GUI puede generar **3 nuevas recetas reformuladas** usando esa
-retroalimentación. El routing normal prioriza Qwen3-Coder para código; cuando
-ya existen fallos, el diagnóstico prioriza Gemini como segunda opinión. Si un
-proveedor falla por cuota, HTTP o contexto, Aegis intenta el siguiente perfil
-configurado.
+La GUI pregunta si se desean generar **3 nuevas recetas reformuladas** usando
+esa retroalimentación, evitando repetir la misma solución fallida.
 
 ## Conocimiento correctivo reutilizable
 

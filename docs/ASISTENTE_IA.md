@@ -4,7 +4,7 @@ El Asistente IA amplía el auditor cuando un hallazgo no tiene receta o cuando e
 
 ## Principio de seguridad
 
-Ningún proveedor IA **modifica código directamente**. El flujo es:
+Gemma **no modifica código directamente**. El flujo es:
 
 ```text
 HALLAZGO
@@ -40,29 +40,16 @@ Cada perfil conserva:
 - API key local cuando el proveedor la requiere.
 
 La pantalla permite **crear, editar, duplicar, eliminar y activar** perfiles.
-Cada perfil puede tener un rol. Aegis usa esos roles para routing automático:
-`coder_primary` → `analyst_secondary` → `fallback`. El perfil activo sigue
-sirviendo como preferencia/compatibilidad cuando no existe una cadena completa.
+Solo un perfil queda activo a la vez y es el que usa la generación de recetas.
 
-Configuración rápida recomendada:
+Ejemplos de perfiles:
 
 ```text
-Qwen3-Coder Free · OpenRouter
-  base_url: https://openrouter.ai/api/v1
-  model: qwen/qwen3-coder:free
-  role: coder_primary
-
-Gemini 2.5 Flash · Google AI
-  base_url: https://generativelanguage.googleapis.com/v1beta/openai
-  model: gemini-2.5-flash
-  role: analyst_secondary
-
-UTB / lab-coder
-  role: fallback
+UTB - Gemma
+Ollama local
+LM Studio
+Servidor compatible OpenAI
 ```
-
-También se conservan perfiles para Ollama, LM Studio u otros endpoints
-compatibles con `/chat/completions`.
 
 El endpoint esperado continúa siendo compatible con:
 
@@ -142,8 +129,7 @@ selección automática.
 4. Seleccione un hallazgo.
 5. Pulse **Generar recetas con IA**.
 6. El auditor intenta cargar automáticamente el archivo relacionado. Si no encuentra uno adecuado, pulse **Elegir archivo**.
-7. Pulse **Generar 3 recetas con IA**. Aegis selecciona automáticamente el
-   proveedor según rol, disponibilidad y fallos previos.
+7. Pulse **Generar 3 recetas con Gemma**.
 8. Se abrirá automáticamente una ventana independiente con tres pestañas:
    - **MINIMA**;
    - **ESTRUCTURAL**;
@@ -187,15 +173,15 @@ rollback
   ↓
 ¿Generar 3 nuevas recetas con el fallo?
   ↓
-el motor multimodelo recibe el intento anterior + resultado de verificación
+Gemma recibe el intento anterior + resultado de verificación
 ```
 
-La segunda ronda incluye la matriz de pruebas del mismo control para que el modelo
+La segunda ronda incluye la matriz de pruebas del mismo control para que Gemma
 conozca qué combinaciones ya eran seguras y cuál debe corregir. También recibe
 el diff de la receta fallida y se le indica que no repita la misma solución ni
 una variante superficial.
 
-El feedback enviado al proveedor IA pasa por la misma redacción de secretos utilizada
+El feedback enviado a Gemma pasa por la misma redacción de secretos utilizada
 para el código fuente.
 
 ## Aprendizaje de una medicina reutilizable
@@ -214,7 +200,7 @@ En ese momento el auditor toma:
 - propuesta que funcionó;
 - resultado de verificación.
 
-El proveedor IA transforma ese caso concreto en una medicina semántica que evita nombres
+Gemma transforma ese caso concreto en una medicina semántica que evita nombres
 propios del sistema origen.
 
 Se guarda en:
@@ -239,7 +225,7 @@ Medicinas conocidas: N
 Una medicina puede encontrarse por ID exacto, por familia de control
 (`P1-BOLA-001` y `P1-BOLA-017`, por ejemplo) o por `tipo_control`.
 
-Al pulsar **Adaptar esta medicina al aplicativo**, el proveedor IA no copia el parche
+Al pulsar **Adaptar esta medicina al aplicativo**, Gemma no copia el parche
 original. Recibe la medicina verificada y el código actual y produce tres
 implementaciones específicas para ese sistema.
 
@@ -310,33 +296,3 @@ Una propuesta IA no se considera correcta por haber sido generada. Solo puede te
 7. el hallazgo desaparece.
 
 Si falla la verificación, se conserva el comportamiento de rollback del auditor.
-
-
-## Routing multimodelo y presupuesto de contexto
-
-Aegis calcula el `max_tokens` de cada petición usando la ventana de contexto
-del perfil y una estimación conservadora del prompt. Ya no solicita siempre
-8.192 tokens de salida.
-
-Para `lab-coder` se usa por defecto una ventana de 20.480 tokens y un máximo
-de 4.096 tokens de salida. Si el contexto no cabe, Aegis compacta código,
-historial y evidencia antes de enviar. Si el proveedor todavía responde con
-un error de ventana de contexto, se ejecuta una segunda compactación más
-agresiva con una salida menor antes de pasar al siguiente proveedor.
-
-Con Qwen3-Coder y Gemini 2.5 Flash los presets declaran ventanas grandes de
-contexto, pero Aegis mantiene la misma disciplina: solo envía código relevante,
-redacta secretos y conserva trazabilidad del proveedor realmente utilizado.
-
-El orden normal es:
-
-```text
-generación de parche:
-Qwen3-Coder → Gemini → fallback
-
-diagnóstico tras fallos:
-Gemini → Qwen3-Coder → fallback
-```
-
-Cada sesión IA registra `provider_trace`, incluyendo proveedor, modelo,
-estimación de tokens, compactación y fallos de routing, sin almacenar API keys.

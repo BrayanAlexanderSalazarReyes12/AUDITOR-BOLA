@@ -19,7 +19,6 @@ from ..ai_recipes import (
     guardar_perfil_ia,
     importar_configuracion_opencode_a_aegis,
     listar_perfiles_ia,
-    listar_presets_ia,
     seleccionar_perfil_ia,
     generar_tres_recetas,
     guardar_seleccion_ia,
@@ -1623,9 +1622,6 @@ class AuditorController(QObject):
             )
             return []
 
-    def ai_presets(self) -> list[dict]:
-        return listar_presets_ia()
-
     def ai_settings(self) -> dict:
         if not self.ai_provider:
             self._refresh_ai_provider(silent=True)
@@ -1656,9 +1652,6 @@ class AuditorController(QObject):
                     "model_id": item.get("model_id"),
                     "model_name": item.get("model_name"),
                     "base_url": item.get("base_url"),
-                    "role": item.get("role"),
-                    "context_window": item.get("context_window"),
-                    "max_output_tokens": item.get("max_output_tokens"),
                     "config_path": item.get("config_path"),
                     "has_api_key": item.get("has_api_key"),
                     "active": item.get("active"),
@@ -1673,11 +1666,6 @@ class AuditorController(QObject):
         model_id: str,
         api_key: str | None = None,
         profile_id: str | None = None,
-        provider_id: str | None = None,
-        provider_name: str | None = None,
-        role: str | None = None,
-        context_window: int | None = None,
-        max_output_tokens: int | None = None,
     ) -> None:
         try:
             self.ai_provider = guardar_perfil_ia(
@@ -1686,11 +1674,7 @@ class AuditorController(QObject):
                 base_url=base_url,
                 model_id=model_id,
                 api_key=api_key,
-                provider_id=provider_id or "generic",
-                provider_name=provider_name or profile_name,
-                role=role,
-                context_window=context_window,
-                max_output_tokens=max_output_tokens,
+                provider_name=profile_name,
                 set_active=True,
             )
         except Exception as exc:
@@ -2416,22 +2400,51 @@ class AuditorController(QObject):
         def success(result):
             legacy_state = result.get("estado_final") or "DESCONOCIDO"
             patch_state = result.get("estado_patch") or legacy_state
-            verified = patch_state == "PATCH_VERIFIED"
+            verified = patch_state in {
+                "PATCH_VERIFIED",
+                "PATCH_VERIFIED_WITH_WARNINGS",
+            }
 
             if verified:
                 self.ai_source_hash = None
                 self.ai_source_hashes.clear()
                 self.ai_failed_attempts.pop(row["id"], None)
                 self.ai_auto_regenerations.pop(row["id"], None)
-                self.info_message.emit(
-                    "Parche verificado",
-                    (
-                        f"{row['id']}: PATCH_VERIFIED\n\n"
-                        "La validación técnica, la prueba de seguridad, "
-                        "la regresión y el reescaneo no reprodujeron "
-                        "el hallazgo."
-                    ),
-                )
+
+                if patch_state == "PATCH_VERIFIED_WITH_WARNINGS":
+                    warnings = result.get("qa_advertencias") or []
+                    warning_detail = ""
+                    if warnings:
+                        warning_detail = str(
+                            warnings[0].get("detalle") or ""
+                        ).strip()
+                    message = (
+                        f"{row['id']}: PATCH_VERIFIED_WITH_WARNINGS\n\n"
+                        "Aegis modificó el código y la prueba de seguridad "
+                        "confirmó que el fallo ya no se reproduce. El parche "
+                        "se conserva.\n\n"
+                        "La suite funcional reportó fallos posteriores. "
+                        "Esto puede ocurrir cuando una prueba antigua todavía "
+                        "espera el comportamiento vulnerable; revísala antes "
+                        "de actualizar esas pruebas."
+                    )
+                    if warning_detail:
+                        message += "\n\nQA: " + warning_detail[:3500]
+                    self.info_message.emit(
+                        "Parche de seguridad aplicado con advertencias",
+                        message,
+                    )
+                else:
+                    self.info_message.emit(
+                        "Parche verificado",
+                        (
+                            f"{row['id']}: PATCH_VERIFIED\n\n"
+                            "Aegis modificó el código y la prueba de seguridad "
+                            "confirmó que el fallo ya no se reproduce. "
+                            "Las validaciones posteriores finalizaron "
+                            "sin advertencias."
+                        ),
+                    )
             else:
                 history = self.ai_failed_attempts.setdefault(
                     row["id"],

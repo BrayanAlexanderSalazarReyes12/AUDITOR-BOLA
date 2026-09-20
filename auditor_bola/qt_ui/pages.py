@@ -1387,7 +1387,6 @@ class SettingsPage(QWidget):
         super().__init__(parent)
         self.controller = controller
         self._editing_profile_id: str | None = None
-        self._provider_metadata: dict = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1430,31 +1429,6 @@ class SettingsPage(QWidget):
         self.ai.setObjectName("Muted")
         self.ai.setWordWrap(True)
         ia_l.addWidget(self.ai)
-
-        preset_row = QHBoxLayout()
-        preset_row.addWidget(QLabel("Configuración rápida"))
-        self.ai_preset = QComboBox()
-        self.ai_preset.addItem("Seleccionar preset gratuito…", "")
-        for preset in self.controller.ai_presets():
-            self.ai_preset.addItem(
-                str(preset.get("name") or preset.get("id")),
-                str(preset.get("id") or ""),
-            )
-        preset_row.addWidget(self.ai_preset, 1)
-        apply_preset = QPushButton("Cargar preset")
-        apply_preset.clicked.connect(self._apply_ai_preset)
-        preset_row.addWidget(apply_preset)
-        ia_l.addLayout(preset_row)
-
-        preset_help = QLabel(
-            "Recomendado: Qwen3-Coder Free (OpenRouter) como motor principal "
-            "de código y Gemini 2.5 Flash como analista/segunda opinión. "
-            "Aegis usa el proveedor configurado como fallback si los anteriores "
-            "no están disponibles."
-        )
-        preset_help.setObjectName("Muted")
-        preset_help.setWordWrap(True)
-        ia_l.addWidget(preset_help)
 
         profile_row = QHBoxLayout()
         profile_row.addWidget(QLabel("Perfil IA"))
@@ -1505,24 +1479,13 @@ class SettingsPage(QWidget):
         self.ai_model.setPlaceholderText("lab-coder")
         ai_grid.addWidget(self.ai_model, 2, 1)
 
-        ai_grid.addWidget(QLabel("Rol"), 3, 0)
-        self.ai_role = QComboBox()
-        self.ai_role.addItem("Principal de código", "coder_primary")
-        self.ai_role.addItem(
-            "Analista / segunda opinión",
-            "analyst_secondary",
-        )
-        self.ai_role.addItem("Fallback", "fallback")
-        self.ai_role.addItem("Genérico", "generic")
-        ai_grid.addWidget(self.ai_role, 3, 1)
-
-        ai_grid.addWidget(QLabel("API key"), 4, 0)
+        ai_grid.addWidget(QLabel("API key"), 3, 0)
         self.ai_key = QLineEdit()
         self.ai_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.ai_key.setPlaceholderText(
             "Vacía conserva la clave guardada; puede ser opcional"
         )
-        ai_grid.addWidget(self.ai_key, 4, 1)
+        ai_grid.addWidget(self.ai_key, 3, 1)
 
         ia_l.addLayout(ai_grid)
 
@@ -1566,47 +1529,7 @@ class SettingsPage(QWidget):
         self.ai_model.setText(
             str(settings.get("model_id") or "lab-coder")
         )
-        self._provider_metadata = {
-            "provider_id": settings.get("provider_id") or "generic",
-            "provider_name": settings.get("provider_name") or "Proveedor IA",
-            "context_window": settings.get("context_window"),
-            "max_output_tokens": settings.get("max_output_tokens"),
-        }
-        role = str(settings.get("role") or "generic")
-        role_index = self.ai_role.findData(role)
-        self.ai_role.setCurrentIndex(
-            role_index if role_index >= 0 else self.ai_role.findData("generic")
-        )
         self.ai_key.clear()
-
-    def _apply_ai_preset(self) -> None:
-        preset_id = str(self.ai_preset.currentData() or "").strip()
-        if not preset_id:
-            return
-        preset = next(
-            (
-                item
-                for item in self.controller.ai_presets()
-                if str(item.get("id") or "") == preset_id
-            ),
-            None,
-        )
-        if not preset:
-            return
-
-        self._editing_profile_id = None
-        self.ai_profiles.setCurrentIndex(-1)
-        self.ai_profile_name.setText(str(preset.get("name") or ""))
-        self.ai_base_url.setText(str(preset.get("base_url") or ""))
-        self.ai_model.setText(str(preset.get("model_id") or ""))
-        self._provider_metadata = dict(preset)
-        role_index = self.ai_role.findData(
-            str(preset.get("role") or "generic")
-        )
-        if role_index >= 0:
-            self.ai_role.setCurrentIndex(role_index)
-        self.ai_key.clear()
-        self.ai_key.setFocus()
 
     def _profile_changed(self, _index: int) -> None:
         self._load_profile_fields(self._selected_profile_id())
@@ -1617,12 +1540,6 @@ class SettingsPage(QWidget):
         self.ai_profile_name.clear()
         self.ai_base_url.clear()
         self.ai_model.setText("lab-coder")
-        self._provider_metadata = {
-            "provider_id": "generic",
-            "provider_name": "Proveedor IA",
-        }
-        generic_index = self.ai_role.findData("generic")
-        self.ai_role.setCurrentIndex(generic_index)
         self.ai_key.clear()
         self.ai_profile_name.setFocus()
 
@@ -1633,19 +1550,6 @@ class SettingsPage(QWidget):
             base_url=self.ai_base_url.text().strip(),
             model_id=self.ai_model.text().strip() or "lab-coder",
             api_key=self.ai_key.text().strip() or None,
-            provider_id=str(
-                self._provider_metadata.get("provider_id") or "generic"
-            ),
-            provider_name=str(
-                self._provider_metadata.get("provider_name")
-                or self.ai_profile_name.text().strip()
-                or "Proveedor IA"
-            ),
-            role=str(self.ai_role.currentData() or "generic"),
-            context_window=self._provider_metadata.get("context_window"),
-            max_output_tokens=self._provider_metadata.get(
-                "max_output_tokens"
-            ),
         )
         self.ai_key.clear()
 
@@ -1750,7 +1654,5 @@ class SettingsPage(QWidget):
             f"Perfiles guardados: {len(profiles)} · "
             f"Configuración local: {config_path}\n"
             "La API key de cada perfil se guarda localmente y nunca se "
-            "muestra en pantalla ni se incorpora a evidencias o releases.\n"
-            "Routing: principal de código → analista/segunda opinión → fallback. "
-            "Tras fallos previos, el diagnóstico prioriza al analista."
+            "muestra en pantalla ni se incorpora a evidencias o releases."
         )
