@@ -742,3 +742,91 @@ def test_script_python_empaquetado_prefiere_venv_del_proyecto(
     resolved = manager._python_interpreter({"PATH": ""})
 
     assert resolved == str(python.resolve())
+
+
+
+def test_preferencia_local_prioriza_runtime_nativo_sobre_docker(tmp_path):
+    runtime = RuntimeConfig(
+        modo="service",
+        nombre="Docker Compose",
+        origen="compose.yml",
+        comando_inicio=["docker", "compose", "up", "-d"],
+        preferencia_arranque="local",
+        permitir_fallback_local=True,
+        alternativas=[
+            {
+                "modo": "process",
+                "nombre": "Python local",
+                "origen": "python-project",
+                "comando_inicio": ["python", "run.py"],
+                "base_url": "http://127.0.0.1:5000",
+            }
+        ],
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    options = manager._runtime_options()
+
+    assert options[0].nombre == "Python local"
+    assert options[1].nombre == "Docker Compose"
+
+
+def test_sin_docker_auto_conserva_fallback_local(tmp_path):
+    runtime = RuntimeConfig(
+        modo="service",
+        nombre="Docker Compose",
+        origen="compose.yml",
+        comando_inicio=["docker", "compose", "up", "-d"],
+        preferencia_arranque="auto",
+        permitir_fallback_local=True,
+        alternativas=[
+            {
+                "modo": "process",
+                "nombre": "Python local",
+                "origen": "python-project",
+                "comando_inicio": ["python", "run.py"],
+                "base_url": "http://127.0.0.1:5000",
+            }
+        ],
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    def fake_validate(candidate):
+        if candidate.nombre == "Docker Compose":
+            raise FileNotFoundError("docker")
+        return None
+
+    with patch.object(
+        manager,
+        "_validate_runtime_candidate",
+        side_effect=fake_validate,
+    ):
+        manager._select_runtime_if_needed()
+
+    assert manager.runtime.nombre == "Python local"
+
+
+def test_comando_python_generado_usa_venv_del_proyecto(tmp_path, monkeypatch):
+    script = tmp_path / "run.py"
+    script.write_text("print('ok')\n", encoding="utf-8")
+    python = tmp_path / ".venv" / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.write_bytes(b"")
+
+    manager = _manager(tmp_path, ["python", "run.py"])
+    monkeypatch.setattr(
+        process_manager,
+        "_is_windows",
+        lambda: True,
+    )
+
+    command = manager._resolver_comando(
+        tmp_path,
+        {
+            "PATH": "",
+            "PATHEXT": ".COM;.EXE;.BAT;.CMD",
+        },
+    )
+
+    assert command[0] == str(python.resolve())
+    assert command[1:] == ["run.py"]
