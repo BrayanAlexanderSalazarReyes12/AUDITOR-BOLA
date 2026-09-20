@@ -928,6 +928,15 @@ def duplicar_perfil_ia(
             or source.get("model_id")
             or DEFAULT_MODEL_ID
         ),
+        role=str(source.get("role") or "generic"),
+        context_window=_safe_int(
+            source.get("context_window"),
+            DEFAULT_CONTEXT_WINDOW,
+        ),
+        max_output_tokens=_safe_int(
+            source.get("max_output_tokens"),
+            DEFAULT_MAX_OUTPUT_TOKENS,
+        ),
         set_active=True,
         path=config_path,
     )
@@ -2486,7 +2495,7 @@ def generalizar_correccion_exitosa(
     timeout: int = 120,
 ) -> tuple[RemediationKnowledge, dict, AIProviderConfig]:
     """Extrae la medicina semántica de una corrección ya verificada."""
-    provider = provider or cargar_configuracion_opencode()
+    provider = provider or cargar_configuracion_ia()
 
     contexto = {
         "sistema_origen": cfg.sistema,
