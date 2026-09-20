@@ -424,9 +424,26 @@ def ciclo_correctivo(
             detail["archivo"] = relative
             language_details.append(detail)
 
-        restart_required = requires_service_restart(modified_files)
+        runtime_url = str(
+            cfg.base_url
+            or getattr(cfg.runtime, "base_url", "")
+            or ""
+        ).strip()
+        live_runtime_expected = bool(runtime_url) or reiniciar is not None
+        restart_required = bool(
+            (receta and receta.requiere_reinicio)
+            or (
+                live_runtime_expected
+                and requires_service_restart(modified_files)
+            )
+        )
         manifest["lenguajes_modificados"] = language_details
         manifest["reinicio_servicio"]["requerido"] = restart_required
+        manifest["reinicio_servicio"]["motivo"] = (
+            "código/configuración modificada con runtime activo"
+            if restart_required
+            else "sin runtime activo que requiera recarga"
+        )
         patched_path = (
             Path(target_root).resolve() / modified_files[0]
         ).resolve()
