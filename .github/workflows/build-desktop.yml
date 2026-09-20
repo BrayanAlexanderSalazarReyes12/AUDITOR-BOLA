@@ -1,4 +1,4 @@
-# full-endpoint-user-matrix-release: v1.1.22
+# matrix-policy-evaluation-release: v1.1.23
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.22' \
+            'Version: 1.1.23' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-22:
-    name: Publicar Release v1.1.22
+  release-v1-1-23:
+    name: Publicar Release v1.1.23
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.22]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.23]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,11 +253,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.22
+          # Aegis Auditor v1.1.23
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.22
+          ## Novedades de v1.1.23
           - Corrige la versión de la aplicación analizada: ya no se asigna
             `1.0.0` por defecto.
           - Detecta la versión real desde package.json, pom.xml, Gradle,
@@ -355,6 +355,12 @@ jobs:
           - DELETE se registra en la matriz pero se omite automáticamente para evitar eliminar información del objetivo durante el barrido general.
           - La interfaz muestra filas de matriz como OBSERVADO/OMITIDO/ERROR sin convertir respuestas desconocidas en vulnerabilidades inventadas.
           - El resumen del diagnóstico incluye total de combinaciones endpoint-usuario, accesos, denegaciones y pruebas no concluyentes.
+          - La matriz endpoint × usuario ahora evalúa cada observación contra política RBAC/BOLA conocida o inferida y señala filas vulnerables en vez de mostrarlas solo como observadas.
+          - Los resultados de matriz incluyen acceso esperado, acceso real, fuente de política, nivel de confianza y referencia al control que sustentó la decisión.
+          - Las vulnerabilidades ya cubiertas por un control P1 activo aparecen como confirmación para evitar duplicar el conteo de hallazgos.
+          - Los candidatos RBAC que permiten acceso a una identidad de bajo privilegio se muestran como vulnerables y se promueven automáticamente a controles P1 activos para siguientes ejecuciones.
+          - La matriz reutiliza cuerpos de prueba ya declarados por controles de seguridad cuando existen, evitando inventar datos de negocio.
+          - La interfaz separa hallazgos confirmados de vulnerabilidades detectadas por matriz y muestra ambas cifras en el resumen.
 
           ## Descargas
 
@@ -403,16 +409,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.22" >/dev/null 2>&1; then
-            gh release upload "v1.1.22" "${files[@]}" --clobber
-            gh release edit "v1.1.22" \
-              --title "Aegis Auditor v1.1.22" \
+          if gh release view "v1.1.23" >/dev/null 2>&1; then
+            gh release upload "v1.1.23" "${files[@]}" --clobber
+            gh release edit "v1.1.23" \
+              --title "Aegis Auditor v1.1.23" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.22" "${files[@]}" \
+            gh release create "v1.1.23" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.22" \
+              --title "Aegis Auditor v1.1.23" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
