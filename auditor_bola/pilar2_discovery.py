@@ -475,7 +475,7 @@ def analyze_secret_file(
         variable = str(match.group("var") or "secreto").strip()
         symbol = str(match.group("symbol") or "").strip()
         assignment = re.search(
-            rf"""(?im)^\s*{re.escape(symbol)}\s*=\s*
+            rf"""(?imx)^\s*{re.escape(symbol)}\s*=\s*
             (?P<quote>["'])(?P<fallback>[^"'\n]{{3,}})(?P=quote)\s*$""",
             text,
         )
