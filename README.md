@@ -89,16 +89,22 @@ La guía cubre carga del perfil, diagnóstico, corrección individual y múltipl
 
 ## Asistente IA de recetas
 
-La versión actual usa **Gemma `lab-coder` del Laboratorio UTB** reutilizando
-la configuración local de OpenCode. El auditor busca automáticamente:
+Aegis puede administrar **varios perfiles de IA directamente desde la
+aplicación**. En **Configuración → Inteligencia artificial** se pueden crear,
+editar, duplicar, eliminar y seleccionar perfiles con nombre, URL base,
+modelo y API key. El perfil activo es el que usa el Asistente IA.
 
-```text
-~/.config/opencode/opencode.json
-```
+Esto permite conservar, por ejemplo, un perfil **UTB - Gemma**, otro para
+**Ollama local**, otro para **LM Studio** o cualquier endpoint compatible con
+`/chat/completions`, y alternar entre ellos sin reinstalar Aegis ni volver a
+escribir la configuración.
 
-y toma del proveedor `llmlab` la `baseURL`, el modelo `lab-coder` y la
-referencia local de la API key. No es necesario copiar credenciales al perfil
-del auditor.
+OpenCode sigue soportado como opción de importación. Si existe
+`~/.config/opencode/opencode.json`, el botón **Importar desde OpenCode** crea
+un perfil independiente dentro de Aegis. OpenCode ya no es un requisito.
+
+Los perfiles se guardan en los datos locales de Aegis. La API key no se
+incluye en perfiles de aplicaciones auditadas, evidencias ni releases.
 
 Para un hallazgo seleccionado, la GUI solicita tres alternativas
 —**MINIMA, ESTRUCTURAL y ALTERNATIVA**— mediante el endpoint compatible:
@@ -124,8 +130,9 @@ Ejecute normalmente:
 python -m auditor_bola.gui
 ```
 
-La pestaña **Asistente IA** mostrará el proveedor, modelo y ruta de OpenCode
-detectados. La API key nunca se guarda en las evidencias del auditor.
+La pestaña **Asistente IA** usa el perfil seleccionado en Configuración. La
+API key nunca se muestra en la interfaz ni se guarda en las evidencias del
+auditor.
 
 Consulte:
 
