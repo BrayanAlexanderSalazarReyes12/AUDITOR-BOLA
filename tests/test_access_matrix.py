@@ -5,6 +5,7 @@ from auditor_bola.config import (
     Endpoint,
 )
 from auditor_bola.engine import auditar_matriz_acceso
+from auditor_bola.runner import filas_gui
 
 
 class FakeResponse:
