@@ -122,6 +122,7 @@ class AuditorController(QObject):
         self.ai_diagnosis: dict[str, Any] | None = None
         self.ai_target_row: dict | None = None
         self.ai_failed_attempts: dict[str, list[dict[str, Any]]] = {}
+        self.ai_auto_regenerations: dict[str, int] = {}
 
         self.pool = QThreadPool.globalInstance()
         # Mantiene vivos QRunnable/WorkerSignals hasta recibir finished/error.
@@ -984,6 +985,7 @@ class AuditorController(QObject):
         self.config_path = profile
         self.cfg = cfg
         self.ai_failed_attempts.clear()
+        self.ai_auto_regenerations.clear()
         self.ai_source_hashes.clear()
         self.ai_diagnosis = None
         self.proceso = None
@@ -1004,6 +1006,7 @@ class AuditorController(QObject):
             raise FileNotFoundError(root)
         self.target_root = root
         self.ai_failed_attempts.clear()
+        self.ai_auto_regenerations.clear()
         self.ai_source_hashes.clear()
         self.ai_diagnosis = None
         self.proceso = None
@@ -2168,51 +2171,62 @@ class AuditorController(QObject):
             )
             return
 
-        target_relative = (
-            proposal.archivo_objetivo
-            or self.ai_source_relative
-        )
-        source = (
-            self.target_root / target_relative
-        ).resolve()
+        changes = [
+            dict(item)
+            for item in (proposal.cambios or [])
+            if isinstance(item, dict)
+        ]
+        target_relatives = list(dict.fromkeys(
+            [
+                str(item.get("archivo") or "").replace("\\", "/").strip()
+                for item in changes
+                if str(item.get("archivo") or "").strip()
+            ]
+            or [
+                str(
+                    proposal.archivo_objetivo
+                    or self.ai_source_relative
+                )
+            ]
+        ))
+        target_relative = target_relatives[0]
         root = self.target_root.resolve()
-        if (
-            not source.is_file()
-            or source == root
-            or root not in source.parents
-        ):
-            self.error_message.emit(
-                "Archivo del hallazgo no disponible",
-                (
-                    "El archivo cargado para la receta ya no existe o "
-                    "quedó fuera del proyecto. Vuelve a generar la receta."
-                ),
-            )
-            return
 
-        current_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-        expected_hash = self.ai_source_hashes.get(
-            target_relative
-        )
-        if (
-            expected_hash is None
-            and target_relative == self.ai_source_relative
-        ):
-            expected_hash = self.ai_source_hash
-        if (
-            expected_hash
-            and current_hash != expected_hash
-        ):
-            self.error_message.emit(
-                "El archivo cambió",
-                (
-                    f"{target_relative} cambió después de que la IA "
-                    "lo cargó. Por seguridad Aegis no aplicará una receta "
-                    "generada sobre una versión distinta. Regenera las "
-                    "propuestas sobre el archivo actual."
-                ),
-            )
-            return
+        for relative in target_relatives:
+            source = (root / relative).resolve()
+            if (
+                not source.is_file()
+                or source == root
+                or root not in source.parents
+            ):
+                self.error_message.emit(
+                    "Archivo del hallazgo no disponible",
+                    (
+                        f"{relative} no existe dentro del proyecto. "
+                        "Regenera la receta con el código actual."
+                    ),
+                )
+                return
+
+            current_hash = hashlib.sha256(
+                source.read_bytes()
+            ).hexdigest()
+            expected_hash = self.ai_source_hashes.get(relative)
+            if (
+                expected_hash is None
+                and relative == self.ai_source_relative
+            ):
+                expected_hash = self.ai_source_hash
+            if expected_hash and current_hash != expected_hash:
+                self.error_message.emit(
+                    "El archivo cambió",
+                    (
+                        f"{relative} cambió después de que la IA lo cargó. "
+                        "Aegis no aplicará un plan generado sobre una versión "
+                        "distinta. Regenera las propuestas."
+                    ),
+                )
+                return
 
         correction = propuesta_a_correccion(
             proposal,
@@ -2234,29 +2248,28 @@ class AuditorController(QObject):
         }
 
         def work():
-            # Segunda comprobación inmediatamente antes del parcheo para
-            # impedir aplicar una receta si el archivo cambió entre el clic
-            # del usuario y la ejecución del worker.
-            expected_live_hash = self.ai_source_hashes.get(
-                target_relative
-            )
-            if (
-                expected_live_hash is None
-                and target_relative == self.ai_source_relative
-            ):
-                expected_live_hash = self.ai_source_hash
-            if expected_live_hash:
+            # Segunda comprobación inmediatamente antes del parcheo.
+            for relative in target_relatives:
                 live_source = (
-                    self.target_root / target_relative
+                    self.target_root / relative
                 ).resolve()
-                live_hash = hashlib.sha256(
-                    live_source.read_bytes()
-                ).hexdigest()
-                if live_hash != expected_live_hash:
-                    raise RuntimeError(
-                        "El archivo del hallazgo cambió antes del parcheo; "
-                        "regenera las recetas IA sobre la versión actual."
-                    )
+                expected_live_hash = self.ai_source_hashes.get(
+                    relative
+                )
+                if (
+                    expected_live_hash is None
+                    and relative == self.ai_source_relative
+                ):
+                    expected_live_hash = self.ai_source_hash
+                if expected_live_hash:
+                    live_hash = hashlib.sha256(
+                        live_source.read_bytes()
+                    ).hexdigest()
+                    if live_hash != expected_live_hash:
+                        raise RuntimeError(
+                            f"{relative} cambió antes del parcheo; "
+                            "regenera las recetas IA sobre la versión actual."
+                        )
 
             history = self.ai_failed_attempts.get(
                 row["id"],
@@ -2393,6 +2406,7 @@ class AuditorController(QObject):
                 self.ai_source_hash = None
                 self.ai_source_hashes.clear()
                 self.ai_failed_attempts.pop(row["id"], None)
+                self.ai_auto_regenerations.pop(row["id"], None)
                 self.info_message.emit(
                     "Parche verificado",
                     (
@@ -2419,6 +2433,24 @@ class AuditorController(QObject):
                 }
                 history.append(attempt_record)
                 del history[:-12]
+
+                # Nunca dejamos una receta fallida activa en el perfil en
+                # memoria: podría ser reutilizada accidentalmente por otro flujo.
+                self.cfg.correcciones = [
+                    item
+                    for item in self.cfg.correcciones
+                    if item.control_id != row["id"]
+                ]
+
+                proposal.validacion_ok = False
+                runtime_error = (
+                    f"falló en ejecución/verificación: {patch_state}"
+                )
+                if runtime_error not in proposal.errores_validacion:
+                    proposal.errores_validacion.append(runtime_error)
+                self.ai_proposals_changed.emit(
+                    [item.as_dict() for item in self.ai_proposals]
+                )
 
                 motive = str(result.get("motivo") or "").strip()
                 error = str(result.get("error") or "").strip()
@@ -2484,18 +2516,32 @@ class AuditorController(QObject):
                 if evidence:
                     details.append(f"Evidencia: {evidence}")
 
-                if len(history) >= 2:
+                auto_count = self.ai_auto_regenerations.get(
+                    row["id"],
+                    0,
+                )
+                auto_regenerate = (
+                    len(history) >= 2
+                    and len(history) % 2 == 0
+                    and auto_count < 3
+                )
+                if auto_regenerate:
                     details.append(
-                        "STRATEGY_RESET_REQUIRED: dos intentos "
-                        "consecutivos fallaron. La próxima generación "
-                        "reanalizará la causa raíz, archivos relacionados "
-                        "y flujo completo, y rechazará variaciones "
-                        "cosméticas de las estrategias descartadas."
+                        "STRATEGY_RESET: dos intentos consecutivos fallaron. "
+                        "Al cerrar este mensaje Aegis reanalizará "
+                        "automáticamente la causa raíz y generará estrategias "
+                        "nuevas; no reutilizará estas medicinas."
+                    )
+                elif len(history) >= 8:
+                    details.append(
+                        "MANUAL_REVIEW_REQUIRED: se agotaron varios ciclos "
+                        "adaptativos sin verificar una corrección."
                     )
                 else:
                     details.append(
-                        "Puedes seleccionar otra alternativa o regenerar. "
-                        "Este intento se conservará como retroalimentación."
+                        "Puedes seleccionar otra alternativa válida. "
+                        "Este intento quedó descartado y se usará como "
+                        "retroalimentación."
                     )
 
                 self.error_message.emit(
@@ -2510,7 +2556,19 @@ class AuditorController(QObject):
                 )
 
             self.evidence_changed.emit()
-            self.diagnose()
+            if not verified and 'auto_regenerate' in locals() and auto_regenerate:
+                self.ai_auto_regenerations[row["id"]] = (
+                    self.ai_auto_regenerations.get(row["id"], 0) + 1
+                )
+                source_for_retry = (
+                    self.target_root / self.ai_source_relative
+                )
+                self.generate_ai(
+                    row,
+                    source_for_retry,
+                )
+            else:
+                self.diagnose()
 
         self._run_async(
             f"Aplicando receta {proposal.enfoque} y verificando…",
