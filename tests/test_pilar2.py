@@ -15,18 +15,18 @@ def _cfg(checks):
 
 
 def test_detecta_secreto_inseguro_en_fuente(tmp_path):
-    target = tmp_path / "tramitia"
+    target = tmp_path / "app"
     target.mkdir()
-    (target / "__init__.py").write_text(
-        'SECRET_KEY=os.getenv("TRAMITIA_SECRET", SECRETO_POR_DEFECTO)',
+    (target / "settings.py").write_text(
+        'SECRET_KEY=os.getenv("APP_SECRET", DEFAULT_SECRET)',
         encoding="utf-8",
     )
     check = ChequeoPilar2(
-        id_control="P2-SECRET-002",
+        id_control="P2-SECRET-MANUAL",
         nombre="secret",
         tipo="source_contains",
-        archivo="tramitia/__init__.py",
-        patron_inseguro='SECRET_KEY=os.getenv("TRAMITIA_SECRET", SECRETO_POR_DEFECTO)',
+        archivo="app/settings.py",
+        patron_inseguro='SECRET_KEY=os.getenv("APP_SECRET", DEFAULT_SECRET)',
         patron_seguro="valor seguro en producción",
     )
     result = auditar_pilar2(_cfg([check]), tmp_path)[0]
@@ -34,7 +34,7 @@ def test_detecta_secreto_inseguro_en_fuente(tmp_path):
     assert result.vulnerable is True
     assert result.familia == "SECRET"
     assert result.severidad == "ALTA"
-    assert result.confianza == "alta"
+    assert result.confianza == "media-alta"
     assert result.causa_raiz == "gestion_secretos"
     assert result.evidencia
     assert result.evidencia[0]["tipo"] == "fuente_estatica"
@@ -44,7 +44,7 @@ def test_detecta_secreto_inseguro_en_fuente(tmp_path):
 
 def test_docker_non_root_pasa(tmp_path):
     (tmp_path / "Dockerfile").write_text(
-        "FROM python:3.12-slim\nUSER tramitia\n", encoding="utf-8"
+        "FROM python:3.12-slim\nUSER appuser\n", encoding="utf-8"
     )
     check = ChequeoPilar2(
         id_control="P2-DOCKER-004",
