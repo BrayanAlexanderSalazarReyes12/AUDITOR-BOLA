@@ -937,39 +937,53 @@ class AIPage(QWidget):
         )
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
-        self.detail.setMaximumHeight(230)
-        right_l.addWidget(self.detail)
+        self.detail.setMinimumHeight(105)
+        self.detail.setMaximumHeight(165)
 
         right_l.addWidget(
             SectionHeader(
                 "Vista previa del código",
                 (
-                    "Rojo = código anterior · Verde = código nuevo. "
-                    "Aegis calcula esta vista sobre el archivo real cargado."
+                    "Código real del archivo · rojo = eliminado · verde = añadido. "
+                    "Usa la barra horizontal para líneas largas."
                 ),
             )
         )
         self.diff_view = QTextEdit()
         self.diff_view.setReadOnly(True)
         self.diff_view.setObjectName("CodeDiffPreview")
+        self.diff_view.setLineWrapMode(
+            QTextEdit.LineWrapMode.NoWrap
+        )
         self.diff_view.setStyleSheet(
             "QTextEdit#CodeDiffPreview {"
             "background:#071723;"
             "border:1px solid #164765;"
             "border-radius:10px;"
-            "padding:8px;"
+            "padding:10px;"
             "font-family:Consolas, 'Courier New', monospace;"
-            "font-size:12px;"
+            "font-size:13px;"
+            "selection-background-color:#164765;"
             "}"
         )
-        right_l.addWidget(self.diff_view, 1)
+
+        # El detalle de la receta no debe comerse el espacio del código.
+        # El usuario necesita poder inspeccionar el parche antes de aplicarlo.
+        code_split = QSplitter(Qt.Orientation.Vertical)
+        code_split.setChildrenCollapsible(False)
+        code_split.addWidget(self.detail)
+        code_split.addWidget(self.diff_view)
+        code_split.setStretchFactor(0, 0)
+        code_split.setStretchFactor(1, 1)
+        code_split.setSizes([150, 520])
+        right_l.addWidget(code_split, 1)
 
         split.addWidget(left)
         split.addWidget(right)
-        left.setMinimumWidth(410)
-        split.setStretchFactor(0, 5)
-        split.setStretchFactor(1, 7)
-        split.setSizes([500, 700])
+        left.setMinimumWidth(360)
+        split.setStretchFactor(0, 4)
+        split.setStretchFactor(1, 8)
+        split.setSizes([420, 800])
         layout.addWidget(split, 1)
 
         self.refresh_provider()
