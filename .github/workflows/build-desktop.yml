@@ -362,11 +362,11 @@ jobs:
             gh release edit "v1.2.6-alpha" \
               --title "Aegis Auditor v1.2.6-alpha" \
               --notes-file RELEASE_NOTES.md \
-              --latest
+              --prerelease
           else
             gh release create "v1.2.6-alpha" "${files[@]}" \
               --target "${GITHUB_SHA}" \
               --title "Aegis Auditor v1.2.6-alpha" \
               --notes-file RELEASE_NOTES.md \
-              --latest
+              --prerelease
           fi
