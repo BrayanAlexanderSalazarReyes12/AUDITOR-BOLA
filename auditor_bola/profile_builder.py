@@ -4367,8 +4367,15 @@ def _infer_automatic_p2_checks(
                     for limit_token in limit_tokens
                 ):
                     continue
+                # Una mención de "admin/coordinator/role" muy lejos
+                # de la rama no demuestra que el bypass esté protegido. La
+                # guardia debe aparecer cerca de la condición que habilita la
+                # excepción.
+                guard_start = max(0, match.start() - 320)
+                guard_end = min(len(text), match.end() + 420)
+                guard_window = text[guard_start:guard_end].lower()
                 if any(
-                    guard in window_lower
+                    guard in guard_window
                     for guard in guard_tokens
                 ):
                     continue
