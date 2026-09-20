@@ -474,3 +474,87 @@ def test_generaliza_correccion_exitosa_sin_guardar_parche_literal(monkeypatch):
     prompt = captured["json"]["messages"][0]["content"]
     assert "NO es guardar el parche literal" in prompt
     assert "independiente de nombres concretos" in prompt
+
+
+
+def test_configuracion_ia_propia_de_aegis_no_depende_de_opencode(
+    tmp_path,
+    monkeypatch,
+):
+    config_path = tmp_path / "ai-provider.json"
+    monkeypatch.setattr(
+        ai,
+        "default_ai_config_path",
+        lambda: config_path,
+    )
+    monkeypatch.delenv("AEGIS_AI_BASE_URL", raising=False)
+    monkeypatch.delenv("AEGIS_AI_API_KEY", raising=False)
+    monkeypatch.delenv("AEGIS_AI_MODEL", raising=False)
+    monkeypatch.setenv(
+        "OPENCODE_CONFIG",
+        str(tmp_path / "opencode-inexistente.json"),
+    )
+
+    saved = ai.guardar_configuracion_aegis_ai(
+        base_url="https://lab.example/llm/v1",
+        model_id="lab-coder",
+        api_key="clave-local",
+    )
+    provider = ai.cargar_configuracion_ia()
+
+    assert saved.config_path == str(config_path.resolve())
+    assert provider.base_url == "https://lab.example/llm/v1"
+    assert provider.model_id == "lab-coder"
+    assert provider.api_key == "clave-local"
+    assert "api_key" not in provider.public_dict()
+
+
+def test_guardar_ia_con_clave_vacia_conserva_clave_local(
+    tmp_path,
+    monkeypatch,
+):
+    config_path = tmp_path / "ai-provider.json"
+    monkeypatch.setattr(
+        ai,
+        "default_ai_config_path",
+        lambda: config_path,
+    )
+
+    ai.guardar_configuracion_aegis_ai(
+        base_url="https://lab.example/v1",
+        model_id="lab-coder",
+        api_key="secreto-existente",
+    )
+    ai.guardar_configuracion_aegis_ai(
+        base_url="https://lab2.example/v1",
+        model_id="modelo-nuevo",
+        api_key=None,
+    )
+
+    provider = ai.cargar_configuracion_aegis_ai()
+    assert provider.base_url == "https://lab2.example/v1"
+    assert provider.model_id == "modelo-nuevo"
+    assert provider.api_key == "secreto-existente"
+
+
+def test_configuracion_ia_desde_variables_funciona_sin_archivo(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        ai,
+        "default_ai_config_path",
+        lambda: tmp_path / "no-existe.json",
+    )
+    monkeypatch.setenv(
+        "AEGIS_AI_BASE_URL",
+        "https://env.example/v1",
+    )
+    monkeypatch.setenv("AEGIS_AI_MODEL", "coder-env")
+    monkeypatch.setenv("AEGIS_AI_API_KEY", "key-env")
+
+    provider = ai.cargar_configuracion_ia()
+
+    assert provider.base_url == "https://env.example/v1"
+    assert provider.model_id == "coder-env"
+    assert provider.api_key == "key-env"
