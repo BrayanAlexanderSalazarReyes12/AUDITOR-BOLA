@@ -4033,18 +4033,16 @@ def _infer_automatic_p2_checks(
     detection: ProjectDetection,
     endpoint_inventory: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Genera controles P2 solo cuando hay evidencia suficientemente fuerte.
+    """Genera controles P2 de alta confianza desde código/configuración.
 
-    Los endpoints detectados por sí solos no son controles de seguridad. Esta
-    función se limita a propiedades que Aegis puede comprobar sin inventar
-    propietario, rol esperado ni credenciales: CORS, secretos por defecto y
-    usuario efectivo de Docker.
+    Los detectores están orientados a conceptos, no a una aplicación:
+    CORS reflejado, secretos con fallback, debug explícito, cookies de sesión
+    inseguras, bypass de límites sin guardia de autorización y contenedores
+    root. Las coincidencias ambiguas no se activan automáticamente.
     """
     root = detection.root
     checks: list[dict[str, Any]] = []
 
-    # Una petición GET estable para comprobar CORS. Preferimos health/api y
-    # evitamos convertir rutas parametrizadas en una prueba inválida.
     get_routes = [
         str(item.get("ruta") or "")
         for item in endpoint_inventory
@@ -4062,50 +4060,221 @@ def _infer_automatic_p2_checks(
 
     cors_source: str | None = None
     secret_match: tuple[str, str] | None = None
+    debug_match: tuple[str, str] | None = None
+    cookie_match: tuple[str, str] | None = None
+    bypass_matches: list[tuple[str, str, list[str]]] = []
 
-    secret_pattern = re.compile(
-        r"""(?im)^\s*[^\n#]*SECRET(?:_KEY)?\s*=\s*
+    python_secret = re.compile(
+        r"""(?imx)
+        ^\s*[^\n#]*
+        (?:SECRET(?:_KEY)?|TOKEN|API_KEY|PASSWORD|JWT(?:_SECRET)?)
+        \s*=\s*
         os\.(?:getenv|environ\.get)\(
-        [^,\n]+,\s*[^)\n]+\)
-        """,
-        re.X,
+        [^,\n]+,\s*
+        (["'])(?!none\1|null\1)[^"'\n]{3,}\1
+        \)
+        """
+    )
+    js_secret = re.compile(
+        r"""(?imx)
+        (?:secret|token|api[_-]?key|password|jwt)
+        [A-Za-z0-9_$.\[\]"']{0,120}
+        process\.env(?:\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\])
+        \s*(?:\|\||\?\?)\s*
+        (["'])([^"'\n]{3,})\1
+        """
+    )
+    properties_secret = re.compile(
+        r"""(?imx)
+        ^\s*
+        (?:[A-Za-z0-9_.-]*)
+        (?:secret|token|api[-_.]?key|password|jwt)
+        (?:[A-Za-z0-9_.-]*)
+        \s*[:=]\s*
+        (?:changeme|change_me|secret|defaultsecret|dev-secret|development)
+        \s*$
+        """
     )
 
-    for path, relative in _iter_source_files(root, max_files=4000):
-        if path.suffix.lower() not in {
-            ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx",
-            ".java", ".kt", ".php", ".cs", ".rb", ".go",
-            ".properties", ".env", ".cfg", ".conf",
-        }:
+    debug_patterns = (
+        r"\bapp\.run\s*\([^)]{0,500}\bdebug\s*=\s*True\b",
+        r"(?m)^\s*DEBUG\s*=\s*True\s*$",
+        r"(?m)^\s*FLASK_DEBUG\s*=\s*1\s*$",
+        r"(?m)^\s*debug\s*[:=]\s*true\s*$",
+        r"""(?im)["']debug["']\s*:\s*true""",
+    )
+    cookie_patterns = (
+        r"(?im)^\s*SESSION_COOKIE_SECURE\s*=\s*False\s*$",
+        r"""(?is)(?:cookie|session).{0,180}\bsecure\s*[:=]\s*false\b""",
+    )
+
+    bypass_tokens = (
+        "bypass",
+        "skip_limit",
+        "skip_limits",
+        "ignore_limit",
+        "ignore_limits",
+        "no_limit",
+        "unlimited",
+        "override_limit",
+        "force",
+        "forced",
+        "urgent",
+        "urgente",
+        "exempt",
+        "exento",
+    )
+    limit_tokens = (
+        "limit",
+        "limite",
+        "límite",
+        "quota",
+        "cuota",
+        "budget",
+        "presupuesto",
+        "rate",
+        "throttle",
+        "max_",
+        "maximum",
+        "size",
+        "length",
+        "longitud",
+        "topes",
+        "tope",
+    )
+    guard_tokens = (
+        "role",
+        "rol",
+        "permission",
+        "permiso",
+        "authorize",
+        "authorized",
+        "autoriz",
+        "is_admin",
+        "admin",
+        "coordinator",
+        "coordinador",
+        "supervisor",
+        "has_permission",
+        "can_",
+        "policy",
+        "guard",
+    )
+
+    allowed_suffixes = {
+        ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
+        ".java", ".kt", ".php", ".cs", ".rb", ".go",
+        ".properties", ".env", ".cfg", ".conf", ".ini",
+        ".yaml", ".yml", ".toml", ".json",
+    }
+
+    for path, relative in _iter_source_files(root, max_files=5000):
+        if path.suffix.lower() not in allowed_suffixes:
             continue
         text = _read_text(path, limit=MAX_TEXT_SCAN_BYTES)
         if not text:
             continue
 
+        source = relative.as_posix()
         lower = text.lower()
+
         if (
             cors_source is None
             and "access-control-allow-origin" in lower
             and "origin" in lower
             and "access-control-allow-credentials" in lower
         ):
-            cors_source = relative.as_posix()
+            cors_source = source
 
         if secret_match is None:
-            match = secret_pattern.search(text)
-            if match:
-                literal = match.group(0).strip()
-                # Un fallback explícito None/null no demuestra por sí mismo un
-                # secreto de desarrollo reutilizable.
-                if not re.search(
-                    r",\s*(?:none|null)\s*\)\s*$",
-                    literal,
-                    re.I,
-                ):
+            for pattern in (
+                python_secret,
+                js_secret,
+                properties_secret,
+            ):
+                match = pattern.search(text)
+                if match:
                     secret_match = (
-                        relative.as_posix(),
-                        literal,
+                        source,
+                        match.group(0).strip(),
                     )
+                    break
+
+        if debug_match is None:
+            for pattern in debug_patterns:
+                if re.search(pattern, text, re.I | re.M | re.S):
+                    debug_match = (source, pattern)
+                    break
+
+        if cookie_match is None:
+            for pattern in cookie_patterns:
+                if re.search(pattern, text, re.I | re.M | re.S):
+                    cookie_match = (source, pattern)
+                    break
+
+        # Busca una rama de escape de límites y exige que en la misma
+        # vecindad no exista una guardia de rol/permisos.
+        for token in bypass_tokens:
+            for match in re.finditer(
+                rf"\b{re.escape(token)}\b",
+                lower,
+                re.I,
+            ):
+                window_start = max(0, match.start() - 900)
+                window_end = min(len(text), match.end() + 1500)
+                window = text[window_start:window_end]
+                window_lower = window.lower()
+
+                if not any(
+                    limit_token in window_lower
+                    for limit_token in limit_tokens
+                ):
+                    continue
+                if any(
+                    guard in window_lower
+                    for guard in guard_tokens
+                ):
+                    continue
+
+                # Debe existir además alguna señal de control de flujo o
+                # lectura de input; una mención en comentario/documentación
+                # no basta.
+                code_signals = (
+                    "if ",
+                    "if(",
+                    "get(",
+                    "[",
+                    "request",
+                    "body",
+                    "payload",
+                    "data.",
+                )
+                if not any(signal in window_lower for signal in code_signals):
+                    continue
+
+                line_start = text.rfind("\n", 0, match.start()) + 1
+                line_end = text.find("\n", match.end())
+                if line_end < 0:
+                    line_end = len(text)
+                literal = text[line_start:line_end].strip()
+                if not literal or literal.startswith(("#", "//", "*")):
+                    continue
+
+                evidence = [
+                    f"bypass={token}",
+                    "limit/quota/budget en ventana cercana",
+                    "sin guardia de rol/permisos en ventana cercana",
+                ]
+                key = (source, literal)
+                if not any(
+                    existing[0] == source
+                    and existing[1] == literal
+                    for existing in bypass_matches
+                ):
+                    bypass_matches.append(
+                        (source, literal, evidence)
+                    )
+                break
 
     if cors_source:
         checks.append(
@@ -4144,10 +4313,65 @@ def _infer_automatic_p2_checks(
                 "patron_seguro": None,
                 "archivos_fuente": [relative],
                 "pistas_codigo": [
-                    "SECRET_KEY",
-                    "getenv",
-                    "valor por defecto",
+                    "secreto/token/credencial",
+                    "fallback literal",
                 ],
+            }
+        )
+
+    if debug_match:
+        relative, pattern = debug_match
+        checks.append(
+            {
+                "id_control": "P2-AUTO-DEBUG-001",
+                "nombre": (
+                    "La configuración desplegable no debe habilitar "
+                    "debug de forma explícita"
+                ),
+                "tipo": "source_regex",
+                "archivo": relative,
+                "patron_inseguro": pattern,
+                "patron_seguro": None,
+                "archivos_fuente": [relative],
+                "pistas_codigo": ["debug=true/True"],
+            }
+        )
+
+    if cookie_match:
+        relative, pattern = cookie_match
+        checks.append(
+            {
+                "id_control": "P2-AUTO-COOKIE-001",
+                "nombre": (
+                    "Las cookies de sesión no deben declarar "
+                    "Secure=false"
+                ),
+                "tipo": "source_regex",
+                "archivo": relative,
+                "patron_inseguro": pattern,
+                "patron_seguro": None,
+                "archivos_fuente": [relative],
+                "pistas_codigo": ["cookie/session", "secure=false"],
+            }
+        )
+
+    for index, (relative, literal, evidence) in enumerate(
+        bypass_matches[:12],
+        start=1,
+    ):
+        checks.append(
+            {
+                "id_control": f"P2-AUTO-BYPASS-{index:03d}",
+                "nombre": (
+                    "Una vía de excepción no debe omitir límites "
+                    "sin autorización"
+                ),
+                "tipo": "source_contains",
+                "archivo": relative,
+                "patron_inseguro": literal,
+                "patron_seguro": None,
+                "archivos_fuente": [relative],
+                "pistas_codigo": evidence,
             }
         )
 
