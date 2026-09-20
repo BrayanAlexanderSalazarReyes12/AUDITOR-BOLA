@@ -502,11 +502,49 @@ class AuditorController(QObject):
             return
 
         runtime_url = str(status.get("base_url") or "").rstrip("/")
+        name = status.get("nombre") or "runtime detectado"
+        origin = status.get("origen") or "-"
+        mode = str(status.get("modo") or "")
+        command = status.get("comando_inicio") or []
+
         if runtime_url:
             self.cfg.base_url = runtime_url
 
-        name = status.get("nombre") or "runtime detectado"
-        origin = status.get("origen") or "-"
+            # Si el runtime seleccionado fue una alternativa local y descubrió
+            # un puerto real distinto (ej. 5000 -> 5050), guardar ese valor en
+            # el perfil para no repetir la detección equivocada en el próximo
+            # arranque de Aegis.
+            matched = False
+            current = self.cfg.runtime
+            if (
+                (not mode or current.modo == mode)
+                and (
+                    not origin
+                    or origin == "-"
+                    or current.origen == origin
+                )
+            ):
+                current.base_url = runtime_url
+                matched = True
+
+            if not matched:
+                for item in current.alternativas or []:
+                    if not isinstance(item, dict):
+                        continue
+                    if mode and str(item.get("modo") or "") != mode:
+                        continue
+                    if (
+                        origin
+                        and origin != "-"
+                        and str(item.get("origen") or "") != origin
+                    ):
+                        continue
+                    item["base_url"] = runtime_url
+                    matched = True
+                    break
+
+            self._persist_runtime_plan()
+
         command = status.get("comando_inicio") or []
         command_text = " ".join(str(item) for item in command)
 
