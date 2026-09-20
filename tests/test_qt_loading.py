@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from auditor_bola.config import (
     ChequeoPilar2,
     ConfigObjetivo,
+    Cuenta,
     RuntimeConfig,
 )
 from auditor_bola.qt_ui.controller import AuditorController
@@ -227,3 +228,82 @@ def test_promueve_python_en_perfil_auto_legacy_sin_docker(
     persisted = json.loads(profile.read_text(encoding="utf-8"))
     assert persisted["runtime"]["nombre"] == "Python"
     assert persisted["base_url"] == "http://127.0.0.1:5050"
+
+
+
+def test_promueve_hallazgo_rbac_de_matriz_a_control_activo(tmp_path):
+    _app()
+    controller = AuditorController()
+    profile = tmp_path / "profile.json"
+    profile.write_text(
+        json.dumps({
+            "sistema": "demo",
+            "base_url": "http://127.0.0.1:5050",
+            "cuentas": [{
+                "username": "ana",
+                "password": "x",
+                "role": "member"
+            }],
+            "endpoints": [],
+            "chequeos_acceso": [],
+            "chequeos_agente": [],
+            "chequeos_pilar2": [],
+            "candidatos_pilar1": [{
+                "familia": "RBAC_ABAC",
+                "metodo": "GET",
+                "ruta_detectada": "/api/admin/report",
+                "archivos_fuente": ["app.py"],
+                "motivo": "ruta administrativa"
+            }],
+            "metadata_detectada": {
+                "candidatos_pilar1": [{
+                    "familia": "RBAC_ABAC",
+                    "metodo": "GET",
+                    "ruta_detectada": "/api/admin/report"
+                }]
+            }
+        }),
+        encoding="utf-8",
+    )
+    controller.config_path = profile
+    controller.cfg = ConfigObjetivo(
+        sistema="demo",
+        base_url="http://127.0.0.1:5050",
+        cuentas=[Cuenta("ana", "x", "member")],
+        endpoints=[],
+        candidatos_pilar1=[{
+            "familia": "RBAC_ABAC",
+            "metodo": "GET",
+            "ruta_detectada": "/api/admin/report",
+            "archivos_fuente": ["app.py"],
+            "motivo": "ruta administrativa",
+        }],
+    )
+
+    promoted = controller._promote_matrix_rbac_findings({
+        "pilar1": {
+            "matriz_acceso": [{
+                "cuenta": "ana",
+                "metodo": "GET",
+                "endpoint_detectado": "/api/admin/report",
+                "http_status": 200,
+                "vulnerable": True,
+                "clasificacion": "POSIBLE_HALLAZGO",
+                "fuente_politica": "candidato_rbac",
+            }]
+        }
+    })
+
+    assert promoted == 1
+    assert len(controller.cfg.chequeos_acceso) == 1
+    check = controller.cfg.chequeos_acceso[0]
+    assert check.cuenta == "ana"
+    assert check.ruta == "/api/admin/report"
+    assert check.acceso_esperado is False
+    assert check.id_control.startswith("P1-AUTO-MATRIX-RBAC-")
+
+    persisted = json.loads(profile.read_text(encoding="utf-8"))
+    assert len(persisted["chequeos_acceso"]) == 1
+    assert persisted["metadata_detectada"][
+        "total_controles_pilar1_activos"
+    ] == 1
