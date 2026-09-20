@@ -56,7 +56,10 @@ from ..remediation_knowledge import (
     guardar_conocimiento,
 )
 from ..runner import diagnosticar, filas_gui
-from ..source_locator import resolver_archivo_fuente
+from ..source_locator import (
+    resolver_archivo_fuente,
+    resolver_contexto_fuente,
+)
 
 
 class WorkerSignals(QObject):
@@ -112,9 +115,11 @@ class AuditorController(QObject):
         self.ai_session_dir: Path | None = None
         self.ai_source_relative: str | None = None
         self.ai_source_hash: str | None = None
+        self.ai_source_hashes: dict[str, str] = {}
         self.ai_source_resolution: dict[str, Any] | None = None
+        self.ai_diagnosis: dict[str, Any] | None = None
         self.ai_target_row: dict | None = None
-        self.ai_failed_attempts: dict[str, dict[str, Any]] = {}
+        self.ai_failed_attempts: dict[str, list[dict[str, Any]]] = {}
 
         self.pool = QThreadPool.globalInstance()
         # Mantiene vivos QRunnable/WorkerSignals hasta recibir finished/error.
