@@ -197,10 +197,24 @@ def test_service_mode_usa_comandos_de_control(tmp_path):
     ) as run:
         manager.start()
         assert manager.is_running() is True
-        run.assert_called_once_with(
-            ["docker", "compose", "up", "-d"],
-            action_name="iniciar",
-        )
+        assert run.call_count == 2
+        assert run.call_args_list[0].args[0] == [
+            "docker",
+            "compose",
+            "down",
+        ]
+        assert run.call_args_list[0].kwargs == {
+            "action_name": "limpiar instancia anterior"
+        }
+        assert run.call_args_list[1].args[0] == [
+            "docker",
+            "compose",
+            "up",
+            "-d",
+        ]
+        assert run.call_args_list[1].kwargs == {
+            "action_name": "iniciar"
+        }
 
         run.reset_mock()
         manager.stop()
@@ -430,3 +444,72 @@ def test_error_runtime_enumera_candidatos_no_disponibles(tmp_path):
     assert "Node.js" in message
     assert "docker" in message
     assert "npm" in message
+
+
+
+def test_limpieza_previa_mata_listener_huerfano_en_puerto_local(tmp_path):
+    runtime = RuntimeConfig(
+        modo="process",
+        nombre="Python local",
+        comando_inicio=["python", "app.py"],
+        base_url="http://127.0.0.1:5000",
+        espera_inicio=0,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch.object(
+        manager,
+        "_terminate_stale_listener",
+        return_value=[4321],
+    ) as terminate:
+        manager._cleanup_previous_instance()
+
+    terminate.assert_called_once_with(5000)
+    assert any(
+        "4321" in note and "5000" in note
+        for note in manager.runtime_status()["limpieza_previa"]
+    )
+
+
+def test_limpieza_previa_no_mata_puerto_de_host_remoto(tmp_path):
+    runtime = RuntimeConfig(
+        modo="process",
+        nombre="API remota",
+        comando_inicio=["python", "app.py"],
+        base_url="https://api.ejemplo.com:8443",
+        espera_inicio=0,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch.object(manager, "_terminate_stale_listener") as terminate:
+        manager._cleanup_previous_instance()
+
+    terminate.assert_not_called()
+
+
+def test_start_siempre_limpia_antes_de_levantar_proceso(tmp_path):
+    script = tmp_path / "run.py"
+    script.write_text(
+        "import time\ntime.sleep(5)\n",
+        encoding="utf-8",
+    )
+    runtime = RuntimeConfig(
+        modo="process",
+        nombre="Python local",
+        comando_inicio=["run.py"],
+        base_url="http://127.0.0.1:5000",
+        espera_inicio=0.05,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+
+    with patch.object(
+        manager,
+        "_terminate_stale_listener",
+        return_value=[],
+    ) as terminate:
+        manager.start()
+        try:
+            terminate.assert_called_once_with(5000)
+            assert manager.is_running() is True
+        finally:
+            manager.stop()
