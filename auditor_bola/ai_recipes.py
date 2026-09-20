@@ -531,7 +531,7 @@ def _read_ai_store(
 def _write_ai_store(path: Path, store: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "active_profile_id": store.get("active_profile_id"),
         "profiles": list(store.get("profiles") or []),
     }
