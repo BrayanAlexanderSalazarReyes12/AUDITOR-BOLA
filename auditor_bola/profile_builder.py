@@ -3910,11 +3910,9 @@ def _infer_automatic_p1_checks(
             }
         )
 
-    # RBAC/ABAC: solo usamos tests con intención de seguridad y status esperado.
-    sensitive_tokens = (
-        "admin", "audit", "auditoria", "prioriz", "role", "rol",
-        "permission", "permiso", "manage", "gestion", "config",
-    )
+    # RBAC/ABAC: un test con intención explícita de seguridad, identidad
+    # conocida y status esperado ya expresa la política, aunque la ruta no
+    # contenga palabras como "admin" o "audit".
     access_index = 1
     seen_access: set[tuple[str, str, str]] = set()
     for contract in contracts:
@@ -3927,7 +3925,6 @@ def _infer_automatic_p1_checks(
             or not username
             or username not in usernames
             or not isinstance(status, int)
-            or not any(token in route.lower() for token in sensitive_tokens)
         ):
             continue
         if status in {401, 403}:
