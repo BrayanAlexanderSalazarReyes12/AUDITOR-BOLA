@@ -39,6 +39,8 @@ class AIProviderConfig:
     base_url: str
     api_key: str
     config_path: str
+    profile_id: str = ""
+    profile_name: str = ""
 
     def public_dict(self) -> dict:
         """Metadatos seguros; nunca incluye la API key."""
@@ -49,6 +51,8 @@ class AIProviderConfig:
             "model_name": self.model_name,
             "base_url": self.base_url,
             "config_path": self.config_path,
+            "profile_id": self.profile_id,
+            "profile_name": self.profile_name,
         }
 
 
@@ -145,19 +149,32 @@ def cargar_configuracion_opencode(
     )
 
 
-def cargar_configuracion_aegis_ai(
+def _empty_ai_store() -> dict:
+    return {
+        "schema_version": 2,
+        "active_profile_id": None,
+        "profiles": [],
+    }
+
+
+def _profile_slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(value).lower()).strip("-")
+    return slug or "perfil-ia"
+
+
+def _read_ai_store(
     path: str | Path | None = None,
-) -> AIProviderConfig:
-    """Carga el proveedor IA guardado directamente por Aegis."""
+    *,
+    persist_migration: bool = True,
+) -> tuple[Path, dict]:
+    """Lee perfiles IA y migra automáticamente el formato antiguo."""
     config_path = (
         Path(path).expanduser().resolve()
         if path is not None
         else default_ai_config_path().resolve()
     )
     if not config_path.exists():
-        raise RuntimeError(
-            "Aegis no tiene un proveedor IA configurado localmente."
-        )
+        return config_path, _empty_ai_store()
 
     try:
         data = json.loads(config_path.read_text(encoding="utf-8"))
@@ -166,40 +183,291 @@ def cargar_configuracion_aegis_ai(
             f"No fue posible leer la configuración IA de Aegis: {config_path}"
         ) from exc
 
-    base_url = str(data.get("base_url") or "").strip().rstrip("/")
-    model_id = str(data.get("model_id") or DEFAULT_MODEL_ID).strip()
-    api_key_value = str(data.get("api_key") or "").strip()
+    if isinstance(data, dict) and isinstance(data.get("profiles"), list):
+        store = _empty_ai_store()
+        store["active_profile_id"] = data.get("active_profile_id")
+        store["profiles"] = [
+            dict(item)
+            for item in data.get("profiles", [])
+            if isinstance(item, dict)
+        ]
+        valid_ids = {
+            str(item.get("id") or "").strip()
+            for item in store["profiles"]
+            if str(item.get("id") or "").strip()
+        }
+        if store["active_profile_id"] not in valid_ids:
+            store["active_profile_id"] = (
+                next(iter(valid_ids)) if valid_ids else None
+            )
+        return config_path, store
 
-    if not base_url:
+    # Compatibilidad con v1.1.9: un único proveedor en ai-provider.json.
+    if isinstance(data, dict) and str(data.get("base_url") or "").strip():
+        display_name = str(
+            data.get("profile_name")
+            or data.get("provider_name")
+            or data.get("model_name")
+            or data.get("model_id")
+            or "Proveedor IA"
+        ).strip()
+        profile_id = _profile_slug(display_name)
+        profile = {
+            "id": profile_id,
+            "name": display_name,
+            "provider_id": str(
+                data.get("provider_id") or DEFAULT_PROVIDER_ID
+            ).strip(),
+            "provider_name": str(
+                data.get("provider_name") or "Proveedor IA"
+            ).strip(),
+            "model_id": str(
+                data.get("model_id") or DEFAULT_MODEL_ID
+            ).strip(),
+            "model_name": str(
+                data.get("model_name")
+                or data.get("model_id")
+                or DEFAULT_MODEL_ID
+            ).strip(),
+            "base_url": str(data.get("base_url") or "").strip().rstrip("/"),
+            "api_key": str(data.get("api_key") or "").strip(),
+        }
+        store = {
+            "schema_version": 2,
+            "active_profile_id": profile_id,
+            "profiles": [profile],
+        }
+        if persist_migration:
+            _write_ai_store(config_path, store)
+        return config_path, store
+
+    return config_path, _empty_ai_store()
+
+
+def _write_ai_store(path: Path, store: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 2,
+        "active_profile_id": store.get("active_profile_id"),
+        "profiles": list(store.get("profiles") or []),
+    }
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def _resolve_profile_key(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    match = _ENV_REF.match(raw)
+    if not match:
+        return raw
+    variable = match.group(1)
+    key = str(os.getenv(variable) or "").strip()
+    if not key:
         raise RuntimeError(
-            "La configuración IA de Aegis no declara base_url."
+            f"El perfil IA usa la variable {variable}, "
+            "pero no está definida en este equipo."
         )
-    if api_key_value:
-        match = _ENV_REF.match(api_key_value)
-        if match:
-            variable = match.group(1)
-            api_key_value = str(os.getenv(variable) or "").strip()
-            if not api_key_value:
-                raise RuntimeError(
-                    f"La configuración IA usa {variable}, pero esa variable "
-                    "no está definida en este equipo."
-                )
+    return key
+
+
+def _profile_to_provider(
+    profile: dict,
+    config_path: Path,
+) -> AIProviderConfig:
+    base_url = str(profile.get("base_url") or "").strip().rstrip("/")
+    model_id = str(profile.get("model_id") or DEFAULT_MODEL_ID).strip()
+    if not base_url:
+        raise RuntimeError("El perfil IA no declara base_url.")
+    if not model_id:
+        raise RuntimeError("El perfil IA no declara model_id.")
 
     return AIProviderConfig(
         provider_id=str(
-            data.get("provider_id") or DEFAULT_PROVIDER_ID
+            profile.get("provider_id") or DEFAULT_PROVIDER_ID
         ).strip(),
         provider_name=str(
-            data.get("provider_name") or "Proveedor IA"
+            profile.get("provider_name") or "Proveedor IA"
         ).strip(),
         model_id=model_id,
         model_name=str(
-            data.get("model_name") or model_id
+            profile.get("model_name") or model_id
         ).strip(),
         base_url=base_url,
-        api_key=api_key_value,
+        api_key=_resolve_profile_key(profile.get("api_key")),
         config_path=str(config_path),
+        profile_id=str(profile.get("id") or "").strip(),
+        profile_name=str(
+            profile.get("name")
+            or profile.get("provider_name")
+            or model_id
+        ).strip(),
     )
+
+
+def listar_perfiles_ia(
+    path: str | Path | None = None,
+) -> list[dict]:
+    """Lista perfiles sin exponer las API keys."""
+    config_path, store = _read_ai_store(path)
+    active = str(store.get("active_profile_id") or "")
+    result: list[dict] = []
+    for item in store.get("profiles", []):
+        profile_id = str(item.get("id") or "").strip()
+        if not profile_id:
+            continue
+        result.append(
+            {
+                "id": profile_id,
+                "name": str(
+                    item.get("name")
+                    or item.get("provider_name")
+                    or item.get("model_id")
+                    or profile_id
+                ),
+                "provider_id": str(
+                    item.get("provider_id") or DEFAULT_PROVIDER_ID
+                ),
+                "provider_name": str(
+                    item.get("provider_name") or "Proveedor IA"
+                ),
+                "model_id": str(
+                    item.get("model_id") or DEFAULT_MODEL_ID
+                ),
+                "model_name": str(
+                    item.get("model_name")
+                    or item.get("model_id")
+                    or DEFAULT_MODEL_ID
+                ),
+                "base_url": str(item.get("base_url") or ""),
+                "has_api_key": bool(str(item.get("api_key") or "").strip()),
+                "active": profile_id == active,
+                "config_path": str(config_path),
+            }
+        )
+    return result
+
+
+def cargar_perfil_ia(
+    profile_id: str | None = None,
+    path: str | Path | None = None,
+) -> AIProviderConfig:
+    config_path, store = _read_ai_store(path)
+    selected = str(
+        profile_id or store.get("active_profile_id") or ""
+    ).strip()
+    if not selected:
+        raise RuntimeError(
+            "Aegis no tiene un perfil IA configurado localmente."
+        )
+
+    for item in store.get("profiles", []):
+        if str(item.get("id") or "").strip() == selected:
+            return _profile_to_provider(item, config_path)
+    raise RuntimeError(f"No existe el perfil IA '{selected}'.")
+
+
+def cargar_configuracion_aegis_ai(
+    path: str | Path | None = None,
+) -> AIProviderConfig:
+    """Compatibilidad: devuelve el perfil IA activo de Aegis."""
+    return cargar_perfil_ia(None, path)
+
+
+def _unique_profile_id(store: dict, name: str) -> str:
+    base = _profile_slug(name)
+    existing = {
+        str(item.get("id") or "").strip()
+        for item in store.get("profiles", [])
+    }
+    if base not in existing:
+        return base
+    index = 2
+    while f"{base}-{index}" in existing:
+        index += 1
+    return f"{base}-{index}"
+
+
+def guardar_perfil_ia(
+    *,
+    profile_name: str,
+    base_url: str,
+    model_id: str = DEFAULT_MODEL_ID,
+    api_key: str | None = None,
+    provider_id: str = DEFAULT_PROVIDER_ID,
+    provider_name: str = "Proveedor IA",
+    model_name: str | None = None,
+    profile_id: str | None = None,
+    set_active: bool = True,
+    path: str | Path | None = None,
+) -> AIProviderConfig:
+    """Crea o edita un perfil IA independiente."""
+    clean_name = str(profile_name or "").strip()
+    clean_url = str(base_url or "").strip().rstrip("/")
+    clean_model = str(model_id or DEFAULT_MODEL_ID).strip()
+    if not clean_name:
+        raise ValueError("El nombre del perfil IA es obligatorio.")
+    if not clean_url:
+        raise ValueError("La URL base del proveedor IA es obligatoria.")
+    if not clean_model:
+        raise ValueError("El modelo IA es obligatorio.")
+
+    config_path, store = _read_ai_store(path)
+    profiles = list(store.get("profiles") or [])
+    selected_id = str(profile_id or "").strip()
+    existing: dict | None = None
+
+    if selected_id:
+        for item in profiles:
+            if str(item.get("id") or "").strip() == selected_id:
+                existing = item
+                break
+        if existing is None:
+            raise RuntimeError(
+                f"No existe el perfil IA '{selected_id}' para editarlo."
+            )
+    else:
+        selected_id = _unique_profile_id(store, clean_name)
+
+    previous_key = str((existing or {}).get("api_key") or "").strip()
+    clean_key = (
+        str(api_key).strip()
+        if api_key is not None and str(api_key).strip()
+        else previous_key
+    )
+    payload = {
+        "id": selected_id,
+        "name": clean_name,
+        "provider_id": str(
+            provider_id or DEFAULT_PROVIDER_ID
+        ).strip(),
+        "provider_name": str(
+            provider_name or clean_name
+        ).strip(),
+        "model_id": clean_model,
+        "model_name": str(model_name or clean_model).strip(),
+        "base_url": clean_url,
+        "api_key": clean_key,
+    }
+
+    if existing is None:
+        profiles.append(payload)
+    else:
+        existing.clear()
+        existing.update(payload)
+
+    store["profiles"] = profiles
+    if set_active or not store.get("active_profile_id"):
+        store["active_profile_id"] = selected_id
+    _write_ai_store(config_path, store)
+    return cargar_perfil_ia(selected_id, config_path)
 
 
 def guardar_configuracion_aegis_ai(
@@ -211,65 +479,130 @@ def guardar_configuracion_aegis_ai(
     provider_name: str = "Laboratorio UTB",
     model_name: str | None = None,
 ) -> AIProviderConfig:
-    """Guarda la configuración IA en los datos locales del usuario.
+    """Compatibilidad: crea/edita el perfil activo."""
+    config_path, store = _read_ai_store()
+    active = str(store.get("active_profile_id") or "").strip()
+    if active:
+        current = cargar_perfil_ia(active, config_path)
+        profile_name = current.profile_name or current.provider_name
+        return guardar_perfil_ia(
+            profile_id=active,
+            profile_name=profile_name,
+            base_url=base_url,
+            model_id=model_id,
+            api_key=api_key,
+            provider_id=provider_id,
+            provider_name=provider_name,
+            model_name=model_name,
+            set_active=True,
+            path=config_path,
+        )
 
-    La clave nunca se incorpora al perfil del proyecto, evidencias o release.
-    Si api_key llega vacía y ya existe una configuración, conserva la clave
-    local anterior.
-    """
-    clean_url = str(base_url or "").strip().rstrip("/")
-    clean_model = str(model_id or DEFAULT_MODEL_ID).strip()
-    if not clean_url:
-        raise ValueError("La URL base del proveedor IA es obligatoria.")
-    if not clean_model:
-        raise ValueError("El modelo IA es obligatorio.")
-
-    path = default_ai_config_path().resolve()
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    previous: dict = {}
-    if path.exists():
-        try:
-            previous = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            previous = {}
-
-    clean_key = (
-        str(api_key).strip()
-        if api_key is not None and str(api_key).strip()
-        else str(previous.get("api_key") or "").strip()
+    return guardar_perfil_ia(
+        profile_name=provider_name or model_name or model_id,
+        base_url=base_url,
+        model_id=model_id,
+        api_key=api_key,
+        provider_id=provider_id,
+        provider_name=provider_name,
+        model_name=model_name,
+        set_active=True,
+        path=config_path,
     )
 
-    payload = {
-        "provider_id": str(provider_id or DEFAULT_PROVIDER_ID).strip(),
-        "provider_name": str(provider_name or "Proveedor IA").strip(),
-        "model_id": clean_model,
-        "model_name": str(model_name or clean_model).strip(),
-        "base_url": clean_url,
-        "api_key": clean_key,
+
+def seleccionar_perfil_ia(
+    profile_id: str,
+    path: str | Path | None = None,
+) -> AIProviderConfig:
+    config_path, store = _read_ai_store(path)
+    selected = str(profile_id or "").strip()
+    ids = {
+        str(item.get("id") or "").strip()
+        for item in store.get("profiles", [])
     }
-    path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
+    if selected not in ids:
+        raise RuntimeError(f"No existe el perfil IA '{selected}'.")
+    store["active_profile_id"] = selected
+    _write_ai_store(config_path, store)
+    return cargar_perfil_ia(selected, config_path)
 
-    return cargar_configuracion_aegis_ai(path)
+
+def duplicar_perfil_ia(
+    profile_id: str,
+    *,
+    new_name: str | None = None,
+    path: str | Path | None = None,
+) -> AIProviderConfig:
+    config_path, store = _read_ai_store(path)
+    source: dict | None = None
+    for item in store.get("profiles", []):
+        if str(item.get("id") or "").strip() == str(profile_id).strip():
+            source = dict(item)
+            break
+    if source is None:
+        raise RuntimeError(f"No existe el perfil IA '{profile_id}'.")
+
+    name = str(
+        new_name
+        or f"{source.get('name') or source.get('provider_name') or 'Perfil IA'} copia"
+    ).strip()
+    return guardar_perfil_ia(
+        profile_name=name,
+        base_url=str(source.get("base_url") or ""),
+        model_id=str(source.get("model_id") or DEFAULT_MODEL_ID),
+        api_key=str(source.get("api_key") or ""),
+        provider_id=str(source.get("provider_id") or DEFAULT_PROVIDER_ID),
+        provider_name=str(source.get("provider_name") or "Proveedor IA"),
+        model_name=str(
+            source.get("model_name")
+            or source.get("model_id")
+            or DEFAULT_MODEL_ID
+        ),
+        set_active=True,
+        path=config_path,
+    )
+
+
+def eliminar_perfil_ia(
+    profile_id: str,
+    path: str | Path | None = None,
+) -> str | None:
+    config_path, store = _read_ai_store(path)
+    selected = str(profile_id or "").strip()
+    profiles = [
+        item
+        for item in store.get("profiles", [])
+        if str(item.get("id") or "").strip() != selected
+    ]
+    if len(profiles) == len(store.get("profiles", [])):
+        raise RuntimeError(f"No existe el perfil IA '{selected}'.")
+
+    store["profiles"] = profiles
+    active = str(store.get("active_profile_id") or "")
+    if active == selected:
+        store["active_profile_id"] = (
+            str(profiles[0].get("id") or "").strip()
+            if profiles
+            else None
+        )
+    _write_ai_store(config_path, store)
+    return store.get("active_profile_id")
 
 
 def importar_configuracion_opencode_a_aegis() -> AIProviderConfig:
-    """Copia a Aegis el proveedor ya disponible en OpenCode."""
+    """Importa OpenCode como un perfil adicional y lo activa."""
     provider = cargar_configuracion_opencode()
-    return guardar_configuracion_aegis_ai(
+    display = f"OpenCode · {provider.model_name or provider.model_id}"
+    return guardar_perfil_ia(
+        profile_name=display,
         base_url=provider.base_url,
         model_id=provider.model_id,
         api_key=provider.api_key,
         provider_id=provider.provider_id,
         provider_name=provider.provider_name,
         model_name=provider.model_name,
+        set_active=True,
     )
 
 
@@ -278,8 +611,8 @@ def cargar_configuracion_ia() -> AIProviderConfig:
 
     Prioridad:
     1. Variables AEGIS_AI_*.
-    2. Configuración persistente propia de Aegis.
-    3. OpenCode como compatibilidad/importación automática.
+    2. Perfil activo guardado por Aegis.
+    3. OpenCode como compatibilidad.
     """
     env_url = str(os.getenv("AEGIS_AI_BASE_URL") or "").strip().rstrip("/")
     if env_url:
@@ -300,6 +633,8 @@ def cargar_configuracion_ia() -> AIProviderConfig:
             base_url=env_url,
             api_key=str(os.getenv("AEGIS_AI_API_KEY") or "").strip(),
             config_path="variables de entorno AEGIS_AI_*",
+            profile_id="env",
+            profile_name="Variables de entorno",
         )
 
     try:
@@ -310,8 +645,8 @@ def cargar_configuracion_ia() -> AIProviderConfig:
         except Exception as opencode_error:
             raise RuntimeError(
                 "La IA no está configurada en este equipo. Abre "
-                "Configuración > Inteligencia artificial en Aegis y registra "
-                "la URL del proveedor, el modelo y la API key. También puedes "
+                "Configuración > Inteligencia artificial en Aegis y crea "
+                "uno o más perfiles con URL, modelo y API key. También puedes "
                 "usar AEGIS_AI_BASE_URL/AEGIS_AI_API_KEY/AEGIS_AI_MODEL. "
                 f"Detalle local: {local_error}. OpenCode: {opencode_error}"
             ) from opencode_error
