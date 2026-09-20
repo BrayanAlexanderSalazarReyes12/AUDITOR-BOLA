@@ -2400,22 +2400,51 @@ class AuditorController(QObject):
         def success(result):
             legacy_state = result.get("estado_final") or "DESCONOCIDO"
             patch_state = result.get("estado_patch") or legacy_state
-            verified = patch_state == "PATCH_VERIFIED"
+            verified = patch_state in {
+                "PATCH_VERIFIED",
+                "PATCH_VERIFIED_WITH_WARNINGS",
+            }
 
             if verified:
                 self.ai_source_hash = None
                 self.ai_source_hashes.clear()
                 self.ai_failed_attempts.pop(row["id"], None)
                 self.ai_auto_regenerations.pop(row["id"], None)
-                self.info_message.emit(
-                    "Parche verificado",
-                    (
-                        f"{row['id']}: PATCH_VERIFIED\n\n"
-                        "La validación técnica, la prueba de seguridad, "
-                        "la regresión y el reescaneo no reprodujeron "
-                        "el hallazgo."
-                    ),
-                )
+
+                if patch_state == "PATCH_VERIFIED_WITH_WARNINGS":
+                    warnings = result.get("qa_advertencias") or []
+                    warning_detail = ""
+                    if warnings:
+                        warning_detail = str(
+                            warnings[0].get("detalle") or ""
+                        ).strip()
+                    message = (
+                        f"{row['id']}: PATCH_VERIFIED_WITH_WARNINGS\n\n"
+                        "Aegis modificó el código y la prueba de seguridad "
+                        "confirmó que el fallo ya no se reproduce. El parche "
+                        "se conserva.\n\n"
+                        "La suite funcional reportó fallos posteriores. "
+                        "Esto puede ocurrir cuando una prueba antigua todavía "
+                        "espera el comportamiento vulnerable; revísala antes "
+                        "de actualizar esas pruebas."
+                    )
+                    if warning_detail:
+                        message += "\n\nQA: " + warning_detail[:3500]
+                    self.info_message.emit(
+                        "Parche de seguridad aplicado con advertencias",
+                        message,
+                    )
+                else:
+                    self.info_message.emit(
+                        "Parche verificado",
+                        (
+                            f"{row['id']}: PATCH_VERIFIED\n\n"
+                            "Aegis modificó el código y la prueba de seguridad "
+                            "confirmó que el fallo ya no se reproduce. "
+                            "Las validaciones posteriores finalizaron "
+                            "sin advertencias."
+                        ),
+                    )
             else:
                 history = self.ai_failed_attempts.setdefault(
                     row["id"],
