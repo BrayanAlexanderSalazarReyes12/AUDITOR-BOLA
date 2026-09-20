@@ -151,6 +151,18 @@ def diagnosticar(
                 item.clasificacion == "DENEGADO"
                 for item in matriz_acceso
             ),
+            "matriz_hallazgos_confirmados": sum(
+                item.clasificacion == "HALLAZGO_CONFIRMADO"
+                for item in matriz_acceso
+            ),
+            "matriz_hallazgos_probables": sum(
+                item.clasificacion == "POSIBLE_HALLAZGO"
+                for item in matriz_acceso
+            ),
+            "matriz_cumple": sum(
+                item.clasificacion == "CUMPLE"
+                for item in matriz_acceso
+            ),
             "matriz_no_concluyentes": sum(
                 item.clasificacion in {
                     "NO_CONCLUYENTE",
@@ -210,12 +222,22 @@ def filas_gui(resultado: dict) -> list[dict]:
             estado = "ERROR"
         elif clasificacion == "NO_EJECUTABLE":
             estado = "OMITIDO"
+        elif clasificacion in {
+            "HALLAZGO_CONFIRMADO",
+            "POSIBLE_HALLAZGO",
+        }:
+            estado = "VULNERABLE"
+        elif clasificacion == "CUMPLE":
+            estado = "SIN_HALLAZGO"
         else:
             estado = "OBSERVADO"
         filas.append(
             {
                 "pilar": "P1",
-                "id": "P1-MATRIX",
+                "id": (
+                    item.get("id_control_referencia")
+                    or "P1-MATRIX"
+                ),
                 "control": (
                     "Matriz endpoint × usuario · "
                     f"{item['metodo']} {item['endpoint_detectado']}"
