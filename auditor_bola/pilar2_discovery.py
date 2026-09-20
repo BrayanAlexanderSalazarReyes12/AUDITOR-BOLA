@@ -332,15 +332,17 @@ def _discover_cors(
     return checks, candidates
 
 
-_SECRET_NAME = (
-    r"(?:secret(?:_key)?|api[_-]?key|jwt[_-]?secret|token|password|passwd|"
-    r"client[_-]?secret|signing[_-]?key|encryption[_-]?key|private[_-]?key)"
+_SECRET_VAR = (
+    r"(?:SECRET(?:_KEY)?|API[_-]?KEY|JWT[_-]?SECRET|TOKEN|PASSWORD|PASSWD|"
+    r"CLIENT[_-]?SECRET|SIGNING[_-]?KEY|ENCRYPTION[_-]?KEY|PRIVATE[_-]?KEY|"
+    r"[A-Za-z_][A-Za-z0-9_.-]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API[_-]?KEY)"
+    r"[A-Za-z0-9_.-]*)"
 )
 
 _SECRET_PATTERNS = (
     re.compile(
         rf"""(?imx)
-        (?P<var>[A-Za-z_][A-Za-z0-9_.-]*{_SECRET_NAME}[A-Za-z0-9_.-]*)
+        (?P<var>{_SECRET_VAR})
         \s*=\s*
         (?:os\.(?:getenv|environ\.get)|env|getenv)\(
         [^,\n]+,\s*(?P<quote>["'])(?P<fallback>[^"'\n]{{3,}})(?P=quote)\s*\)
@@ -348,7 +350,7 @@ _SECRET_PATTERNS = (
     ),
     re.compile(
         rf"""(?imx)
-        (?P<var>[A-Za-z_$][A-Za-z0-9_$.-]*{_SECRET_NAME}[A-Za-z0-9_$.-]*)
+        (?P<var>{_SECRET_VAR})
         [^\n]{{0,180}}
         process\.env(?:\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\])
         \s*(?:\|\||\?\?)\s*
@@ -357,20 +359,29 @@ _SECRET_PATTERNS = (
     ),
     re.compile(
         rf"""(?imx)
-        (?P<var>{_SECRET_NAME}[A-Za-z0-9_.-]*)
+        (?P<var>{_SECRET_VAR})
         \s*[:=]\s*
         \$\{{[A-Za-z_][A-Za-z0-9_]*:(?P<fallback>[^}}]{{3,}})\}}
         """
     ),
     re.compile(
         rf"""(?imx)
-        (?P<var>[A-Za-z_][A-Za-z0-9_.-]*{_SECRET_NAME}[A-Za-z0-9_.-]*)
+        (?P<var>{_SECRET_VAR})
         [^\n]{{0,180}}
         GetEnvironmentVariable\([^\n]+\)
         \s*\?\?\s*
         (?P<quote>["'])(?P<fallback>[^"'\n]{{3,}})(?P=quote)
         """
     ),
+)
+
+_PYTHON_SYMBOLIC_SECRET = re.compile(
+    rf"""(?imx)
+    (?P<var>{_SECRET_VAR})
+    \s*=\s*
+    os\.(?:getenv|environ\.get)\(
+    [^,\n]+,\s*(?P<symbol>[A-Za-z_][A-Za-z0-9_]*)\s*\)
+    """
 )
 
 _KNOWN_INSECURE_VALUES = {
@@ -460,6 +471,58 @@ def analyze_secret_file(
                     **context,
                 }
             )
+    for match in _PYTHON_SYMBOLIC_SECRET.finditer(text):
+        variable = str(match.group("var") or "secreto").strip()
+        symbol = str(match.group("symbol") or "").strip()
+        assignment = re.search(
+            rf"""(?im)^\s*{re.escape(symbol)}\s*=\s*
+            (?P<quote>["'])(?P<fallback>[^"'\n]{{3,}})(?P=quote)\s*$""",
+            text,
+        )
+        if not assignment:
+            continue
+        fallback = str(assignment.group("fallback") or "").strip()
+        normalized = fallback.lower().strip()
+        context = _secret_context(text, match.start(), match.end())
+        obvious_default = (
+            normalized in _KNOWN_INSECURE_VALUES
+            or any(
+                token in normalized
+                for token in (
+                    "default", "changeme", "dev", "development", "test",
+                    "example", "sample", "secret", "password",
+                )
+            )
+            or any(
+                token in symbol.lower()
+                for token in ("default", "dev", "test", "fallback")
+            )
+        )
+        deployable = source_kind not in {
+            "documentacion", "test", "ejemplo"
+        }
+        production_reachable = (
+            deployable
+            and not context["guardia_desarrollo"]
+            and not context["guardia_produccion_fail_closed"]
+        )
+        results.append(
+            {
+                "archivo": relative,
+                "linea": _line_number(text, match.start()),
+                "variable": variable,
+                "fallback_simbolico": symbol,
+                "valor_fallback_redactado": _mask_secret(fallback),
+                "fallback_sha256": hashlib.sha256(
+                    fallback.encode("utf-8")
+                ).hexdigest(),
+                "fallback_default_conocido": obvious_default,
+                "tipo_fuente": source_kind,
+                "produccion_puede_usar_fallback": production_reachable,
+                **context,
+            }
+        )
+
     return results
 
 
