@@ -1368,3 +1368,104 @@ def test_autoperfil_no_marca_bypass_si_hay_guardia_de_permiso(tmp_path):
         item.startswith("P2-AUTO-BYPASS-")
         for item in ids
     )
+
+
+
+def test_autoperfil_genera_rbac_negativo_para_ruta_privilegiada(
+    tmp_path,
+):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text(
+        "from flask import Flask\n"
+        "app = Flask(__name__)\n"
+        "@app.get('/api/admin/audit')\n"
+        "def audit(): return {'ok': True}\n"
+        "@app.post('/api/tools/prioritize')\n"
+        "def prioritize(): return {'ok': True}\n",
+        encoding="utf-8",
+    )
+    fixtures = tmp_path / "tests" / "fixtures"
+    fixtures.mkdir(parents=True)
+    (fixtures / "accounts.json").write_text(
+        json.dumps({
+            "accounts": [
+                {
+                    "username": "member.one",
+                    "password": "x",
+                    "role": "member"
+                },
+                {
+                    "username": "admin.one",
+                    "password": "x",
+                    "role": "admin"
+                }
+            ]
+        }),
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    denied = {
+        (item["metodo"], item["ruta"], item["cuenta"])
+        for item in profile["chequeos_acceso"]
+        if item["acceso_esperado"] is False
+    }
+    assert ("GET", "/api/admin/audit", "member.one") in denied
+    assert ("POST", "/api/tools/prioritize", "member.one") in denied
+
+
+def test_autoperfil_scope_python_soporta_get_json_y_alias(
+    tmp_path,
+):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text(
+        "from flask import Flask\n"
+        "app = Flask(__name__)\n"
+        "@app.get('/api/records')\n"
+        "def records(): return []\n"
+        "@app.post('/api/assistant/run')\n"
+        "def run_agent(): return {'steps': []}\n",
+        encoding="utf-8",
+    )
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "accounts.json").write_text(
+        json.dumps({
+            "accounts": [
+                {
+                    "username": "member.one",
+                    "password": "x",
+                    "role": "member"
+                }
+            ]
+        }),
+        encoding="utf-8",
+    )
+    (tests / "test_scope.py").write_text(
+        "def test_agent_scope_identity(client):\n"
+        "    direct = client.get('/api/records', "
+        "headers=auth('member.one'))\n"
+        "    agent = client.post('/api/assistant/run', "
+        "headers=auth('member.one'), "
+        "json={'task': 'list records'})\n"
+        "    payload = agent.get_json()\n"
+        "    assert payload['steps'][0]['tool'] == 'list_records'\n"
+        "    assert payload['steps'][0]['returned'] >= 0\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+
+    assert len(profile["chequeos_agente"]) == 1
+    check = profile["chequeos_agente"][0]
+    assert check["steps_json_path"] == "$.steps"
+    assert check["tool_field"] == "tool"
+    assert check["count_field"] == "returned"
+    assert check["tool_name"] == "list_records"
