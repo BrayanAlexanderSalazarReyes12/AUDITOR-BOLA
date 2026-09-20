@@ -57,3 +57,19 @@ def test_loading_theme_is_available():
     assert "QWidget#StartupSplash" in QSS
     assert "QFrame#TaskOverlay" in QSS
     assert "QFrame#InlineTaskProgress" in QSS
+
+
+
+def test_task_overlay_accepts_real_100_percent():
+    app = _app()
+    host = QWidget()
+    host.resize(1000, 700)
+    host.show()
+    overlay = TaskProgressOverlay(host)
+    overlay.setGeometry(host.rect())
+    overlay.start("Iniciando aplicación objetivo…")
+    overlay.set_progress(100, "Aplicación objetivo iniciada.")
+    app.processEvents()
+    assert overlay.progress.value() == 100
+    assert overlay.percent.text() == "100%"
+    assert "iniciada" in overlay.status.text().lower()
