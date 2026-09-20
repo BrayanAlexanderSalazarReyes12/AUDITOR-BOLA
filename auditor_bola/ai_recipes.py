@@ -902,12 +902,13 @@ def _solicitar_json_gemma(
         "temperature": 0.1,
         "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
     }
+    headers = {"Content-Type": "application/json"}
+    if provider.api_key:
+        headers["Authorization"] = f"Bearer {provider.api_key}"
+
     resp = requests.post(
         endpoint,
-        headers={
-            "Authorization": f"Bearer {provider.api_key}",
-            "Content-Type": "application/json",
-        },
+        headers=headers,
         json=payload,
         timeout=timeout,
     )
