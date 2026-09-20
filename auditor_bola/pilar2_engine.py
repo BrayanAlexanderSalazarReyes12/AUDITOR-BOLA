@@ -814,13 +814,21 @@ class DebugPlugin(P2FamilyPlugin):
                 "nombre": (
                     "El modo debug no debe quedar habilitado en despliegue"
                 ),
-                "tipo": "source_regex",
+                "tipo": "debug_context",
                 "familia": "DEBUG",
                 "archivo": relative,
                 "patron_inseguro": match.re.pattern,
                 "componente": component,
                 "confianza_inicial": "media",
                 "origen": "auto",
+                "metadata": {
+                    "senal_produccion": (
+                        "prod" in relative.lower()
+                        or "production" in relative.lower()
+                        or "deploy" in relative.lower()
+                    ),
+                    "linea": _line(text, match.start()),
+                },
                 "archivos_fuente": [relative],
                 "pistas_codigo": ["debug habilitado"],
             })
@@ -898,13 +906,21 @@ class SessionPlugin(P2FamilyPlugin):
                     "La cookie de sesion no debe desactivar Secure "
                     "en despliegue"
                 ),
-                "tipo": "source_regex",
+                "tipo": "session_cookie_context",
                 "familia": "SESSION",
                 "archivo": relative,
                 "patron_inseguro": match.re.pattern,
                 "componente": relative,
                 "confianza_inicial": "media",
                 "origen": "auto",
+                "metadata": {
+                    "senal_produccion": (
+                        "prod" in relative.lower()
+                        or "production" in relative.lower()
+                        or "deploy" in relative.lower()
+                    ),
+                    "linea": _line(text, match.start()),
+                },
                 "archivos_fuente": [relative],
                 "pistas_codigo": ["cookie/session", "secure=false"],
             })
