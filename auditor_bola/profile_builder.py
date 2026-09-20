@@ -14,8 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from .security_semantics import (
+    id_key_score,
     infer_object_identity,
     normalize_key,
+    owner_key_score,
     route_parameter_name,
 )
 
