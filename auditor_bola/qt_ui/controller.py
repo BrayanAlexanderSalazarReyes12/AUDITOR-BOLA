@@ -344,33 +344,34 @@ class AuditorController(QObject):
                         or ""
                     )
 
-                    # Perfiles antiguos podían guardar 127.0.0.1:8080 de forma
-                    # genérica para Docker aunque el proyecto publicara otro
-                    # puerto. Si el runtime fue autodetectado y sigue siendo la
-                    # misma estrategia, refrescamos esa URL sin obligar al
-                    # usuario a regenerar el perfil.
-                    if (
+                    # La base_url del JSON de config es la autoridad de
+                    # IP/puerto permitidos para el objetivo. La detección del
+                    # código puede decidir *cómo* arrancar, pero nunca cambiar
+                    # esa IP/puerto cuando el perfil ya la declaró.
+                    authorized = str(
+                        self.cfg.base_url or ""
+                    ).strip().rstrip("/")
+
+                    if authorized:
+                        if previous_base != authorized:
+                            self.log_message.emit(
+                                "Base URL del runtime sincronizada con config: "
+                                f"{previous_base or '-'} → {authorized}"
+                            )
+                        current.base_url = authorized
+                    elif (
                         detected_base
                         and origin in auto_origins
                         and detected_base != previous_base
                     ):
-                        if (
-                            not self.cfg.base_url
-                            or str(self.cfg.base_url).rstrip("/")
-                            == previous_base
-                        ):
-                            self.cfg.base_url = detected_base
+                        self.cfg.base_url = detected_base
                         current.base_url = detected_base
                         self.log_message.emit(
-                            "Base URL del runtime actualizada por detección: "
-                            f"{previous_base or '-'} → {detected_base}"
+                            "Base URL detectada para perfil sin URL declarada: "
+                            f"{detected_base}"
                         )
                     elif not current.base_url:
-                        current.base_url = (
-                            detected_base
-                            or self.cfg.base_url
-                            or ""
-                        )
+                        current.base_url = detected_base or ""
                 continue
 
             mode = str(candidate.get("modo") or "process").lower()
@@ -401,6 +402,7 @@ class AuditorController(QObject):
                 + ", ".join(added)
             )
 
+        self._enforce_profile_base_url()
         self._persist_runtime_plan()
 
     def _enforce_profile_base_url(self) -> None:
@@ -464,6 +466,9 @@ class AuditorController(QObject):
         self.log_message.emit(f"Perfil cargado: {profile}")
         if self.target_root:
             self._augment_runtime_from_target()
+        else:
+            self._enforce_profile_base_url()
+            self._persist_runtime_plan()
         self._refresh_ai_provider(silent=True)
         self.state_changed.emit()
 
