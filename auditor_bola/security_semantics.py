@@ -46,6 +46,23 @@ _OWNER_TOKENS = {
     "creador",
     "autor",
 }
+# Señales relacionales con menor peso: solo cuentan como propiedad cuando su
+# valor se correlaciona con una identidad conocida o un alias de esa identidad.
+_OWNER_RELATIONAL = {
+    "user_id",
+    "usuario_id",
+    "account_id",
+    "cuenta_id",
+    "customer_id",
+    "cliente_id",
+    "member_id",
+    "usuario",
+    "user",
+    "account",
+    "cuenta",
+    "cliente",
+    "customer",
+}
 _ID_STRONG = {
     "id",
     "uuid",
@@ -77,7 +94,6 @@ def owner_key_score(path: str) -> int:
     tokens = set(key.split("_"))
     if tokens & _OWNER_TOKENS:
         return 80
-    # Campos de identidad asociados explícitamente a creación/autoría.
     if (
         {"created", "by"} <= tokens
         or {"created", "user"} <= tokens
@@ -85,6 +101,15 @@ def owner_key_score(path: str) -> int:
         or {"author", "user"} <= tokens
     ):
         return 75
+    if key in _OWNER_RELATIONAL:
+        return 65
+    relation_tokens = {
+        "user", "usuario", "account", "cuenta", "customer", "cliente",
+        "member",
+    }
+    identity_tokens = {"id", "uuid", "code", "codigo", "key", "pk"}
+    if tokens & relation_tokens and tokens & identity_tokens:
+        return 60
     return 0
 
 
@@ -139,16 +164,29 @@ def infer_object_identity(
     known_users: set[str],
     *,
     route_parameter: str | None = None,
+    identity_aliases: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
-    """Infere identificador y propietario desde una estructura arbitraria.
+    """Infiere identificador y propietario desde una estructura arbitraria.
 
-    Para activar evidencia de propiedad exigimos que el valor de identidad
-    coincida exactamente con una cuenta conocida y que el nombre del campo
-    tenga semántica fuerte de propiedad/autoría. Esto evita asumir que campos
-    como assigned_to o reviewer equivalen automáticamente a propietario.
+    La relación de propiedad puede expresarse mediante un username o mediante
+    un alias correlacionado (por ejemplo user_id/account_id). Una señal
+    relacional débil nunca se acepta por sí sola: el valor debe resolverse a
+    una identidad conocida. Esto reduce falsos positivos sin depender de un
+    vocabulario de una aplicación concreta.
     """
-    owner_candidates: list[tuple[int, str, str]] = []
+    owner_candidates: list[tuple[int, str, str, str | None]] = []
     id_candidates: list[tuple[int, str, str]] = []
+
+    canonical_identity: dict[str, str] = {
+        str(user): str(user)
+        for user in known_users
+        if str(user).strip()
+    }
+    for alias, username in (identity_aliases or {}).items():
+        alias_text = str(alias).strip()
+        username_text = str(username).strip()
+        if alias_text and username_text in known_users:
+            canonical_identity[alias_text] = username_text
 
     for path, raw in _walk_mapping(mapping):
         if raw is None or isinstance(raw, bool):
@@ -158,10 +196,14 @@ def infer_object_identity(
         if not scalar:
             continue
 
-        if scalar in known_users:
+        canonical_owner = canonical_identity.get(scalar)
+        if canonical_owner:
             score = owner_key_score(path)
             if score:
-                owner_candidates.append((score, path, scalar))
+                alias = scalar if scalar != canonical_owner else None
+                owner_candidates.append(
+                    (score, path, canonical_owner, alias)
+                )
 
         if isinstance(raw, (str, int)):
             score = id_key_score(path, route_parameter)
@@ -174,9 +216,8 @@ def infer_object_identity(
     owner_candidates.sort(reverse=True)
     id_candidates.sort(reverse=True)
 
-    owner_score, owner_path, owner = owner_candidates[0]
+    owner_score, owner_path, owner, owner_alias = owner_candidates[0]
 
-    # Evita usar como id el mismo campo que aportó la identidad.
     usable_ids = [
         item
         for item in id_candidates
@@ -200,6 +241,7 @@ def infer_object_identity(
         "confianza": confidence,
         "puntaje_id": id_score,
         "puntaje_propietario": owner_score,
+        "alias_identidad_detectado": owner_alias,
     }
 
 
