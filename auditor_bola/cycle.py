@@ -14,6 +14,10 @@ from .corrective import (
     rollback,
 )
 from .evidence import EvidenceSession, sha256_file
+from .language_detection import (
+    detect_source_language,
+    requires_service_restart,
+)
 from .project_validation import validate_project_after_patch
 from .runner import diagnosticar, filas_gui
 
@@ -387,9 +391,8 @@ def ciclo_correctivo(
 
     correccion: CorrectionResult | None = None
     receta = cfg.correccion_por_control(control_id)
-    manifest["reinicio_servicio"]["requerido"] = bool(
-        receta and receta.requiere_reinicio
-    )
+    # El requisito definitivo se calcula a partir de los archivos realmente
+    # modificados, no de lo que haya declarado la receta IA.
 
     try:
         correccion = apply_correction(cfg, control_id, target_root, evidence)
@@ -400,6 +403,47 @@ def ciclo_correctivo(
             for item in (correccion.archivos or [])
             if str(item.get("archivo") or "").strip()
         ] or [correccion.archivo]
+
+        language_details: list[dict] = []
+        root_path = Path(target_root).resolve()
+        for relative in modified_files:
+            source_path = (root_path / relative).resolve()
+            text = ""
+            if source_path.is_file():
+                try:
+                    text = source_path.read_text(
+                        encoding="utf-8",
+                        errors="replace",
+                    )
+                except OSError:
+                    text = ""
+            detail = detect_source_language(
+                relative,
+                text,
+            ).as_dict()
+            detail["archivo"] = relative
+            language_details.append(detail)
+
+        runtime_url = str(
+            cfg.base_url
+            or getattr(cfg.runtime, "base_url", "")
+            or ""
+        ).strip()
+        live_runtime_expected = bool(runtime_url) or reiniciar is not None
+        restart_required = bool(
+            (receta and receta.requiere_reinicio)
+            or (
+                live_runtime_expected
+                and requires_service_restart(modified_files)
+            )
+        )
+        manifest["lenguajes_modificados"] = language_details
+        manifest["reinicio_servicio"]["requerido"] = restart_required
+        manifest["reinicio_servicio"]["motivo"] = (
+            "código/configuración modificada con runtime activo"
+            if restart_required
+            else "sin runtime activo que requiera recarga"
+        )
         patched_path = (
             Path(target_root).resolve() / modified_files[0]
         ).resolve()
@@ -478,23 +522,37 @@ def ciclo_correctivo(
             evidence.write_json("manifest.json", manifest)
             return manifest
 
-        if receta and receta.requiere_reinicio and reiniciar is None:
+        if restart_required and reiniciar is None:
             rollback(correccion, target_root)
             manifest["rollback"] = True
             manifest["estado_final"] = "REQUIERE_REINICIO"
             manifest["estado_patch"] = "MANUAL_REVIEW_REQUIRED"
             manifest["motivo"] = (
-                "La receta fue aplicada a la copia local, pero este control "
-                "requiere reiniciar el objetivo antes de verificar. El cambio "
-                "se revirtió para no dejar el proyecto en un estado parcial."
+                "El parche modificó código/configuración que debe cargarse "
+                "en el servicio antes del reescaneo, pero Aegis no dispone "
+                "de un reinicio administrable para este runtime. El cambio "
+                "se revirtió para evitar verificar contra código viejo."
             )
             evidence.write_json("manifest.json", manifest)
             return manifest
 
-        if reiniciar:
+        if restart_required:
             manifest["reinicio_servicio"]["intentado"] = True
-            reiniciar()
+            restart_result = reiniciar()
             manifest["reinicio_servicio"]["exitoso"] = True
+            manifest["reinicio_servicio"]["resultado"] = restart_result
+            evidence.write_json(
+                "verification/restart.json",
+                manifest["reinicio_servicio"],
+            )
+        elif reiniciar and receta and receta.requiere_reinicio:
+            # Compatibilidad con recetas antiguas que explícitamente solicitan
+            # reinicio aunque el archivo no tenga una extensión reconocida.
+            manifest["reinicio_servicio"]["requerido"] = True
+            manifest["reinicio_servicio"]["intentado"] = True
+            restart_result = reiniciar()
+            manifest["reinicio_servicio"]["exitoso"] = True
+            manifest["reinicio_servicio"]["resultado"] = restart_result
             evidence.write_json(
                 "verification/restart.json",
                 manifest["reinicio_servicio"],
