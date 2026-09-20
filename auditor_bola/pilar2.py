@@ -806,6 +806,143 @@ def _secret_fallback_context(
             "senal_produccion": production_signal,
         },
     )
+def _contextual_static_indicator(
+    cfg: ConfigObjetivo,
+    chequeo: ChequeoPilar2,
+    source_root: Path | None,
+    *,
+    kind: str,
+) -> ResultadoPilar2:
+    if source_root is None:
+        raise ValueError(
+            f"{chequeo.id_control} requiere --target-root para inspección estática"
+        )
+    if not chequeo.archivo or not chequeo.patron_inseguro:
+        raise ValueError(
+            f"{chequeo.id_control}: archivo/patron_inseguro son obligatorios"
+        )
+    path = source_root / chequeo.archivo
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    try:
+        match = re.search(
+            chequeo.patron_inseguro,
+            text,
+            re.I | re.M | re.S,
+        )
+    except re.error as exc:
+        raise ValueError(
+            f"{chequeo.id_control}: regex inválida: {exc}"
+        ) from exc
+
+    present = match is not None
+    metadata = dict(chequeo.metadata or {})
+    prod_signal = bool(metadata.get("senal_produccion"))
+    line = (
+        _line_number(text, match.start())
+        if match
+        else metadata.get("linea")
+    )
+    vulnerable = bool(present and prod_signal)
+    state = (
+        "HALLAZGO"
+        if vulnerable
+        else ("POR_CONFIRMAR" if present else "SIN_HALLAZGO")
+    )
+    confidence = (
+        "media-alta"
+        if vulnerable
+        else ("media" if present else "alta")
+    )
+    return _resultado(
+        cfg,
+        chequeo,
+        vulnerable,
+        (
+            f"archivo={chequeo.archivo}; indicador={kind}; "
+            f"presente={present}; señal producción={prod_signal}; "
+            f"línea={line}"
+        ),
+        evidencia=[{
+            "tipo": "configuracion_contextual",
+            "clase": kind,
+            "archivo": chequeo.archivo,
+            "linea": line,
+            "presente": present,
+            "senal_produccion": prod_signal,
+        }],
+        confianza=confidence,
+        estado=state,
+        configuracion_detectada={
+            "indicador": kind,
+            "presente": present,
+            "senal_produccion": prod_signal,
+        },
+    )
+
+
+def _limit_bypass_candidate(
+    cfg: ConfigObjetivo,
+    chequeo: ChequeoPilar2,
+    source_root: Path | None,
+) -> ResultadoPilar2:
+    if source_root is None:
+        raise ValueError(
+            f"{chequeo.id_control} requiere --target-root para inspección estática"
+        )
+    metadata = dict(chequeo.metadata or {})
+    archivo = chequeo.archivo
+    present = False
+    line = metadata.get("linea")
+    if archivo:
+        path = source_root / archivo
+        if path.is_file():
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            token = str(metadata.get("parametro") or "")
+            if token:
+                match = re.search(
+                    rf"\b{re.escape(token)}\b",
+                    text,
+                    re.I,
+                )
+                present = match is not None
+                if match:
+                    line = _line_number(text, match.start())
+
+    # La señal estática formula la hipótesis, pero no confirma el bypass.
+    # La confirmación requiere una prueba diferencial con payload seguro e
+    # identidades de distinto privilegio.
+    state = "POR_CONFIRMAR" if present else "SIN_HALLAZGO"
+    return _resultado(
+        cfg,
+        chequeo,
+        False,
+        (
+            f"archivo={archivo}; parametro={metadata.get('parametro')!r}; "
+            f"señal presente={present}; requiere prueba diferencial"
+        ),
+        evidencia=[{
+            "tipo": "flujo_estatico",
+            "archivo": archivo,
+            "linea": line,
+            "parametro": metadata.get("parametro"),
+            "guardia_observada": metadata.get("guardia_observada"),
+            "confirmacion_runtime_requerida": True,
+        }],
+        confianza="media" if present else "alta",
+        estado=state,
+        casos_prueba=[{
+            "tipo": "diferencial_limite",
+            "casos": [
+                "usuario_normal_operacion_normal",
+                "usuario_normal_opcion_especial",
+                "usuario_privilegiado_opcion_especial",
+            ],
+            "estado": "NO_EJECUTABLE_SIN_PAYLOAD_SEGURO",
+            "no_destructivo": True,
+        }],
+    )
+
+
 def auditar_pilar2(
     cfg: ConfigObjetivo,
     source_root: str | Path | None = None,
@@ -852,6 +989,26 @@ def auditar_pilar2(
                 )
             elif chequeo.tipo == "secret_fallback_context":
                 resultado = _secret_fallback_context(
+                    cfg,
+                    chequeo,
+                    root,
+                )
+            elif chequeo.tipo == "debug_context":
+                resultado = _contextual_static_indicator(
+                    cfg,
+                    chequeo,
+                    root,
+                    kind="debug",
+                )
+            elif chequeo.tipo == "session_cookie_context":
+                resultado = _contextual_static_indicator(
+                    cfg,
+                    chequeo,
+                    root,
+                    kind="session_cookie_secure_false",
+                )
+            elif chequeo.tipo == "limit_bypass_candidate":
+                resultado = _limit_bypass_candidate(
                     cfg,
                     chequeo,
                     root,
