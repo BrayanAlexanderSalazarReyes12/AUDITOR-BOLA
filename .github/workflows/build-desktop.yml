@@ -255,7 +255,8 @@ jobs:
           cat > RELEASE_NOTES.md <<'EOF'
           # Aegis Auditor v1.2.6-alpha
 
-          **Pre-release alpha para validar el flujo real de parcheo.**
+          **Versión alpha de validación.** El objetivo de esta compilación es
+          probar el flujo real de medicina/parche antes de promoverlo a estable.
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
@@ -300,13 +301,12 @@ jobs:
           - Después de dos intentos fallidos, STRATEGY_RESET puede regenerar automáticamente nuevas estrategias usando los fallos previos como evidencia y rechazando variaciones superficiales.
           - Las opciones NO APLICABLE permanecen visibles para diagnóstico, pero no pueden ejecutarse desde la interfaz.
           - La salida de QA conserva stdout y stderr relevantes para que TEST_FAILED alimente correctamente el siguiente diagnóstico.
-          - Antes de generar la medicina, Aegis identifica el lenguaje y el framework del archivo cargado para que el parche se escriba con la sintaxis y convenciones correctas.
-          - La medicina modifica el archivo real asociado al hallazgo y valida que el cambio sea compatible con el lenguaje detectado antes de continuar.
-          - Después de aplicar el parche, Aegis reinicia la aplicación o servicio objetivo cuando existe runtime reiniciable y registra el resultado del reinicio.
-          - El control de seguridad original se vuelve a ejecutar obligatoriamente después del reinicio para comprobar si el bug o fallo de seguridad sigue siendo reproducible.
-          - La verificación de seguridad ocurre antes de la suite funcional completa: una prueba legacy que todavía espere el comportamiento vulnerable ya no provoca por sí sola que Aegis restaure el fallo de seguridad.
-          - Si el exploit deja de reproducirse pero la suite funcional posterior presenta fallos, el parche se conserva como verificado con advertencias para revisión en vez de revertirse automáticamente.
-          - Los estados de evidencia distinguen reinicio, reescaneo de seguridad, QA posterior y advertencias funcionales para saber exactamente en qué fase falló una medicina.
+          - El archivo seleccionado para la medicina se inspecciona antes de generar el parche y Aegis detecta automáticamente su lenguaje y señales de framework.
+          - La IA recibe lenguaje y framework detectados como una restricción de implementación: un archivo Python debe recibir Python válido, Java debe recibir Java válido, JavaScript debe recibir JavaScript válido, etc.
+          - Las medicinas IA fuerzan reinicio/recarga del servicio antes del reescaneo para evitar validar contra un proceso que todavía ejecuta el código anterior.
+          - El orden de verificación queda explícito: aplicar parche → validar sintaxis/build → reiniciar servicio → reejecutar el control de seguridad → confirmar que el bug ya no es reproducible.
+          - La suite funcional general se ejecuta después de demostrar que el exploit original dejó de reproducirse; una prueba antigua que espere el comportamiento vulnerable ya no provoca por sí sola que Aegis restaure el bug.
+          - Cuando la vulnerabilidad queda cerrada pero la suite funcional reporta problemas, Aegis conserva el parche como PATCH_VERIFIED_WITH_WARNINGS y deja la advertencia separada para revisión.
           - Los hallazgos vulnerables descubiertos por la matriz endpoint × identidad se contabilizan como hallazgos P1 y reciben IDs semánticos estables cuando no existe un control previo.
           - Se conserva la detección real de versiones, runtimes locales/Docker, documentación, cuentas, endpoints, recetas verificables y fallbacks de ejecución.
           - Validación automatizada en Python 3.11 y 3.12, Qt y CustomTkinter.
