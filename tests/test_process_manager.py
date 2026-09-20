@@ -988,3 +988,81 @@ def test_python_sin_base_url_descubre_listener_real_del_proceso(tmp_path):
     assert manager.runtime.base_url == "http://127.0.0.1:5050"
     assert "5050" in detail
     connect.assert_called_with(("127.0.0.1", 5050), timeout=0.8)
+
+
+
+def test_base_url_autorizada_del_perfil_manda_sobre_fallback_python(tmp_path):
+    runtime = RuntimeConfig(
+        modo="service",
+        nombre="Docker Compose",
+        origen="docker-compose.yml",
+        comando_inicio=["docker", "compose", "up", "-d"],
+        base_url="http://127.0.0.1:5050",
+        alternativas=[
+            {
+                "modo": "process",
+                "nombre": "Python",
+                "origen": "python-project",
+                "comando_inicio": ["python", "run.py"],
+                "base_url": "http://127.0.0.1:5000",
+            }
+        ],
+    )
+    manager = LocalTargetProcess(
+        tmp_path,
+        runtime,
+        authorized_base_url="http://127.0.0.1:5050",
+    )
+
+    options = manager._runtime_options()
+
+    assert options[0].base_url == "http://127.0.0.1:5050"
+    assert options[1].nombre == "Python"
+    assert options[1].base_url == "http://127.0.0.1:5050"
+
+
+def test_url_anunciada_no_cambia_ip_puerto_autorizados_por_config(tmp_path):
+    runtime = RuntimeConfig(
+        modo="process",
+        nombre="Python",
+        comando_inicio=["python", "run.py"],
+        base_url="http://127.0.0.1:5050",
+        espera_inicio=0,
+        timeout_inicio=2,
+    )
+    manager = LocalTargetProcess(
+        tmp_path,
+        runtime,
+        authorized_base_url="http://127.0.0.1:5050",
+    )
+
+    class FakeProcess:
+        returncode = None
+
+        def poll(self):
+            return None
+
+    manager.process = FakeProcess()
+    connection = type(
+        "Connection",
+        (),
+        {
+            "__enter__": lambda self: self,
+            "__exit__": lambda self, *args: False,
+        },
+    )()
+
+    with patch.object(
+        manager,
+        "_detect_runtime_local_url",
+        return_value="http://127.0.0.1:5000",
+    ), patch(
+        "auditor_bola.process_manager.socket.create_connection",
+        return_value=connection,
+    ) as connect:
+        ready, detail = manager._wait_until_target_ready()
+
+    assert ready is True
+    assert manager.runtime.base_url == "http://127.0.0.1:5050"
+    assert "5050" in detail
+    connect.assert_called_with(("127.0.0.1", 5050), timeout=0.8)
