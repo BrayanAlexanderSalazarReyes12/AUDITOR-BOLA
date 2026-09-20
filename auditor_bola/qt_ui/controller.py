@@ -12,8 +12,13 @@ from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 from ..ai_recipes import (
     AIRecipeProposal,
     cargar_configuracion_ia,
+    cargar_perfil_ia,
+    duplicar_perfil_ia,
+    eliminar_perfil_ia,
+    guardar_perfil_ia,
     importar_configuracion_opencode_a_aegis,
-    guardar_configuracion_aegis_ai,
+    listar_perfiles_ia,
+    seleccionar_perfil_ia,
     generar_tres_recetas,
     guardar_seleccion_ia,
     guardar_sesion_ia,
@@ -588,8 +593,21 @@ class AuditorController(QObject):
         if self.ai_provider is None:
             self._refresh_ai_provider(silent=True)
         if self.ai_provider:
-            return True, self.ai_provider.model_name
+            label = (
+                self.ai_provider.profile_name
+                or self.ai_provider.model_name
+            )
+            return True, label
         return False, "No configurada"
+
+    def ai_profiles(self) -> list[dict]:
+        try:
+            return listar_perfiles_ia()
+        except Exception as exc:
+            self.log_message.emit(
+                f"No fue posible listar perfiles IA: {exc}"
+            )
+            return []
 
     def ai_settings(self) -> dict:
         if not self.ai_provider:
@@ -597,6 +615,8 @@ class AuditorController(QObject):
         if not self.ai_provider:
             return {
                 "enabled": False,
+                "profile_id": "",
+                "profile_name": "",
                 "provider_name": "",
                 "model_id": "lab-coder",
                 "model_name": "",
@@ -607,18 +627,36 @@ class AuditorController(QObject):
         data["enabled"] = True
         return data
 
+    def ai_profile_settings(self, profile_id: str) -> dict:
+        try:
+            provider = cargar_perfil_ia(profile_id)
+        except Exception as exc:
+            self.log_message.emit(
+                f"No fue posible cargar el perfil IA {profile_id}: {exc}"
+            )
+            return {}
+        data = provider.public_dict()
+        data["enabled"] = True
+        return data
+
     def save_ai_settings(
         self,
         *,
+        profile_name: str,
         base_url: str,
         model_id: str,
         api_key: str | None = None,
+        profile_id: str | None = None,
     ) -> None:
         try:
-            self.ai_provider = guardar_configuracion_aegis_ai(
+            self.ai_provider = guardar_perfil_ia(
+                profile_id=profile_id or None,
+                profile_name=profile_name,
                 base_url=base_url,
                 model_id=model_id,
                 api_key=api_key,
+                provider_name=profile_name,
+                set_active=True,
             )
         except Exception as exc:
             self.error_message.emit(
@@ -628,9 +666,62 @@ class AuditorController(QObject):
             return
 
         self.info_message.emit(
-            "Proveedor IA configurado",
-            "La configuración quedó guardada localmente en este equipo. "
-            "No depende de OpenCode para futuros inicios.",
+            "Perfil IA guardado",
+            f"'{self.ai_provider.profile_name}' quedó como proveedor IA activo.",
+        )
+        self.state_changed.emit()
+
+    def select_ai_profile(self, profile_id: str) -> None:
+        try:
+            self.ai_provider = seleccionar_perfil_ia(profile_id)
+        except Exception as exc:
+            self.error_message.emit(
+                "No se pudo activar el perfil IA",
+                str(exc),
+            )
+            return
+        self.log_message.emit(
+            "Perfil IA activo: "
+            f"{self.ai_provider.profile_name} · {self.ai_provider.model_id}"
+        )
+        self.state_changed.emit()
+
+    def duplicate_ai_profile(self, profile_id: str) -> None:
+        try:
+            self.ai_provider = duplicar_perfil_ia(profile_id)
+        except Exception as exc:
+            self.error_message.emit(
+                "No se pudo duplicar el perfil IA",
+                str(exc),
+            )
+            return
+        self.info_message.emit(
+            "Perfil IA duplicado",
+            f"Se creó '{self.ai_provider.profile_name}' y quedó activo.",
+        )
+        self.state_changed.emit()
+
+    def delete_ai_profile(self, profile_id: str) -> None:
+        try:
+            active_id = eliminar_perfil_ia(profile_id)
+            self.ai_provider = (
+                cargar_perfil_ia(active_id)
+                if active_id
+                else None
+            )
+        except Exception as exc:
+            self.error_message.emit(
+                "No se pudo eliminar el perfil IA",
+                str(exc),
+            )
+            return
+        self.info_message.emit(
+            "Perfil IA eliminado",
+            (
+                "Se activó automáticamente otro perfil."
+                if self.ai_provider
+                else "Ya no quedan perfiles IA locales configurados."
+            ),
         )
         self.state_changed.emit()
 
@@ -646,8 +737,8 @@ class AuditorController(QObject):
 
         self.info_message.emit(
             "Proveedor IA importado",
-            "Aegis guardó una copia local de la configuración IA. "
-            "Desde ahora puede usarla sin depender de OpenCode.",
+            "La configuración de OpenCode se guardó como un perfil IA "
+            "independiente y quedó activa.",
         )
         self.state_changed.emit()
 
