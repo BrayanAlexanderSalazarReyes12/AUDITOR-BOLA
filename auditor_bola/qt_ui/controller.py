@@ -99,6 +99,10 @@ class AuditorController(QObject):
         self.resultado: dict | None = None
         self.rows: list[dict] = []
         self.proceso: LocalTargetProcess | None = None
+        # Estado real del runtime seleccionado en esta ejecución. Puede ser
+        # distinto al runtime principal declarado en el JSON cuando se usa un
+        # fallback (por ejemplo Docker -> Python).
+        self.active_runtime_status: dict[str, Any] = {}
 
         self.ai_provider = None
         self.ai_proposals: list[AIRecipeProposal] = []
@@ -756,6 +760,7 @@ class AuditorController(QObject):
         self.config_path = profile
         self.cfg = cfg
         self.proceso = None
+        self.active_runtime_status = {}
         self.log_message.emit(f"Perfil cargado: {profile}")
         if self.target_root:
             self._augment_runtime_from_target()
@@ -772,6 +777,7 @@ class AuditorController(QObject):
             raise FileNotFoundError(root)
         self.target_root = root
         self.proceso = None
+        self.active_runtime_status = {}
         self.log_message.emit(f"Aplicación cargada: {root}")
         if self.cfg:
             self._augment_runtime_from_target()
@@ -824,6 +830,8 @@ class AuditorController(QObject):
     def _apply_runtime_status(self, status: dict) -> None:
         if not self.cfg:
             return
+
+        self.active_runtime_status = dict(status or {})
 
         runtime_url = str(status.get("base_url") or "").rstrip("/")
         name = status.get("nombre") or "runtime detectado"
@@ -915,10 +923,14 @@ class AuditorController(QObject):
             self.proceso.stop()
             return True
 
+        def success(_result):
+            self.active_runtime_status = {}
+            self.log_message.emit("Objetivo detenido.")
+
         self._run_async(
             "Deteniendo aplicación objetivo…",
             work,
-            lambda _result: self.log_message.emit("Objetivo detenido."),
+            success,
         )
 
     def restart_target(self) -> None:
@@ -949,6 +961,43 @@ class AuditorController(QObject):
 
         if self.target_root:
             self._augment_controls_from_target()
+
+        p1_total = (
+            len(self.cfg.endpoints) * len(self.cfg.cuentas)
+            + len(self.cfg.chequeos_acceso)
+            + len(self.cfg.chequeos_agente)
+        )
+        p2_total = len(self.cfg.chequeos_pilar2)
+
+        missing: list[str] = []
+        if p1_total == 0:
+            missing.append("Pilar 1")
+        if p2_total == 0:
+            missing.append("Pilar 2")
+
+        if missing:
+            meta = self.detected_metadata()
+            p1_candidates = int(
+                meta.get("total_candidatos_pilar1") or 0
+            )
+            message = (
+                "No se iniciará una auditoría P1 + P2 incompleta. "
+                f"Falta cobertura ejecutable en {', '.join(missing)}. "
+                f"P1 activos={p1_total}; P2 activos={p2_total}."
+            )
+            if p1_total == 0 and p1_candidates:
+                message += (
+                    f" Se detectaron {p1_candidates} candidato(s) de "
+                    "Pilar 1, pero todavía no tienen evidencia suficiente "
+                    "para ejecutarse automáticamente."
+                )
+            self.log_message.emit("Auditoría bloqueada: " + message)
+            self.error_message.emit(
+                "Cobertura de auditoría incompleta",
+                message,
+            )
+            self.state_changed.emit()
+            return
 
         def work():
             return diagnosticar(
