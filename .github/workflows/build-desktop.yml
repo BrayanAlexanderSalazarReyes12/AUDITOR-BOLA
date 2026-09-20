@@ -1,5 +1,5 @@
-# security-patching-release: v1.3.0
-# release-publish-retry: v1.3.0
+# security-patching-release: v1.3.1
+# release-publish: v1.3.1
 name: Build desktop executables
 
 on:
@@ -201,7 +201,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.3.0' \
+            'Version: 1.3.1' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -230,13 +230,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-3-0:
-    name: Publicar Release v1.3.0
+  release-v1-3-1:
+    name: Publicar Release v1.3.1
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.3.0]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.3.1]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -254,9 +254,9 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.3.0
+          # Aegis Auditor v1.3.1
 
-          Versión estable centrada en el ciclo real de corrección de vulnerabilidades:
+          Versión estable centrada en el ciclo real de corrección de vulnerabilidades y en una vista previa de código legible antes de aplicar una medicina:
           **detectar → parchear código real → reiniciar → reescanear → verificar → guardar medicina**.
 
           ## Corrección y parchado
@@ -315,7 +315,7 @@ jobs:
           credenciales del usuario no forman parte del release.
           EOF
 
-      - name: Reemplazar Release v1.3.0 con la versión corregida
+      - name: Publicar Release v1.3.1
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -338,15 +338,7 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          # El v1.3.0 anterior no representa esta línea estable. Se elimina
-          # release + tag y se recrea apuntando exactamente a este commit.
-          if gh release view "v1.3.0" >/dev/null 2>&1; then
-            gh release delete "v1.3.0" --yes --cleanup-tag
-          else
-            git push origin :refs/tags/v1.3.0 >/dev/null 2>&1 || true
-          fi
-
-          gh release create "v1.3.0" "${files[@]}" \
+          gh release create "v1.3.1" "${files[@]}" \
             --target "${GITHUB_SHA}" \
-            --title "Aegis Auditor v1.3.0" \
+            --title "Aegis Auditor v1.3.1" \
             --notes-file RELEASE_NOTES.md
