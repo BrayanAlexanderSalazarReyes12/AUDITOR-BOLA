@@ -1,4 +1,4 @@
-# matrix-policy-evaluation-release: v1.3.0
+# matrix-policy-evaluation-release: v1.2.5
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.3.0' \
+            'Version: 1.2.5' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-3-0:
-    name: Publicar Release v1.3.0
+  release-v1-2-5:
+    name: Publicar Release v1.2.5
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.3.0]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.5]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,7 +253,7 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.3.0
+          # Aegis Auditor v1.2.5
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
@@ -298,15 +298,6 @@ jobs:
           - Después de dos intentos fallidos, STRATEGY_RESET puede regenerar automáticamente nuevas estrategias usando los fallos previos como evidencia y rechazando variaciones superficiales.
           - Las opciones NO APLICABLE permanecen visibles para diagnóstico, pero no pueden ejecutarse desde la interfaz.
           - La salida de QA conserva stdout y stderr relevantes para que TEST_FAILED alimente correctamente el siguiente diagnóstico.
-          - Motor IA multimodelo: Qwen3-Coder Free vía OpenRouter como motor principal de código, Gemini 2.5 Flash como analista/segunda opinión y Laboratorio UTB/lab-coder como fallback.
-          - Routing automático por rol: generación de parches prioriza coder_primary; diagnóstico posterior a fallos prioriza analyst_secondary antes de volver al motor de código.
-          - Si un proveedor falla por cuota, HTTP, JSON inválido o contexto, Aegis intenta automáticamente el siguiente proveedor configurado.
-          - Presets rápidos en Configuración para Qwen3-Coder Free y Gemini 2.5 Flash, manteniendo perfiles personalizados compatibles.
-          - Persistencia de rol, ventana de contexto y máximo de salida por perfil IA mediante schema de configuración v3.
-          - max_tokens se calcula dinámicamente con entrada estimada, ventana del modelo, margen de seguridad y límite del proveedor; se elimina la solicitud fija de 8192 tokens.
-          - lab-coder utiliza un presupuesto seguro para su ventana observada de 20.480 tokens y compacta automáticamente código/evidencia cuando el contexto no cabe.
-          - Ante ContextWindowExceededError, Aegis realiza un segundo intento con compactación agresiva y salida reducida antes de cambiar de proveedor.
-          - Cada sesión conserva provider_trace con modelo utilizado, estimación de entrada, compactación, reintentos y fallos de routing, sin almacenar API keys.
           - Los hallazgos vulnerables descubiertos por la matriz endpoint × identidad se contabilizan como hallazgos P1 y reciben IDs semánticos estables cuando no existe un control previo.
           - Se conserva la detección real de versiones, runtimes locales/Docker, documentación, cuentas, endpoints, recetas verificables y fallbacks de ejecución.
           - Validación automatizada en Python 3.11 y 3.12, Qt y CustomTkinter.
@@ -357,16 +348,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.3.0" >/dev/null 2>&1; then
-            gh release upload "v1.3.0" "${files[@]}" --clobber
-            gh release edit "v1.3.0" \
-              --title "Aegis Auditor v1.3.0" \
+          if gh release view "v1.2.5" >/dev/null 2>&1; then
+            gh release upload "v1.2.5" "${files[@]}" --clobber
+            gh release edit "v1.2.5" \
+              --title "Aegis Auditor v1.2.5" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.3.0" "${files[@]}" \
+            gh release create "v1.2.5" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.3.0" \
+              --title "Aegis Auditor v1.2.5" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
