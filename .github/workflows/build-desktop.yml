@@ -1,4 +1,4 @@
-# windows-hidden-runtime-release: v1.1.10
+# local-runtime-release: v1.1.11
 name: Build desktop executables
 
 on:
@@ -169,7 +169,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.10' \
+            'Version: 1.1.11' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -198,13 +198,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-10:
-    name: Publicar Release v1.1.10
+  release-v1-1-11:
+    name: Publicar Release v1.1.11
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.10]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.11]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -222,11 +222,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.10
+          # Aegis Auditor v1.1.11
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.10
+          ## Novedades de v1.1.11
           - Corrige la versión de la aplicación analizada: ya no se asigna
             `1.0.0` por defecto.
           - Detecta la versión real desde package.json, pom.xml, Gradle,
@@ -267,6 +267,10 @@ jobs:
           - OpenCode puede importarse como un perfil adicional y deja de ser una dependencia para seleccionar proveedores ya guardados en Aegis.
           - En Windows, los runtimes objetivo y comandos auxiliares se ejecutan ocultos con CREATE_NO_WINDOW para evitar dejar una ventana CMD/PowerShell negra abierta.
           - La salida del proceso objetivo sigue capturándose en la consola interna de Aegis aunque la consola externa quede oculta.
+          - Docker deja de ser obligatorio: si no está instalado o no levanta el servidor, Aegis intenta automáticamente un runtime local ejecutable del proyecto.
+          - El perfil JSON expone preferencia_arranque, permitir_fallback_local, comandos, URL y alternativas, y mantiene metadata_detectada.plan_ejecucion sincronizado.
+          - En proyectos Python, Aegis prioriza .venv/venv/env del proyecto antes de buscar Python del sistema.
+          - La pantalla de Inicio muestra el comando de ejecución, política de arranque y alternativas locales configuradas.
 
           ## Descargas
 
@@ -315,16 +319,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.10" >/dev/null 2>&1; then
-            gh release upload "v1.1.10" "${files[@]}" --clobber
-            gh release edit "v1.1.10" \
-              --title "Aegis Auditor v1.1.10" \
+          if gh release view "v1.1.11" >/dev/null 2>&1; then
+            gh release upload "v1.1.11" "${files[@]}" --clobber
+            gh release edit "v1.1.11" \
+              --title "Aegis Auditor v1.1.11" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.10" "${files[@]}" \
+            gh release create "v1.1.11" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.10" \
+              --title "Aegis Auditor v1.1.11" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
