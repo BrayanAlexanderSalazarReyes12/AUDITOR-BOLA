@@ -2032,6 +2032,16 @@ def _account_from_mapping(
         "token": None,
         "headers": {},
     }
+    identity_aliases: list[str] = []
+    for key, raw_value in lowered.items():
+        if key in _PASSWORD_KEYS or key in _ROLE_KEYS:
+            continue
+        value = _clean_literal(raw_value)
+        if not value or value == username:
+            continue
+        if id_key_score(key) >= 70 and value not in identity_aliases:
+            identity_aliases.append(value)
+
     evidence = {
         "username": username,
         "role": role,
@@ -2039,6 +2049,7 @@ def _account_from_mapping(
         "tipo_fuente": _source_kind(source),
         "confianza": confidence,
         "password_literal": bool(password),
+        "identity_aliases": identity_aliases,
     }
     return account, evidence
 
@@ -3211,6 +3222,16 @@ def _extract_owner_samples(
     if not usernames:
         return []
 
+    identity_aliases: dict[str, str] = {}
+    for account_evidence in detection.account_sources:
+        username = str(account_evidence.get("username") or "").strip()
+        if username not in usernames:
+            continue
+        for alias in account_evidence.get("identity_aliases") or []:
+            alias_text = str(alias).strip()
+            if alias_text and alias_text not in usernames:
+                identity_aliases[alias_text] = username
+
     samples: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
 
@@ -3250,6 +3271,7 @@ def _extract_owner_samples(
             evidence = infer_object_identity(
                 value,
                 usernames,
+                identity_aliases=identity_aliases,
             )
             if evidence:
                 add_sample(
@@ -3290,8 +3312,12 @@ def _extract_owner_samples(
 
         # Fallback textual genérico: descubre el nombre del campo que contiene
         # una cuenta conocida y lo puntúa por semántica de propiedad.
-        for username in usernames:
-            user_re = re.escape(username)
+        identity_values = {
+            username: username for username in usernames
+        }
+        identity_values.update(identity_aliases)
+        for identity_value, username in identity_values.items():
+            user_re = re.escape(identity_value)
             for owner_match in re.finditer(
                 rf"""(?ix)
                 ["']?([A-Za-z_][A-Za-z0-9_.-]{{1,100}})["']?
@@ -3371,6 +3397,7 @@ def _extract_owner_samples(
             evidence = infer_object_identity(
                 mapping,
                 usernames,
+                identity_aliases=identity_aliases,
             )
             if evidence:
                 add_sample(
