@@ -628,16 +628,22 @@ class AuditorController(QObject):
         return data
 
     def ai_profile_settings(self, profile_id: str) -> dict:
-        try:
-            provider = cargar_perfil_ia(profile_id)
-        except Exception as exc:
-            self.log_message.emit(
-                f"No fue posible cargar el perfil IA {profile_id}: {exc}"
-            )
-            return {}
-        data = provider.public_dict()
-        data["enabled"] = True
-        return data
+        for item in self.ai_profiles():
+            if str(item.get("id") or "") == str(profile_id):
+                return {
+                    "enabled": True,
+                    "profile_id": item.get("id"),
+                    "profile_name": item.get("name"),
+                    "provider_id": item.get("provider_id"),
+                    "provider_name": item.get("provider_name"),
+                    "model_id": item.get("model_id"),
+                    "model_name": item.get("model_name"),
+                    "base_url": item.get("base_url"),
+                    "config_path": item.get("config_path"),
+                    "has_api_key": item.get("has_api_key"),
+                    "active": item.get("active"),
+                }
+        return {}
 
     def save_ai_settings(
         self,
