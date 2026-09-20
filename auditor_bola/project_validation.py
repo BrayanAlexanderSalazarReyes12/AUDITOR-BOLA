@@ -301,8 +301,15 @@ def validate_project_after_patch(
     *,
     build_timeout: int = 180,
     test_timeout: int = 240,
+    run_build: bool = True,
+    run_tests: bool = True,
 ) -> ProjectValidationReport:
-    """Valida uno o varios archivos y ejecuta build/tests del proyecto una vez."""
+    """Valida archivos y, opcionalmente, build/tests.
+
+    El ciclo correctivo usa dos fases: primero valida sintaxis/build; después
+    intenta nuevamente el control de seguridad. La suite funcional se ejecuta
+    solo cuando el exploit original ya dejó de reproducirse.
+    """
     root = Path(target_root).resolve()
     if isinstance(relative_file, (str, Path)):
         files = [str(relative_file)]
@@ -354,7 +361,13 @@ def validate_project_after_patch(
         )
 
     build_cmd, build_applicable = _detect_build(root)
-    if build_applicable and not build_cmd:
+    if not run_build:
+        build = ValidationStep(
+            nombre="build",
+            estado="NO_APLICA",
+            detalle="Build omitido en esta fase; ya fue validado previamente.",
+        )
+    elif build_applicable and not build_cmd:
         build = ValidationStep(
             nombre="build",
             estado="NO_DISPONIBLE",
@@ -375,7 +388,16 @@ def validate_project_after_patch(
         )
 
     test_cmd, tests_applicable = _detect_tests(root)
-    if tests_applicable and not test_cmd:
+    if not run_tests:
+        tests = ValidationStep(
+            nombre="tests",
+            estado="NO_APLICA",
+            detalle=(
+                "Suite funcional diferida hasta después de verificar "
+                "que el exploit original ya no se reproduce."
+            ),
+        )
+    elif tests_applicable and not test_cmd:
         tests = ValidationStep(
             nombre="tests",
             estado="NO_DISPONIBLE",
@@ -397,14 +419,22 @@ def validate_project_after_patch(
 
     syntax_ok = syntax.estado in {"OK", "NO_APLICA"}
     build_ok = (
-        build.estado in {"OK", "NO_APLICA"}
-        if not build_applicable
-        else build.estado == "OK"
+        True
+        if not run_build
+        else (
+            build.estado in {"OK", "NO_APLICA"}
+            if not build_applicable
+            else build.estado == "OK"
+        )
     )
     tests_ok = (
-        tests.estado in {"OK", "NO_APLICA"}
-        if not tests_applicable
-        else tests.estado == "OK"
+        True
+        if not run_tests
+        else (
+            tests.estado in {"OK", "NO_APLICA"}
+            if not tests_applicable
+            else tests.estado == "OK"
+        )
     )
     return ProjectValidationReport(
         archivo=files[0],
