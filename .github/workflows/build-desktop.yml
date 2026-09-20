@@ -1,4 +1,5 @@
 # security-patching-release: v1.3.0
+# release-publish-retry: v1.3.0
 name: Build desktop executables
 
 on:
