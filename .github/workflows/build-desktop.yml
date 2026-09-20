@@ -1,4 +1,4 @@
-# matrix-policy-evaluation-release: v1.1.23
+# matrix-policy-evaluation-release: v1.2.0
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.23' \
+            'Version: 1.2.0' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-23:
-    name: Publicar Release v1.1.23
+  release-v1-2-0:
+    name: Publicar Release v1.2.0
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.23]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.0]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,114 +253,27 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.23
+          # Aegis Auditor v1.2.0
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.23
-          - Corrige la versión de la aplicación analizada: ya no se asigna
-            `1.0.0` por defecto.
-          - Detecta la versión real desde package.json, pom.xml, Gradle,
-            pyproject.toml, Cargo.toml, composer.json, pubspec.yaml, csproj,
-            mix.exs, version.php, MANIFEST.MF y archivos VERSION.
-          - También reconoce APP_VERSION, APPLICATION_VERSION,
-            PROJECT_VERSION, __version__, info.app.version y documentación
-            cuando no existe un manifest más confiable.
-          - El perfil guarda `version_detectada`, `version_fuente`,
-            `version_confianza` y todas las `version_candidatas`.
-          - Si no existe una versión verificable se usa `desconocida`,
-            nunca una versión inventada.
-          - Se mantienen el escaneo de documentación, cuentas, endpoints,
-            fullscreen, progreso, botón Salir y Apache License 2.0.
-          - El inicio de aplicaciones ahora selecciona la primera estrategia de runtime realmente ejecutable.
-          - Los perfiles Docker conservan alternativas nativas cuando Docker no está instalado o no está en PATH.
-          - El auditor evita ejecutar comandos de detención si el arranque falló.
-          - La URL base se asocia a la estrategia de runtime seleccionada.
-          - Los perfiles antiguos se enriquecen automáticamente con fallbacks de runtime detectados.
-          - Los diálogos secundarios y selectores de archivos Qt adoptan el diseño oscuro y maximizado de Aegis.
-          - La auditoría P1 + P2 ahora muestra progreso real por control, etapa y total procesado.
-          - Se elimina la sensación de bloqueo en porcentajes estimados como 42% durante diagnósticos largos.
-          - La barra y el modal reciben el avance del motor en segundo plano sin congelar la interfaz.
-          - La fase de inicio del objetivo muestra ahora el progreso real del runtime: selección, preparación, lanzamiento y estabilización.
-          - Se corrige el bloqueo visual en 92% durante el inicio de la aplicación objetivo.
-          - Antes de levantar cualquier objetivo, Aegis limpia instancias anteriores que hayan quedado activas por un cierre forzado.
-          - En runtimes de servicio ejecuta primero el comando de parada; en procesos locales libera el puerto objetivo y termina el árbol huérfano cuando corresponde.
-          - La limpieza previa se registra en la consola para indicar si se detuvo un servicio, se cerraron procesos huérfanos o el puerto ya estaba libre.
-          - Antes de cualquier nuevo arranque, Aegis busca y termina todos los procesos anteriores asociados al mismo proyecto objetivo, no solo el proceso que ocupa el puerto.
-          - La detección se limita al proyecto cargado y a sus rutas/comandos para no cerrar procesos ajenos del sistema.
-          - La IA puede configurarse directamente dentro de Aegis; OpenCode deja de ser un requisito para usar el asistente en otro PC.
-          - Se admite configuración persistente propia de Aegis, variables AEGIS_AI_* e importación opcional desde OpenCode.
-          - La barra de progreso ya puede mostrar el 100% real durante el arranque y no queda retenida visualmente en 99%.
-          - Aegis conserva temporalmente el PID del objetivo para recuperar y cerrar procesos que sobrevivan a un cierre forzado del auditor.
-          - Aegis ahora administra múltiples perfiles IA y permite crear, editar, duplicar, eliminar y seleccionar el proveedor activo desde Configuración.
-          - Cada perfil IA conserva nombre, URL base, modelo y su clave local; cambiar de perfil no obliga a reescribir los demás proveedores.
-          - La configuración IA antigua de un solo proveedor se migra automáticamente al nuevo formato de perfiles.
-          - OpenCode puede importarse como un perfil adicional y deja de ser una dependencia para seleccionar proveedores ya guardados en Aegis.
-          - En Windows, los runtimes objetivo y comandos auxiliares se ejecutan ocultos con CREATE_NO_WINDOW para evitar dejar una ventana CMD/PowerShell negra abierta.
-          - La salida del proceso objetivo sigue capturándose en la consola interna de Aegis aunque la consola externa quede oculta.
-          - Docker deja de ser obligatorio: si no está instalado o no levanta el servidor, Aegis intenta automáticamente un runtime local ejecutable del proyecto.
-          - El perfil JSON expone preferencia_arranque, permitir_fallback_local, comandos, URL y alternativas, y mantiene metadata_detectada.plan_ejecucion sincronizado.
-          - En proyectos Python, Aegis prioriza .venv/venv/env del proyecto antes de buscar Python del sistema.
-          - La pantalla de Inicio muestra el comando de ejecución, política de arranque y alternativas locales configuradas.
-          - Los workflows CI y la interfaz profesional fueron validados después de las correcciones del arranque local y la detección de puertos.
-          - El empaquetado macOS reintenta automáticamente la creación del DMG cuando el runner devuelve un error transitorio "Resource busy".
-          - El arranque local detecta la URL/puerto que el propio servidor anuncia y corrige automáticamente una base_url estimada incorrecta.
-          - Si Docker no está instalado, Aegis descarta esa estrategia y selecciona el mejor runtime local disponible según el equipo.
-          - Si el servidor Python anuncia 127.0.0.1:5050 aunque el perfil estimara 5000, Aegis adopta 5050 y continúa sin marcar un falso fallo de inicio.
-          - El backend reserva 100% para la finalización real del Worker; el motor de arranque se queda en 99% hasta devolver control a la interfaz.
-          - Los Worker de Qt se mantienen referenciados hasta finished/error para evitar perder la señal final y dejar el modal pegado en 100%.
-          - La URL real del runtime local seleccionado se guarda nuevamente en el perfil JSON para próximos arranques.
-          - La base_url del JSON de config es la autoridad para la IP y el puerto permitidos del objetivo, sin importar si Aegis usa Docker, Python u otra estrategia.
-          - Al caer de Docker a Python, Aegis sincroniza la alternativa local con la IP/puerto declarados en config en vez de conservar un puerto estimado distinto.
-          - La detección del runtime puede elegir cómo arrancar la aplicación, pero no puede modificar una base_url ya declarada por el perfil.
-          - Al generar el JSON, Aegis comprueba si Docker está instalado en el equipo actual; sin Docker, selecciona directamente el runtime local como principal.
-          - El perfil registra metadata_detectada.entorno_ejecucion con docker_instalado y el runtime principal elegido.
-          - Las pruebas CI fueron actualizadas para la verificación real de disponibilidad de servicios.
-          - El diagnóstico ya no puede devolver '0 hallazgos' cuando el perfil contiene 0 controles activos; ahora informa que no se ejecutó ninguna prueba de seguridad.
-          - El auto-perfil infiere controles P2 de alta confianza para reflexión CORS, secretos con valor por defecto y usuario efectivo de Docker.
-          - Los perfiles antiguos con cero controles se enriquecen automáticamente al volver a cargar el código fuente, sin borrar controles manuales existentes.
-          - El perfil JSON incorpora `chequeos_pilar1` como registro canónico de BOLA, RBAC/ABAC y alcance de agentes, manteniendo compatibilidad con `endpoints`, `chequeos_acceso` y `chequeos_agente`.
-          - Aegis reconstruye controles ejecutables del Pilar 1 desde tests, fixtures, datos semilla y archivos de soporte cuando encuentra evidencia suficiente de propietario, rol esperado o alcance del agente.
-          - Las rutas Flask Blueprint conservan `url_prefix` y ya no se duplican erróneamente como rutas JavaScript.
-          - El diagnóstico completo desde la GUI exige cobertura activa en Pilar 1 y Pilar 2; los flujos internos de verificación/corrección siguen admitiendo controles dirigidos de un solo pilar.
-          - La pantalla de Inicio muestra el runtime realmente seleccionado en esta ejecución (por ejemplo Python/process) en vez del runtime principal antiguo del perfil.
-          - Los perfiles auto-generados heredados que aún tenían Docker Compose como principal se migran al runtime local detectado cuando Docker no está disponible.
-          - La Base URL mostrada en Inicio se toma del runtime activo y queda alineada con la URL local realmente utilizada.
-          - Antes de iniciar Diagnosticar P1 + P2, Aegis valida cobertura ejecutable de ambos pilares y bloquea la ejecución incompleta antes de abrir el progreso.
-          - Se mejora la detección de URL/puerto del runtime Python a partir de launchers y configuración local, sin usar el mapeo Docker como autoridad del runtime nativo.
-          - Se filtran candidatos de cuentas falsos extraídos de texto o código que no cumplen el formato de un username válido.
-          - Aegis puede convertir candidatos BOLA del Pilar 1 en controles ejecutables usando evidencia de solo lectura del objetivo ya iniciado.
-          - El resolvedor P1 consulta colecciones autenticadas con GET, identifica pares objeto-propietario y persiste los controles resueltos en `chequeos_pilar1`.
-          - El descubrimiento P1 en vivo no ejecuta PATCH, PUT ni DELETE para evitar modificar datos reales durante la auto-configuración.
-          - Se añaden pruebas de regresión para resolución BOLA en vivo y para impedir inferencias cuando la API no expone propietario.
-          - Se incorpora un motor semántico genérico para inferir identificadores y propiedad desde nombres de campo y estructuras anidadas, sin depender de términos propios de Tramitia.
-          - La reconstrucción de BOLA usa aliases semánticos como id/uuid/code/codigo y owner/author/creator/created_by, incluyendo objetos anidados y parámetros de ruta de distintos frameworks.
-          - Los contratos HTTP de tests se extraen de Python y JavaScript/TypeScript para reconstruir RBAC/ABAC y cuerpos de prueba con mayor cobertura.
-          - RBAC/ABAC se deriva de tests de seguridad con identidad y status esperado aunque la ruta no contenga palabras como admin o audit.
-          - La reconstrucción de Agent Scope deriva campos de steps/tool/count desde las aserciones del test, evitando nombres fijos como pasos/herramienta/devueltas.
-          - Pilar 2 agrega controles source_regex y auto-detección de debug explícito, cookies de sesión Secure=false, secretos con fallback y posibles bypasses de límites/cuotas sin guardia de autorización.
-          - Los candidatos P1 también se descubren por semántica de autorización en el código fuente, no solo por el nombre de la ruta.
-          - El JSON registra metadata_detectada.motor_evidencia con fuentes, capacidades y política de confianza del motor semántico.
-          - Se corrige una regresión de cobertura introducida al generalizar el motor semántico: Aegis vuelve a detectar más controles reales sin volver a depender de reglas específicas de Tramitia.
-          - La resolución BOLA en vivo reutiliza evidencia GET de propiedad para activar también variantes PATCH seguras cuando puede construir una prueba no destructiva.
-          - RBAC vuelve a cubrir rutas fuertemente privilegiadas de priorización/administración para identidades de menor privilegio.
-          - Agent Scope reconoce respuestas Flask mediante `get_json()` y aliases locales como `payload = response.get_json()`.
-          - La detección de secretos vuelve a reconocer defaults simbólicos como `DEFAULT_SECRET` usados como fallback de variables de entorno.
-          - La detección de bypass de límites ya no se descarta por menciones lejanas de roles; exige una guardia de autorización realmente cercana a la rama de escape.
-          - Se añaden pruebas de regresión para evitar que futuras generalizaciones reduzcan cobertura de BOLA, RBAC, Agent Scope, secretos o bypass de límites.
-          - Se agrega una matriz automática endpoint × usuario: cada endpoint detectado se prueba con cada cuenta configurada durante el diagnóstico.
-          - La matriz conserva el inventario `endpoints_detectados` dentro de `ConfigObjetivo` y registra resultados por método, ruta, usuario, rol y código HTTP.
-          - Las rutas parametrizadas se materializan únicamente con IDs ya verificados por controles BOLA; Aegis no inventa identificadores.
-          - GET/HEAD/OPTIONS se prueban directamente y POST/PUT/PATCH usan cuerpo vacío para observar autorización sin reutilizar datos de negocio válidos.
-          - DELETE se registra en la matriz pero se omite automáticamente para evitar eliminar información del objetivo durante el barrido general.
-          - La interfaz muestra filas de matriz como OBSERVADO/OMITIDO/ERROR sin convertir respuestas desconocidas en vulnerabilidades inventadas.
-          - El resumen del diagnóstico incluye total de combinaciones endpoint-usuario, accesos, denegaciones y pruebas no concluyentes.
-          - La matriz endpoint × usuario ahora evalúa cada observación contra política RBAC/BOLA conocida o inferida y señala filas vulnerables en vez de mostrarlas solo como observadas.
-          - Los resultados de matriz incluyen acceso esperado, acceso real, fuente de política, nivel de confianza y referencia al control que sustentó la decisión.
-          - Las vulnerabilidades ya cubiertas por un control P1 activo aparecen como confirmación para evitar duplicar el conteo de hallazgos.
-          - Los candidatos RBAC que permiten acceso a una identidad de bajo privilegio se muestran como vulnerables y se promueven automáticamente a controles P1 activos para siguientes ejecuciones.
-          - La matriz reutiliza cuerpos de prueba ya declarados por controles de seguridad cuando existen, evitando inventar datos de negocio.
-          - La interfaz separa hallazgos confirmados de vulnerabilidades detectadas por matriz y muestra ambas cifras en el resumen.
+          ## Novedades principales
+
+          - Nuevo motor de seguridad basado en evidencia y comportamiento, sin reglas específicas de una aplicación.
+          - Construcción explícita del modelo **Identidad → Rol/Atributos → Endpoint → Acción → Recurso → Propiedad**.
+          - Registro extensible de familias de controles para BOLA, RBAC/ABAC, Agent Scope, bypass de límites, CORS, secretos, contenedores, debug y sesión.
+          - Estados diferenciados para candidato, evidencia insuficiente, por confirmar, prueba preparada, confirmado, descartado y no ejecutable.
+          - Separación estructural **Hallazgo → Evidencias → Casos de prueba**.
+          - IDs semánticos y estables generados dinámicamente; no dependen de IDs históricos de otros proyectos.
+          - Deduplicación por familia, endpoint/componente, recurso y causa raíz para evitar contar varias pruebas como vulnerabilidades distintas.
+          - Matriz **endpoint × identidad** enriquecida con forma de respuesta JSON, conteo de objetos, IDs observados y firma semántica.
+          - Las diferencias entre respuestas de usuarios se conservan como evidencia y no se convierten por sí solas en vulnerabilidad.
+          - POST/PUT/PATCH solo se ejecutan cuando existe un payload de prueba seguro derivado de evidencia; de lo contrario quedan como **NO_EJECUTABLE**.
+          - DELETE continúa protegido para evitar acciones destructivas durante el barrido automático.
+          - Mejor correlación de propiedad de objetos mediante aliases de identidad como `user_id`, `account_id`, `cliente_id` y equivalentes.
+          - Consolidación runtime de hallazgos únicos manteniendo todos los casos de prueba relacionados.
+          - Se conserva la detección real de versiones, runtimes locales/Docker, documentación, cuentas, endpoints, recetas verificables y fallbacks de ejecución.
+          - Validación automatizada en Python 3.11 y 3.12, Qt y CustomTkinter.
 
           ## Descargas
 
@@ -369,23 +282,22 @@ jobs:
           - `AegisAuditor-Windows-x64.exe`: ejecutable portable.
 
           ### macOS
-          - `AegisAuditor-macOS-arm64.dmg`: Apple Silicon (M1/M2/M3/M4).
+          - `AegisAuditor-macOS-arm64.dmg`: Apple Silicon.
           - `AegisAuditor-macOS-x64.dmg`: Intel.
           - Los ZIP contienen la aplicación `.app` correspondiente.
 
           ### Linux
           - `AegisAuditor-Linux-x64.deb`: Debian/Ubuntu x64.
           - `AegisAuditor-Linux-arm64.deb`: Debian/Ubuntu ARM64.
-          - `*.tar.gz`: paquete portable.
-          - `AegisAuditor-Linux-x64` y `AegisAuditor-Linux-arm64`: binarios directos.
+          - `*.tar.gz`: paquetes portables.
+          - Binarios directos para x64 y arm64.
 
-          Cada plataforma incluye archivos SHA-256 para verificar la integridad.
+          Cada plataforma incluye archivos SHA-256 para verificar integridad.
 
           ## Licencia
-          Aegis Auditor se distribuye bajo Apache License 2.0. Los archivos
-          `LICENSE` y `NOTICE` acompañan el release y los paquetes instalables.
 
-          > Los perfiles de aplicaciones no se distribuyen dentro del release. Aegis genera o carga los perfiles desde la interfaz.
+          Aegis Auditor se distribuye bajo Apache License 2.0. Los perfiles de
+          aplicaciones analizadas no se incluyen dentro del release.
           EOF
 
       - name: Publicar GitHub Release
@@ -409,16 +321,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.23" >/dev/null 2>&1; then
-            gh release upload "v1.1.23" "${files[@]}" --clobber
-            gh release edit "v1.1.23" \
-              --title "Aegis Auditor v1.1.23" \
+          if gh release view "v1.2.0" >/dev/null 2>&1; then
+            gh release upload "v1.2.0" "${files[@]}" --clobber
+            gh release edit "v1.2.0" \
+              --title "Aegis Auditor v1.2.0" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.23" "${files[@]}" \
+            gh release create "v1.2.0" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.23" \
+              --title "Aegis Auditor v1.2.0" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
