@@ -1415,7 +1415,16 @@ def test_autoperfil_genera_rbac_negativo_para_ruta_privilegiada(
         if item["acceso_esperado"] is False
     }
     assert ("GET", "/api/admin/audit", "member.one") in denied
-    assert ("POST", "/api/tools/prioritize", "member.one") in denied
+    assert (
+        "POST",
+        "/api/tools/prioritize",
+        "member.one",
+    ) in denied, {
+        "accounts": profile["cuentas"],
+        "roles": profile["roles_privilegiados"],
+        "endpoints": profile["endpoints_detectados"],
+        "checks": profile["chequeos_acceso"],
+    }
 
 
 def test_autoperfil_scope_python_soporta_get_json_y_alias(
