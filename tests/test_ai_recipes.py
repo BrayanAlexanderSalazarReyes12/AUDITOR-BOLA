@@ -884,3 +884,159 @@ def test_context_window_400_reintenta_con_menos_contexto(monkeypatch):
         len(calls[1]["messages"][1]["content"])
         < len(calls[0]["messages"][1]["content"])
     )
+
+
+
+def test_receta_python_rechaza_helpers_no_importados():
+    proposal = ai.AIRecipeProposal(
+        id="IA-2",
+        titulo="Decorador de autorización",
+        enfoque="ESTRUCTURAL",
+        explicacion="Agrega requires_role.",
+        riesgo="MEDIO",
+        cambios=[
+            {
+                "archivo": "tramitia/auth.py",
+                "estrategia": "replace_exact",
+                "buscar": (
+                    "def current_user() -> dict:\n"
+                    "    return {\"username\": g.username, \"role\": g.role}"
+                ),
+                "reemplazar": (
+                    "def current_user() -> dict:\n"
+                    "    return {\"username\": g.username, \"role\": g.role}\n\n"
+                    "def requires_role(role):\n"
+                    "    def decorator(view):\n"
+                    "        @wraps(view)\n"
+                    "        def wrapped(*args, **kwargs):\n"
+                    "            if g.role != role:\n"
+                    "                return jsonify(error=\"acceso denegado\"), 403\n"
+                    "            return view(*args, **kwargs)\n"
+                    "        return wrapped\n"
+                    "    return decorator"
+                ),
+            }
+        ],
+    )
+
+    result = ai.validar_propuestas_contextuales(
+        [proposal],
+        source_relative="tramitia/auth.py",
+        source_text=(
+            "from flask import g\n\n"
+            "def current_user() -> dict:\n"
+            "    return {\"username\": g.username, \"role\": g.role}\n"
+        ),
+    )[0]
+
+    assert result.validacion_ok is False
+    detail = "\n".join(result.errores_validacion)
+    assert "wraps" in detail
+    assert "jsonify" in detail
+
+
+def test_receta_python_valida_import_local_del_simbolo_que_agrega():
+    proposal = ai.AIRecipeProposal(
+        id="IA-2",
+        titulo="Decorador de autorización",
+        enfoque="ESTRUCTURAL",
+        explicacion="Agrega requires_role.",
+        riesgo="MEDIO",
+        cambios=[
+            {
+                "archivo": "tramitia/auth.py",
+                "estrategia": "replace_exact",
+                "buscar": (
+                    "def current_user() -> dict:\n"
+                    "    return {\"username\": g.username, \"role\": g.role}"
+                ),
+                "reemplazar": (
+                    "def current_user() -> dict:\n"
+                    "    return {\"username\": g.username, \"role\": g.role}\n\n"
+                    "def requires_role(role):\n"
+                    "    def decorator(view):\n"
+                    "        @wraps(view)\n"
+                    "        def wrapped(*args, **kwargs):\n"
+                    "            if g.role != role:\n"
+                    "                return jsonify(error=\"acceso denegado\"), 403\n"
+                    "            return view(*args, **kwargs)\n"
+                    "        return wrapped\n"
+                    "    return decorator"
+                ),
+            },
+            {
+                "archivo": "tramitia/admin.py",
+                "estrategia": "replace_exact",
+                "buscar": "from .auth import authenticated",
+                "reemplazar": (
+                    "from .auth import authenticated, requires_role, COORDINADOR"
+                ),
+            },
+        ],
+    )
+
+    result = ai.validar_propuestas_contextuales(
+        [proposal],
+        source_relative="tramitia/auth.py",
+        source_text=(
+            "from functools import wraps\n"
+            "from flask import g, jsonify\n"
+            "COORDINADOR = \"coordinador\"\n\n"
+            "def authenticated(view):\n"
+            "    return view\n\n"
+            "def current_user() -> dict:\n"
+            "    return {\"username\": g.username, \"role\": g.role}\n"
+        ),
+        source_files={
+            "tramitia/admin.py": (
+                "from .auth import authenticated\n\n"
+                "@authenticated\n"
+                "def auditoria():\n"
+                "    return {}\n"
+            )
+        },
+    )[0]
+
+    assert result.validacion_ok is True
+
+
+def test_receta_python_rechaza_import_local_inexistente():
+    proposal = ai.AIRecipeProposal(
+        id="IA-2",
+        titulo="Importa constante inexistente",
+        enfoque="ESTRUCTURAL",
+        explicacion="demo",
+        riesgo="MEDIO",
+        cambios=[
+            {
+                "archivo": "tramitia/admin.py",
+                "estrategia": "replace_exact",
+                "buscar": "from .auth import authenticated",
+                "reemplazar": (
+                    "from .auth import authenticated, COORDINADOR"
+                ),
+            }
+        ],
+    )
+
+    result = ai.validar_propuestas_contextuales(
+        [proposal],
+        source_relative="tramitia/admin.py",
+        source_text=(
+            "from .auth import authenticated\n"
+            "def auditoria():\n"
+            "    return {}\n"
+        ),
+        source_files={
+            "tramitia/auth.py": (
+                "def authenticated(view):\n"
+                "    return view\n"
+            )
+        },
+    )[0]
+
+    assert result.validacion_ok is False
+    assert any(
+        "COORDINADOR" in error and "no existe" in error
+        for error in result.errores_validacion
+    )
