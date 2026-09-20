@@ -191,14 +191,14 @@ def _read_ai_store(
             for item in data.get("profiles", [])
             if isinstance(item, dict)
         ]
-        valid_ids = {
+        valid_ids = [
             str(item.get("id") or "").strip()
             for item in store["profiles"]
             if str(item.get("id") or "").strip()
-        }
-        if store["active_profile_id"] not in valid_ids:
+        ]
+        if store["active_profile_id"] not in set(valid_ids):
             store["active_profile_id"] = (
-                next(iter(valid_ids)) if valid_ids else None
+                valid_ids[0] if valid_ids else None
             )
         return config_path, store
 
