@@ -335,3 +335,430 @@ def test_global_regressions_are_recorded_but_target_contract_is_authoritative(
     regressions = cycle.regresiones_globales(baseline, after)
     assert len(regressions) == 1
     assert regressions[0]["despues"]["id"] == "P2-OTHER"
+
+
+
+def test_ciclo_ia_aplica_reinicia_reescanea_y_luego_ejecuta_qa(
+    tmp_path,
+    monkeypatch,
+):
+    events = []
+    baseline = {
+        "filas": [
+            {
+                "id": "P1-X",
+                "tipo_control": "acceso",
+                "metodo": "GET",
+                "ruta": "/admin",
+                "cuenta": "ana",
+                "estado": "HALLAZGO",
+            }
+        ]
+    }
+    secure = {
+        "filas": [
+            {
+                "id": "P1-X",
+                "tipo_control": "acceso",
+                "metodo": "GET",
+                "ruta": "/admin",
+                "cuenta": "ana",
+                "estado": "SIN_HALLAZGO",
+            }
+        ]
+    }
+
+    diagnoses = iter([baseline, secure])
+
+    def fake_diagnose(*args, **kwargs):
+        result = next(diagnoses)
+        events.append(
+            "diagnose_before"
+            if result is baseline
+            else "diagnose_after_restart"
+        )
+        return result
+
+    monkeypatch.setattr(cycle, "diagnosticar", fake_diagnose)
+    monkeypatch.setattr(
+        cycle,
+        "filas_gui",
+        lambda result: result["filas"],
+    )
+    monkeypatch.setattr(cycle, "correction_available", lambda *args: True)
+
+    target = tmp_path / "project"
+    source = target / "app.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("ALLOW = True\n", encoding="utf-8")
+    backup = tmp_path / "app.before.py"
+    backup.write_text("ALLOW = True\n", encoding="utf-8")
+
+    def fake_apply(*args, **kwargs):
+        events.append("apply_patch")
+        source.write_text("ALLOW = False\n", encoding="utf-8")
+        return CorrectionResult(
+            control_id="P1-X",
+            archivo="app.py",
+            applied=True,
+            before_hash="before",
+            after_hash="after",
+            backup=str(backup),
+            diff="- ALLOW = True\n+ ALLOW = False\n",
+            operaciones_aplicadas=1,
+            mensaje="patched",
+        )
+
+    monkeypatch.setattr(cycle, "apply_correction", fake_apply)
+
+    def fake_validation(
+        target_root,
+        relative_file,
+        *,
+        build_timeout=180,
+        test_timeout=240,
+        run_build=True,
+        run_tests=True,
+    ):
+        events.append(
+            "validate_pre_security"
+            if not run_tests
+            else "validate_post_security"
+        )
+        return ProjectValidationReport(
+            archivo="app.py",
+            sintaxis=ValidationStep(
+                nombre="sintaxis",
+                estado="OK",
+                detalle="ok",
+            ),
+            build=ValidationStep(
+                nombre="build",
+                estado="NO_APLICA",
+                detalle="",
+            ),
+            tests=ValidationStep(
+                nombre="tests",
+                estado="OK" if run_tests else "NO_APLICA",
+                detalle="",
+            ),
+            tecnico_ok=True,
+            build_aplicable=False,
+            tests_aplicables=run_tests,
+        )
+
+    monkeypatch.setattr(
+        cycle,
+        "validate_project_after_patch",
+        fake_validation,
+    )
+
+    def restart():
+        events.append("restart_service")
+
+    cfg = ConfigObjetivo(
+        sistema="demo",
+        base_url="http://127.0.0.1:5000",
+        cuentas=[],
+        endpoints=[],
+        correcciones=[
+            Correccion(
+                control_id="P1-X",
+                archivo="app.py",
+                requiere_reinicio=True,
+                operaciones=[
+                    {
+                        "estrategia": "replace_exact",
+                        "buscar": "ALLOW = True",
+                        "reemplazar": "ALLOW = False",
+                    }
+                ],
+            )
+        ],
+    )
+
+    result = cycle.ciclo_correctivo(
+        cfg,
+        "P1-X",
+        target,
+        evidence_base=tmp_path / "evidence",
+        reiniciar=restart,
+        selector={
+            "cuenta": "ana",
+            "metodo": "GET",
+            "ruta": "/admin",
+            "tipo_control": "acceso",
+        },
+    )
+
+    assert result["estado_patch"] == "PATCH_VERIFIED"
+    assert result["reinicio_servicio"]["exitoso"] is True
+    assert result["reescaneo_seguridad"]["estado"] == "SIN_HALLAZGO"
+    assert events == [
+        "diagnose_before",
+        "apply_patch",
+        "validate_pre_security",
+        "restart_service",
+        "diagnose_after_restart",
+        "validate_post_security",
+    ]
+    assert source.read_text(encoding="utf-8") == "ALLOW = False\n"
+
+
+def test_propuesta_ia_fuerza_reinicio_antes_del_reescaneo():
+    proposal = ai.AIRecipeProposal(
+        id="IA-1",
+        titulo="Parche",
+        enfoque="MINIMA",
+        explicacion="Corrige autorización",
+        riesgo="BAJO",
+        estrategia="replace_exact",
+        buscar="return data",
+        reemplazar="return secure_data",
+        requiere_reinicio=False,
+        consideraciones="",
+        archivo_objetivo="app.py",
+    )
+
+    correction = ai.propuesta_a_correccion(
+        proposal,
+        control_id="P1-X",
+        source_relative="app.py",
+    )
+
+    assert correction.requiere_reinicio is True
+
+
+
+def test_python_patched_without_restart_callback_is_rolled_back(
+    tmp_path,
+    monkeypatch,
+):
+    baseline = {
+        "filas": [
+            {
+                "id": "P1-X",
+                "tipo_control": "acceso",
+                "metodo": "GET",
+                "ruta": "/admin",
+                "cuenta": "ana",
+                "estado": "HALLAZGO",
+            }
+        ]
+    }
+    monkeypatch.setattr(
+        cycle,
+        "diagnosticar",
+        lambda *args, **kwargs: baseline,
+    )
+    monkeypatch.setattr(
+        cycle,
+        "filas_gui",
+        lambda result: result["filas"],
+    )
+
+    target = tmp_path / "project"
+    source = target / "app.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("ALLOW = True\n", encoding="utf-8")
+
+    cfg = ConfigObjetivo(
+        sistema="demo",
+        base_url="http://127.0.0.1:5000",
+        cuentas=[],
+        endpoints=[],
+        correcciones=[
+            Correccion(
+                control_id="P1-X",
+                archivo="app.py",
+                requiere_reinicio=False,
+                operaciones=[
+                    {
+                        "estrategia": "replace_exact",
+                        "buscar": "ALLOW = True",
+                        "reemplazar": "ALLOW = False",
+                    }
+                ],
+            )
+        ],
+    )
+
+    result = cycle.ciclo_correctivo(
+        cfg,
+        "P1-X",
+        target,
+        evidence_base=tmp_path / "evidence",
+        reiniciar=None,
+        selector={
+            "cuenta": "ana",
+            "metodo": "GET",
+            "ruta": "/admin",
+            "tipo_control": "acceso",
+        },
+    )
+
+    assert result["estado_final"] == "REQUIERE_REINICIO"
+    assert result["estado_patch"] == "MANUAL_REVIEW_REQUIRED"
+    assert result["rollback"] is True
+    assert result["reinicio_servicio"]["requerido"] is True
+    assert source.read_text(encoding="utf-8") == "ALLOW = True\n"
+
+
+def test_security_fix_is_kept_when_old_functional_test_expects_vulnerability(
+    tmp_path,
+    monkeypatch,
+):
+    baseline = {
+        "filas": [
+            {
+                "id": "P1-X",
+                "tipo_control": "acceso",
+                "metodo": "GET",
+                "ruta": "/api/admin/auditoria",
+                "cuenta": "ana.vargas",
+                "estado": "HALLAZGO",
+            }
+        ]
+    }
+    secure = {
+        "filas": [
+            {
+                "id": "P1-X",
+                "tipo_control": "acceso",
+                "metodo": "GET",
+                "ruta": "/api/admin/auditoria",
+                "cuenta": "ana.vargas",
+                "estado": "SIN_HALLAZGO",
+            }
+        ]
+    }
+    diagnoses = iter([baseline, secure])
+    monkeypatch.setattr(
+        cycle,
+        "diagnosticar",
+        lambda *args, **kwargs: next(diagnoses),
+    )
+    monkeypatch.setattr(
+        cycle,
+        "filas_gui",
+        lambda result: result["filas"],
+    )
+    monkeypatch.setattr(cycle, "correction_available", lambda *args: True)
+
+    target = tmp_path / "project"
+    source = target / "auth.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("ALLOW_AUDIT = True\n", encoding="utf-8")
+    backup = tmp_path / "auth.before.py"
+    backup.write_text("ALLOW_AUDIT = True\n", encoding="utf-8")
+
+    def fake_apply(*args, **kwargs):
+        source.write_text("ALLOW_AUDIT = False\n", encoding="utf-8")
+        return CorrectionResult(
+            control_id="P1-X",
+            archivo="auth.py",
+            applied=True,
+            before_hash="before",
+            after_hash="after",
+            backup=str(backup),
+            diff="- ALLOW_AUDIT = True\n+ ALLOW_AUDIT = False\n",
+            operaciones_aplicadas=1,
+            mensaje="patched",
+        )
+
+    monkeypatch.setattr(cycle, "apply_correction", fake_apply)
+
+    validation_calls = []
+
+    def fake_validation(
+        target_root,
+        relative_file,
+        *,
+        build_timeout=180,
+        test_timeout=240,
+        run_build=True,
+        run_tests=True,
+    ):
+        validation_calls.append((run_build, run_tests))
+        if not run_tests:
+            return ProjectValidationReport(
+                archivo="auth.py",
+                sintaxis=ValidationStep("sintaxis", "OK", detalle="ok"),
+                build=ValidationStep("build", "NO_APLICA", detalle=""),
+                tests=ValidationStep("tests", "NO_APLICA", detalle=""),
+                tecnico_ok=True,
+                build_aplicable=False,
+                tests_aplicables=False,
+            )
+        return ProjectValidationReport(
+            archivo="auth.py",
+            sintaxis=ValidationStep("sintaxis", "OK", detalle="ok"),
+            build=ValidationStep("build", "NO_APLICA", detalle=""),
+            tests=ValidationStep(
+                "tests",
+                "FAILED",
+                detalle=(
+                    "test_registra_la_creacion_de_solicitudes todavía "
+                    "espera 200 en /api/admin/auditoria para ana.vargas"
+                ),
+            ),
+            tecnico_ok=False,
+            build_aplicable=False,
+            tests_aplicables=True,
+        )
+
+    monkeypatch.setattr(
+        cycle,
+        "validate_project_after_patch",
+        fake_validation,
+    )
+
+    restart_count = {"value": 0}
+
+    def restart():
+        restart_count["value"] += 1
+        return {"estado": "RUNNING"}
+
+    cfg = ConfigObjetivo(
+        sistema="demo",
+        base_url="http://127.0.0.1:5000",
+        cuentas=[],
+        endpoints=[],
+        correcciones=[
+            Correccion(
+                control_id="P1-X",
+                archivo="auth.py",
+                requiere_reinicio=False,
+                operaciones=[
+                    {
+                        "estrategia": "replace_exact",
+                        "buscar": "ALLOW_AUDIT = True",
+                        "reemplazar": "ALLOW_AUDIT = False",
+                    }
+                ],
+            )
+        ],
+    )
+
+    result = cycle.ciclo_correctivo(
+        cfg,
+        "P1-X",
+        target,
+        evidence_base=tmp_path / "evidence",
+        reiniciar=restart,
+        selector={
+            "cuenta": "ana.vargas",
+            "metodo": "GET",
+            "ruta": "/api/admin/auditoria",
+            "tipo_control": "acceso",
+        },
+    )
+
+    assert result["estado_patch"] == "PATCH_VERIFIED_WITH_WARNINGS"
+    assert result["estado_final"] == "CORREGIDO_CON_ADVERTENCIAS"
+    assert result["rollback"] is False
+    assert result["reescaneo_seguridad"]["estado"] == "SIN_HALLAZGO"
+    assert restart_count["value"] == 1
+    assert validation_calls == [(True, False), (False, True)]
+    assert source.read_text(encoding="utf-8") == "ALLOW_AUDIT = False\n"
+    assert result["qa_advertencias"]
