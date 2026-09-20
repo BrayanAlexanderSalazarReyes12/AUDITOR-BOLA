@@ -1303,9 +1303,52 @@ def diagnosticar_causa_raiz(
     probable = str(data.get("causa_raiz_probable") or "").strip()
     confirmed = str(data.get("causa_raiz_confirmada") or "").strip()
     if not probable and not confirmed:
-        raise RuntimeError(
-            "La IA no produjo un diagnóstico de causa raíz utilizable."
-        )
+        # Resiliencia: algunos proveedores pueden ignorar el primer formato y
+        # devolver directamente propuestas. No se inventa una causa confirmada;
+        # se conserva una hipótesis explícitamente NO confirmada y el segundo
+        # paso recibe igualmente el código/evidencia para generar estrategias.
+        data = {
+            "hallazgo": descripcion,
+            "comportamiento_observado": detalle,
+            "comportamiento_esperado": (
+                "La prueba de seguridad debe dejar de reproducir el hallazgo "
+                "sin romper flujos legítimos."
+            ),
+            "entrada_reproduccion": metadata_hallazgo or {},
+            "componente_afectado": source_relative,
+            "archivo_causa_raiz": source_relative,
+            "simbolos_relevantes": [],
+            "archivos_relacionados": list(related),
+            "flujo_ejecucion": [],
+            "hipotesis": [
+                {
+                    "id": "H1",
+                    "descripcion": (
+                        "La causa raíz todavía requiere confirmación con el "
+                        "código y la prueba posterior."
+                    ),
+                    "evidencia_a_favor": [detalle],
+                    "evidencia_en_contra": [],
+                    "estado": "PROBABLE",
+                }
+            ],
+            "causa_raiz_probable": (
+                "Causa raíz no confirmada; reanalizar el flujo real antes "
+                "de aceptar cualquier parche."
+            ),
+            "causa_raiz_confirmada": "",
+            "condicion_explotacion": detalle,
+            "impacto": "",
+            "riesgos_regresion": [],
+            "pruebas_necesarias": [
+                "happy path",
+                "security path",
+                "regression path",
+                "rescan",
+            ],
+            "supuestos_descartados": [],
+            "diagnostico_degradado": True,
+        }
     data["strategy_reset"] = reset
     data["archivos_contexto_disponibles"] = [
         source_relative,
