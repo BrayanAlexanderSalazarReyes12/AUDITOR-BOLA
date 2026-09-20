@@ -535,6 +535,170 @@ class LocalTargetProcess:
                 f"(código {completed.returncode}).\n\n{detail}"
             )
 
+    def _target_process_markers(self) -> list[str]:
+        """Marcadores específicos para reconocer procesos del proyecto."""
+        markers = [str(self.root)]
+        try:
+            cwd, env = self._context()
+            resolved = self._resolver_comando(
+                cwd,
+                env,
+                raw=self._command_for("inicio"),
+            )
+        except Exception:
+            resolved = self._command_for("inicio")
+
+        for item in resolved[1:]:
+            text = str(item).strip()
+            if not text:
+                continue
+            candidate = Path(text)
+            if candidate.is_absolute():
+                markers.append(str(candidate))
+            elif candidate.suffix or "/" in text or "\\" in text:
+                try:
+                    markers.append(str((self.root / text).resolve()))
+                except OSError:
+                    markers.append(text)
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for marker in markers:
+            value = os.path.normcase(os.path.normpath(marker))
+            if len(value) < 4 or value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+        return normalized
+
+    def _command_matches_target(self, command_line: str) -> bool:
+        if not command_line:
+            return False
+        haystack = os.path.normcase(command_line)
+        return any(
+            marker in haystack
+            for marker in self._target_process_markers()
+        )
+
+    def _discover_target_processes(self) -> set[int]:
+        """Busca procesos del mismo proyecto sin tocar procesos ajenos."""
+        matches: set[int] = set()
+        current_pid = os.getpid()
+
+        if _is_windows():
+            powershell = (
+                shutil.which("powershell.exe")
+                or shutil.which("pwsh.exe")
+                or shutil.which("pwsh")
+            )
+            if not powershell:
+                return matches
+            script = (
+                "Get-CimInstance Win32_Process | "
+                "ForEach-Object { "
+                "'{0}`t{1}' -f $_.ProcessId,$_.CommandLine "
+                "}"
+            )
+            try:
+                completed = subprocess.run(
+                    [powershell, "-NoProfile", "-Command", script],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return matches
+            if completed.returncode != 0:
+                return matches
+            rows = completed.stdout.splitlines()
+            for row in rows:
+                raw_pid, sep, command = row.strip().partition("\t")
+                if not sep or not raw_pid.isdigit():
+                    continue
+                pid = int(raw_pid)
+                if pid <= 4 or pid == current_pid:
+                    continue
+                if self._command_matches_target(command.strip()):
+                    matches.add(pid)
+            return matches
+
+        try:
+            completed = subprocess.run(
+                ["ps", "-eo", "pid=,args="],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return matches
+        if completed.returncode != 0:
+            return matches
+
+        for row in completed.stdout.splitlines():
+            line = row.strip()
+            if not line:
+                continue
+            raw_pid, sep, command = line.partition(" ")
+            if not sep or not raw_pid.isdigit():
+                continue
+            pid = int(raw_pid)
+            if pid <= 1 or pid == current_pid:
+                continue
+            if self._command_matches_target(command.strip()):
+                matches.add(pid)
+        return matches
+
+    def _terminate_pid_tree_by_id(self, pid: int) -> bool:
+        if pid <= 4 or pid == os.getpid():
+            return False
+
+        if _is_windows():
+            try:
+                completed = subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return False
+            return completed.returncode == 0
+
+        try:
+            pgid = os.getpgid(pid)
+        except (ProcessLookupError, PermissionError, OSError):
+            return False
+        try:
+            if pgid == pid:
+                os.killpg(pgid, signal.SIGTERM)
+            else:
+                os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError, OSError):
+            return False
+
+        time.sleep(0.2)
+        try:
+            os.kill(pid, 0)
+        except (ProcessLookupError, PermissionError, OSError):
+            return True
+
+        try:
+            if pgid == pid:
+                os.killpg(pgid, signal.SIGKILL)
+            else:
+                os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+        return True
+
+    def _terminate_all_previous_target_processes(self) -> list[int]:
+        """Cierra cualquier proceso anterior perteneciente al mismo proyecto."""
+        killed: list[int] = []
+        for pid in sorted(self._discover_target_processes()):
+            if self._terminate_pid_tree_by_id(pid):
+                killed.append(pid)
+        return killed
+
     def _local_port_from_runtime(self) -> int | None:
         """Devuelve el puerto local explícito usado por el runtime."""
         raw_url = str(self.runtime.base_url or "").strip()
@@ -739,6 +903,17 @@ class LocalTargetProcess:
 
         mode = self._modo()
         stop_command = self._command_for("detener")
+
+        killed_target_pids = self._terminate_all_previous_target_processes()
+        if killed_target_pids:
+            self._cleanup_notes.append(
+                "Se cerraron procesos anteriores del mismo proyecto: "
+                + ", ".join(str(pid) for pid in killed_target_pids)
+            )
+        else:
+            self._cleanup_notes.append(
+                "No se detectaron procesos anteriores del mismo proyecto."
+            )
 
         # En modo service el comando de parada es la forma más precisa de
         # limpiar servicios huérfanos (docker compose down, systemctl, etc.).
