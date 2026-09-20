@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -1163,6 +1164,195 @@ class AuditorController(QObject):
     # ------------------------------------------------------------------
     # Auditoría
     # ------------------------------------------------------------------
+    def _promote_matrix_rbac_findings(
+        self,
+        result: dict[str, Any],
+    ) -> int:
+        """Promueve hallazgos probables de matriz a controles RBAC activos.
+
+        Solo se promociona cuando:
+        - la matriz tenía una expectativa de denegación derivada de un
+          candidato RBAC;
+        - la cuenta de bajo privilegio obtuvo acceso real;
+        - la prueba produjo una respuesta concluyente.
+        """
+        if not self.cfg:
+            return 0
+
+        matrix_rows = (
+            result.get("pilar1", {}).get("matriz_acceso", [])
+            if isinstance(result, dict)
+            else []
+        )
+        if not isinstance(matrix_rows, list):
+            return 0
+
+        existing = {
+            (
+                check.cuenta,
+                check.metodo.upper(),
+                check.ruta,
+            )
+            for check in self.cfg.chequeos_acceso
+        }
+        added: list[ChequeoAcceso] = []
+
+        for row in matrix_rows:
+            if not isinstance(row, dict):
+                continue
+            if row.get("clasificacion") != "POSIBLE_HALLAZGO":
+                continue
+            if row.get("fuente_politica") != "candidato_rbac":
+                continue
+            if row.get("vulnerable") is not True:
+                continue
+
+            username = str(row.get("cuenta") or "").strip()
+            method = str(row.get("metodo") or "").upper().strip()
+            route = str(row.get("endpoint_detectado") or "").strip()
+            if not username or not method or not route:
+                continue
+
+            key = (username, method, route)
+            if key in existing:
+                continue
+
+            digest = hashlib.sha1(
+                f"{method}|{route}|{username}".encode("utf-8")
+            ).hexdigest()[:8].upper()
+
+            source_files: list[str] = []
+            evidence_notes = [
+                "promovido desde matriz endpoint × usuario",
+                (
+                    f"HTTP {row.get('http_status')} permitió acceso a "
+                    f"{username}"
+                ),
+                "expectativa RBAC inferida: acceso denegado",
+            ]
+            for candidate in self.cfg.candidatos_pilar1:
+                if not isinstance(candidate, dict):
+                    continue
+                if str(candidate.get("familia") or "").upper() != "RBAC_ABAC":
+                    continue
+                if str(candidate.get("metodo") or "").upper() != method:
+                    continue
+                if str(candidate.get("ruta_detectada") or "") != route:
+                    continue
+                source_files = list(
+                    candidate.get("archivos_fuente") or []
+                )
+                motive = str(candidate.get("motivo") or "").strip()
+                if motive:
+                    evidence_notes.append(motive)
+                break
+
+            check = ChequeoAcceso(
+                id_control=f"P1-AUTO-MATRIX-RBAC-{digest}",
+                nombre=(
+                    "Acceso de bajo privilegio permitido por "
+                    f"{method} {route}"
+                ),
+                cuenta=username,
+                metodo=method,
+                ruta=route,
+                acceso_esperado=False,
+                cuerpo=(
+                    {}
+                    if method in {"POST", "PUT", "PATCH"}
+                    else None
+                ),
+                archivos_fuente=source_files,
+                pistas_codigo=evidence_notes,
+            )
+            self.cfg.chequeos_acceso.append(check)
+            added.append(check)
+            existing.add(key)
+
+        if not added:
+            return 0
+
+        self.cfg.chequeos_pilar1 = construir_registro_pilar1(
+            self.cfg.endpoints,
+            self.cfg.chequeos_acceso,
+            self.cfg.chequeos_agente,
+        )
+
+        if self.config_path and self.config_path.exists():
+            try:
+                payload = json.loads(
+                    self.config_path.read_text(encoding="utf-8")
+                )
+                if isinstance(payload, dict):
+                    payload["chequeos_acceso"] = [
+                        asdict(item)
+                        for item in self.cfg.chequeos_acceso
+                    ]
+                    payload["chequeos_pilar1"] = list(
+                        self.cfg.chequeos_pilar1
+                    )
+                    meta = dict(
+                        payload.get("metadata_detectada") or {}
+                    )
+                    promoted = list(
+                        meta.get(
+                            "controles_pilar1_promovidos_desde_matriz"
+                        )
+                        or []
+                    )
+                    known = {
+                        str(item.get("id_control") or "")
+                        for item in promoted
+                        if isinstance(item, dict)
+                    }
+                    for check in added:
+                        if check.id_control in known:
+                            continue
+                        promoted.append(
+                            {
+                                "id_control": check.id_control,
+                                "tipo": "acceso",
+                                "cuenta": check.cuenta,
+                                "metodo": check.metodo,
+                                "ruta": check.ruta,
+                                "fuente": "matriz-endpoint-usuario",
+                                "confianza": "media",
+                            }
+                        )
+                    meta[
+                        "controles_pilar1_promovidos_desde_matriz"
+                    ] = promoted
+                    meta["total_controles_pilar1_activos"] = (
+                        len(self.cfg.endpoints)
+                        + len(self.cfg.chequeos_acceso)
+                        + len(self.cfg.chequeos_agente)
+                    )
+                    meta["total_controles_activos"] = (
+                        meta["total_controles_pilar1_activos"]
+                        + len(self.cfg.chequeos_pilar2)
+                    )
+                    payload["metadata_detectada"] = meta
+                    self.config_path.write_text(
+                        json.dumps(
+                            payload,
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+            except (OSError, json.JSONDecodeError) as exc:
+                self.log_message.emit(
+                    "No se pudieron persistir los controles promovidos "
+                    f"desde la matriz: {exc}"
+                )
+
+        self.log_message.emit(
+            "Matriz endpoint × usuario promovió "
+            f"{len(added)} candidato(s) RBAC a controles P1 activos."
+        )
+        return len(added)
+
     def diagnose(self) -> None:
         if not self.cfg:
             self.error_message.emit(
@@ -1230,6 +1420,7 @@ class AuditorController(QObject):
             )
 
         def success(result):
+            promoted = self._promote_matrix_rbac_findings(result)
             self.resultado = result
             self.rows = filas_gui(result)
             self.results_changed.emit(self.rows)
@@ -1237,9 +1428,23 @@ class AuditorController(QObject):
                 row.get("estado") == "HALLAZGO"
                 for row in self.rows
             )
-            self.log_message.emit(
-                f"Diagnóstico completado: {findings} hallazgo(s)."
+            matrix_vulnerable = sum(
+                row.get("estado") == "VULNERABLE"
+                for row in self.rows
             )
+            message = (
+                f"Diagnóstico completado: {findings} hallazgo(s)"
+            )
+            if matrix_vulnerable:
+                message += (
+                    f" + {matrix_vulnerable} vulnerabilidad(es) "
+                    "señalada(s) por la matriz"
+                )
+            if promoted:
+                message += (
+                    f"; {promoted} candidato(s) promovido(s) a P1 activo"
+                )
+            self.log_message.emit(message + ".")
 
         self._run_async(
             "Ejecutando auditoría Pilar 1 + Pilar 2…",
