@@ -416,6 +416,7 @@ def _group_key(item: dict[str, Any]) -> tuple[str, ...]:
     if family == "CORS":
         endpoint = ""
         method = ""
+        resource = ""
     return family, endpoint, method, resource, component, root
 
 
