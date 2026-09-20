@@ -222,10 +222,13 @@ def filas_gui(resultado: dict) -> list[dict]:
             estado = "ERROR"
         elif clasificacion == "NO_EJECUTABLE":
             estado = "OMITIDO"
-        elif clasificacion in {
-            "HALLAZGO_CONFIRMADO",
-            "POSIBLE_HALLAZGO",
-        }:
+        elif clasificacion == "HALLAZGO_CONFIRMADO":
+            estado = (
+                "CONFIRMADO"
+                if item.get("id_control_referencia")
+                else "VULNERABLE"
+            )
+        elif clasificacion == "POSIBLE_HALLAZGO":
             estado = "VULNERABLE"
         elif clasificacion == "CUMPLE":
             estado = "SIN_HALLAZGO"
