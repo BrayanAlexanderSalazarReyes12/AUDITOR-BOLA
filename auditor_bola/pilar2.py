@@ -275,10 +275,22 @@ def _semantic_fingerprint(
     family: str,
     root_cause: str,
 ) -> str:
-    # CORS suele ser configuración global del servicio. Distintos endpoints
-    # son evidencias del mismo hallazgo mientras compartan el mismo base_url.
+    # CORS se consolida por componente responsable. Distintos endpoints del
+    # mismo middleware son evidencias del mismo hallazgo, pero dos servicios o
+    # componentes CORS distintos conservan hallazgos independientes.
     if family == "CORS":
-        return _digest(family, cfg.base_url, root_cause, "service-global")
+        cors_component = (
+            chequeo.componente
+            or chequeo.archivo
+            or str((chequeo.metadata or {}).get("alcance") or "")
+            or "service-global"
+        )
+        return _digest(
+            family,
+            cfg.base_url,
+            root_cause,
+            cors_component,
+        )
     if family == "CONTAINER":
         return _digest(family, root_cause, "container-runtime")
     if chequeo.fingerprint:
