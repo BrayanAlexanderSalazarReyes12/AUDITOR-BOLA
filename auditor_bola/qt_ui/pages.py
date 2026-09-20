@@ -919,9 +919,10 @@ class AIPage(QWidget):
         self.list.currentRowChanged.connect(self._show_proposal)
         left_l.addWidget(self.list, 1)
 
-        apply_btn = PrimaryButton("Aplicar propuesta y verificar")
-        apply_btn.clicked.connect(self._apply)
-        left_l.addWidget(apply_btn)
+        self.apply_btn = PrimaryButton("Aplicar propuesta y verificar")
+        self.apply_btn.clicked.connect(self._apply)
+        self.apply_btn.setEnabled(False)
+        left_l.addWidget(self.apply_btn)
 
         right = Card()
         right_l = QVBoxLayout(right)
@@ -1103,10 +1104,20 @@ class AIPage(QWidget):
     def _show_proposal(self, index: int):
         if index < 0 or index >= len(self.proposals):
             self.detail.clear()
+            self.apply_btn.setEnabled(False)
+            self.apply_btn.setText("Aplicar propuesta y verificar")
             return
+        proposal = self.proposals[index]
+        valid = bool(proposal.get("validacion_ok", True))
+        self.apply_btn.setEnabled(valid)
+        self.apply_btn.setText(
+            "Aplicar propuesta y verificar"
+            if valid
+            else "Propuesta no aplicable"
+        )
         self.detail.setPlainText(
             json.dumps(
-                self.proposals[index],
+                proposal,
                 ensure_ascii=False,
                 indent=2,
             )

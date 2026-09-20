@@ -383,13 +383,18 @@ def ciclo_correctivo(
         correccion = apply_correction(cfg, control_id, target_root, evidence)
         evidence.write_json("cambios/correccion.json", correccion.as_dict())
 
+        modified_files = [
+            str(item.get("archivo") or "")
+            for item in (correccion.archivos or [])
+            if str(item.get("archivo") or "").strip()
+        ] or [correccion.archivo]
         patched_path = (
-            Path(target_root).resolve() / correccion.archivo
+            Path(target_root).resolve() / modified_files[0]
         ).resolve()
         if patched_path.is_file():
             validacion = validate_project_after_patch(
                 target_root,
-                correccion.archivo,
+                modified_files,
             )
             validation_payload = validacion.as_dict()
             syntax_failed = validacion.sintaxis.estado == "FAILED"
@@ -515,8 +520,13 @@ def ciclo_correctivo(
             or ""
         )
         manifest["criterios_exito"] = {
-            "codigo_modificado": (
-                correccion.before_hash != correccion.after_hash
+            "codigo_modificado": any(
+                str(item.get("before_hash") or "")
+                != str(item.get("after_hash") or "")
+                for item in (correccion.archivos or [{
+                    "before_hash": correccion.before_hash,
+                    "after_hash": correccion.after_hash,
+                }])
             ),
             "build_success": build_state in {"OK", "NO_APLICA"},
             "build_aplicable": bool(

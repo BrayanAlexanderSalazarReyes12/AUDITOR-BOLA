@@ -29,7 +29,7 @@ from .remediation_knowledge import (
 
 DEFAULT_PROVIDER_ID = "llmlab"
 DEFAULT_MODEL_ID = "lab-coder"
-DEFAULT_MAX_OUTPUT_TOKENS = 4096
+DEFAULT_MAX_OUTPUT_TOKENS = 8192
 
 
 @dataclass
@@ -664,14 +664,18 @@ class AIRecipeProposal:
     enfoque: str
     explicacion: str
     riesgo: str
-    estrategia: str
-    buscar: str
-    reemplazar: str
-    requiere_reinicio: bool
-    consideraciones: str
+    estrategia: str = ""
+    buscar: str = ""
+    reemplazar: str = ""
+    requiere_reinicio: bool = False
+    consideraciones: str = ""
     archivo_objetivo: str = ""
     hipotesis_id: str = ""
     estrategia_conceptual: str = ""
+    # Plan multiarchivo opcional. Cada cambio usa:
+    # {"archivo": "...", "estrategia": "replace_exact|regex_replace",
+    #  "buscar": "...", "reemplazar": "..."}
+    cambios: list[dict] = field(default_factory=list)
     validacion_ok: bool = True
     errores_validacion: list[str] = field(default_factory=list)
 
@@ -809,6 +813,20 @@ def recortar_codigo(
 
 
 def _json_schema() -> dict:
+    change = {
+        "type": "object",
+        "properties": {
+            "archivo": {"type": "string"},
+            "estrategia": {
+                "type": "string",
+                "enum": ["replace_exact", "regex_replace"],
+            },
+            "buscar": {"type": "string"},
+            "reemplazar": {"type": "string"},
+        },
+        "required": ["archivo", "estrategia", "buscar", "reemplazar"],
+        "additionalProperties": False,
+    }
     propuesta = {
         "type": "object",
         "properties": {
@@ -825,24 +843,24 @@ def _json_schema() -> dict:
             },
             "estrategia": {
                 "type": "string",
-                "enum": ["replace_exact", "regex_replace"],
+                "enum": ["", "replace_exact", "regex_replace"],
             },
             "buscar": {"type": "string"},
             "reemplazar": {"type": "string"},
             "requiere_reinicio": {"type": "boolean"},
             "consideraciones": {"type": "string"},
+            "archivo_objetivo": {"type": "string"},
+            "hipotesis_id": {"type": "string"},
+            "estrategia_conceptual": {"type": "string"},
+            "cambios": {
+                "type": "array",
+                "items": change,
+            },
         },
         "required": [
-            "id",
-            "titulo",
-            "enfoque",
-            "explicacion",
-            "riesgo",
-            "estrategia",
-            "buscar",
-            "reemplazar",
-            "requiere_reinicio",
-            "consideraciones",
+            "id", "titulo", "enfoque", "explicacion", "riesgo",
+            "requiere_reinicio", "consideraciones",
+            "hipotesis_id", "estrategia_conceptual", "cambios",
         ],
         "additionalProperties": False,
     }
@@ -857,8 +875,6 @@ def _json_schema() -> dict:
         "required": ["propuestas"],
         "additionalProperties": False,
     }
-
-
 def _extraer_contenido_chat(response_json: dict) -> str:
     choices = response_json.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -919,7 +935,38 @@ def _validar_propuestas(data: dict) -> list[AIRecipeProposal]:
             "La IA debe devolver exactamente tres propuestas de receta."
         )
 
-    propuestas = [AIRecipeProposal(**item) for item in items]
+    normalized: list[dict] = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            raise RuntimeError("Cada propuesta debe ser un objeto JSON.")
+        item = dict(raw)
+        changes = [
+            dict(change)
+            for change in (item.get("cambios") or [])
+            if isinstance(change, dict)
+        ]
+        if changes:
+            first = changes[0]
+            item.setdefault("archivo_objetivo", first.get("archivo") or "")
+            item.setdefault("estrategia", first.get("estrategia") or "")
+            item.setdefault("buscar", first.get("buscar") or "")
+            item.setdefault("reemplazar", first.get("reemplazar") or "")
+            item["cambios"] = changes
+        else:
+            legacy_file = str(item.get("archivo_objetivo") or "").strip()
+            legacy_strategy = str(item.get("estrategia") or "").strip()
+            if legacy_file and legacy_strategy:
+                item["cambios"] = [{
+                    "archivo": legacy_file,
+                    "estrategia": legacy_strategy,
+                    "buscar": str(item.get("buscar") or ""),
+                    "reemplazar": str(item.get("reemplazar") or ""),
+                }]
+            else:
+                item["cambios"] = []
+        normalized.append(item)
+
+    propuestas = [AIRecipeProposal(**item) for item in normalized]
     enfoques = {item.enfoque for item in propuestas}
     if enfoques != {"MINIMA", "ESTRUCTURAL", "ALTERNATIVA"}:
         raise RuntimeError(
@@ -960,24 +1007,23 @@ def _identidades_de_prueba(
     return values
 
 
-def _aplicar_propuesta_en_memoria(
-    propuesta: AIRecipeProposal,
+def _aplicar_operacion_en_memoria(
+    *,
+    estrategia: str,
+    buscar: str,
+    reemplazar: str,
     source_text: str,
 ) -> str:
-    if propuesta.estrategia == "replace_exact":
-        if propuesta.buscar not in source_text:
+    if estrategia == "replace_exact":
+        if buscar not in source_text:
             raise RuntimeError(
                 "el bloque buscar no aparece literalmente en el archivo"
             )
-        patched = source_text.replace(
-            propuesta.buscar,
-            propuesta.reemplazar,
-            1,
-        )
-    elif propuesta.estrategia == "regex_replace":
+        patched = source_text.replace(buscar, reemplazar, 1)
+    elif estrategia == "regex_replace":
         try:
             pattern = re.compile(
-                propuesta.buscar,
+                buscar,
                 re.MULTILINE | re.DOTALL,
             )
         except re.error as exc:
@@ -985,7 +1031,7 @@ def _aplicar_propuesta_en_memoria(
                 f"regex inválida: {exc}"
             ) from exc
         patched, count = pattern.subn(
-            propuesta.reemplazar,
+            reemplazar,
             source_text,
             count=1,
         )
@@ -995,12 +1041,43 @@ def _aplicar_propuesta_en_memoria(
             )
     else:
         raise RuntimeError(
-            f"estrategia no soportada: {propuesta.estrategia}"
+            f"estrategia no soportada: {estrategia}"
         )
 
     if patched == source_text:
         raise RuntimeError("la receta no produciría ningún cambio")
     return patched
+
+
+def _cambios_propuesta(
+    propuesta: AIRecipeProposal,
+    source_relative: str,
+) -> list[dict]:
+    changes = [
+        dict(item)
+        for item in (propuesta.cambios or [])
+        if isinstance(item, dict)
+    ]
+    if changes:
+        return changes
+    return [{
+        "archivo": propuesta.archivo_objetivo or source_relative,
+        "estrategia": propuesta.estrategia,
+        "buscar": propuesta.buscar,
+        "reemplazar": propuesta.reemplazar,
+    }]
+
+
+def _aplicar_propuesta_en_memoria(
+    propuesta: AIRecipeProposal,
+    source_text: str,
+) -> str:
+    return _aplicar_operacion_en_memoria(
+        estrategia=propuesta.estrategia,
+        buscar=propuesta.buscar,
+        reemplazar=propuesta.reemplazar,
+        source_text=source_text,
+    )
 
 
 def _validar_sintaxis_basica(
@@ -1042,18 +1119,11 @@ def validar_propuestas_contextuales(
     intentos_fallidos: list[dict] | dict | None = None,
     strategy_reset: bool = False,
 ) -> list[AIRecipeProposal]:
-    """Marca recetas inseguras o no aplicables antes de mostrarlas.
-
-    Una identidad concreta observada en una fila de prueba no puede convertirse
-    en una regla hardcodeada de autorización. También se valida que el parche
-    realmente coincida con el archivo y, para formatos con parser estándar,
-    que conserve sintaxis válida.
-    """
+    """Valida aplicabilidad, sintaxis y novedad del plan antes de mostrarlo."""
     test_identities = _identidades_de_prueba(
         metadata_hallazgo,
         matriz_pruebas,
     )
-
     files = {
         source_relative: source_text,
         **(source_files or {}),
@@ -1067,44 +1137,82 @@ def validar_propuestas_contextuales(
 
     for proposal in propuestas:
         errors: list[str] = []
-        target = str(
-            proposal.archivo_objetivo or source_relative
-        ).replace("\\", "/")
-        proposal.archivo_objetivo = target
-        target_text = files.get(target)
-        if target_text is None:
+        working = dict(files)
+        changes = _cambios_propuesta(
+            proposal,
+            source_relative,
+        )
+        if not changes:
+            errors.append("la propuesta no contiene cambios")
             proposal.validacion_ok = False
-            proposal.errores_validacion = [
-                "archivo_objetivo no pertenece al contexto verificado"
-            ]
+            proposal.errores_validacion = errors
             continue
-        try:
-            patched = _aplicar_propuesta_en_memoria(
-                proposal,
-                target_text,
-            )
-        except Exception as exc:
-            proposal.validacion_ok = False
-            proposal.errores_validacion = [str(exc)]
-            continue
+
+        touched: list[str] = []
+        replacements: list[str] = []
+        for position, change in enumerate(changes, start=1):
+            target = str(change.get("archivo") or "").replace("\\", "/").strip()
+            strategy = str(change.get("estrategia") or "").strip()
+            buscar = str(change.get("buscar") or "")
+            reemplazar = str(change.get("reemplazar") or "")
+            if not target:
+                errors.append(
+                    f"cambio {position}: archivo vacío"
+                )
+                continue
+            if target not in working:
+                errors.append(
+                    f"cambio {position}: {target} no pertenece al contexto verificado"
+                )
+                continue
+            try:
+                patched = _aplicar_operacion_en_memoria(
+                    estrategia=strategy,
+                    buscar=buscar,
+                    reemplazar=reemplazar,
+                    source_text=working[target],
+                )
+            except Exception as exc:
+                errors.append(
+                    f"cambio {position} ({target}): {exc}"
+                )
+                continue
+
+            replacements.append(reemplazar)
+            working[target] = patched
+            if target not in touched:
+                touched.append(target)
+
+        if touched:
+            proposal.archivo_objetivo = touched[0]
+            proposal.cambios = changes
+            first = changes[0]
+            proposal.estrategia = str(first.get("estrategia") or "")
+            proposal.buscar = str(first.get("buscar") or "")
+            proposal.reemplazar = str(first.get("reemplazar") or "")
 
         for identity in sorted(test_identities):
-            if (
-                identity
-                and identity not in source_text
-                and identity in proposal.reemplazar
-            ):
-                errors.append(
-                    "la receta hardcodea una identidad usada por la prueba "
-                    f"({identity!r}) en vez de corregir la política general"
-                )
+            if not identity:
+                continue
+            for replacement in replacements:
+                if (
+                    identity not in source_text
+                    and identity in replacement
+                ):
+                    errors.append(
+                        "la receta hardcodea una identidad usada por la prueba "
+                        f"({identity!r}) en vez de corregir la política general"
+                    )
+                    break
 
-        errors.extend(
-            _validar_sintaxis_basica(
-                target,
-                patched,
+        for target in touched:
+            errors.extend(
+                f"{target}: {message}"
+                for message in _validar_sintaxis_basica(
+                    target,
+                    working[target],
+                )
             )
-        )
 
         for failed in failed_proposals:
             if not isinstance(failed, dict):
@@ -1114,12 +1222,18 @@ def validar_propuestas_contextuales(
                 or failed.get("explicacion")
                 or ""
             )
-            old_patch = str(failed.get("reemplazar") or "")
+            old_changes = failed.get("cambios") or []
+            old_patch = "\n".join(
+                str(item.get("reemplazar") or "")
+                for item in old_changes
+                if isinstance(item, dict)
+            ) or str(failed.get("reemplazar") or "")
             new_strategy = str(
                 proposal.estrategia_conceptual
                 or proposal.explicacion
                 or ""
             )
+            new_patch = "\n".join(replacements)
             ratio_strategy = difflib.SequenceMatcher(
                 None,
                 old_strategy.lower(),
@@ -1128,7 +1242,7 @@ def validar_propuestas_contextuales(
             ratio_patch = difflib.SequenceMatcher(
                 None,
                 old_patch,
-                proposal.reemplazar,
+                new_patch,
             ).ratio()
             ratio = max(ratio_strategy, ratio_patch)
             limit = 0.65 if strategy_reset else 0.92
@@ -1143,8 +1257,6 @@ def validar_propuestas_contextuales(
         proposal.errores_validacion = errors
 
     return propuestas
-
-
 def _recortar_archivos_relacionados(
     archivos: dict[str, str] | None,
     pistas: list[str],
@@ -1495,16 +1607,21 @@ def generar_tres_recetas(
         "y AppSec. No estás realizando autocompletado: debes resolver una "
         "vulnerabilidad real a partir del diagnóstico de causa raíz ya generado. "
         "Propón exactamente tres estrategias técnicamente diferentes: MINIMA, "
-        "ESTRUCTURAL y ALTERNATIVA. Cada propuesta puede modificar UN archivo, "
-        "pero archivo_objetivo debe existir en archivos_permitidos_para_parche. "
+        "ESTRUCTURAL y ALTERNATIVA. Una propuesta puede modificar UNO O VARIOS "
+        "archivos cuando la causa raíz atraviesa capas; no fuerces una solución "
+        "de un solo archivo. Todos los archivos declarados en cambios deben "
+        "existir en archivos_permitidos_para_parche. "
         "No inventes archivos, clases, métodos, servicios, tablas, variables, "
         "APIs ni dependencias. Respeta lenguaje, versión, framework, arquitectura "
         "y convenciones observadas. Usa la causa_raiz_confirmada/probable y el "
         "flujo_ejecucion; no parches solo el síntoma del endpoint. "
         "Los usuarios/cuentas de las pruebas son evidencia, NO política: nunca "
         "hardcodees una identidad concreta. Preserva accesos legítimos. "
-        "Cuando uses replace_exact, buscar debe aparecer literalmente en el "
-        "archivo objetivo recibido. Si usas regex_replace, debe ser acotada. "
+        "Cada cambio debe declarar archivo, estrategia, buscar y reemplazar. "
+        "Cuando uses replace_exact, buscar debe aparecer literalmente en ese "
+        "archivo. Si usas regex_replace, debe ser acotada y compilar. "
+        "No inventes decoradores, helpers o funciones sin incluir también el "
+        "cambio que los define en un archivo existente del contexto. "
         "Incluye hipotesis_id y estrategia_conceptual para poder comparar "
         "intentos. Si existe conocimiento_correctivo_reutilizable, úsalo como "
         "medicina semántica previamente verificada: conserva su invariante y "
@@ -1529,14 +1646,19 @@ def generar_tres_recetas(
                 "enfoque": "MINIMA",
                 "explicacion": "texto",
                 "riesgo": "BAJO",
-                "estrategia": "replace_exact",
-                "buscar": "texto exacto o regex",
-                "reemplazar": "texto de reemplazo",
                 "requiere_reinicio": True,
                 "consideraciones": "texto",
-                "archivo_objetivo": "archivo existente del contexto",
+                "archivo_objetivo": "primer archivo afectado",
                 "hipotesis_id": "H1",
                 "estrategia_conceptual": "descripción técnica del enfoque",
+                "cambios": [
+                    {
+                        "archivo": "archivo existente del contexto",
+                        "estrategia": "replace_exact",
+                        "buscar": "texto exacto existente",
+                        "reemplazar": "texto de reemplazo",
+                    }
+                ],
             },
             {
                 "id": "IA-2",
@@ -1544,14 +1666,25 @@ def generar_tres_recetas(
                 "enfoque": "ESTRUCTURAL",
                 "explicacion": "texto",
                 "riesgo": "MEDIO",
-                "estrategia": "replace_exact",
-                "buscar": "texto exacto o regex",
-                "reemplazar": "texto de reemplazo",
                 "requiere_reinicio": True,
                 "consideraciones": "texto",
-                "archivo_objetivo": "archivo existente del contexto",
-                "hipotesis_id": "H1",
+                "archivo_objetivo": "primer archivo afectado",
+                "hipotesis_id": "H2",
                 "estrategia_conceptual": "descripción técnica del enfoque",
+                "cambios": [
+                    {
+                        "archivo": "archivo existente del contexto",
+                        "estrategia": "replace_exact",
+                        "buscar": "texto exacto existente",
+                        "reemplazar": "texto de reemplazo",
+                    },
+                    {
+                        "archivo": "otro archivo existente si hace falta",
+                        "estrategia": "replace_exact",
+                        "buscar": "texto exacto existente",
+                        "reemplazar": "texto de reemplazo",
+                    }
+                ],
             },
             {
                 "id": "IA-3",
@@ -1559,14 +1692,19 @@ def generar_tres_recetas(
                 "enfoque": "ALTERNATIVA",
                 "explicacion": "texto",
                 "riesgo": "MEDIO",
-                "estrategia": "regex_replace",
-                "buscar": "texto exacto o regex",
-                "reemplazar": "texto de reemplazo",
                 "requiere_reinicio": True,
                 "consideraciones": "texto",
-                "archivo_objetivo": "archivo existente del contexto",
-                "hipotesis_id": "H1",
+                "archivo_objetivo": "primer archivo afectado",
+                "hipotesis_id": "H3",
                 "estrategia_conceptual": "descripción técnica del enfoque",
+                "cambios": [
+                    {
+                        "archivo": "archivo existente del contexto",
+                        "estrategia": "regex_replace",
+                        "buscar": "regex válida y acotada",
+                        "reemplazar": "texto de reemplazo",
+                    }
+                ],
             },
         ]
     }
@@ -1583,56 +1721,107 @@ def generar_tres_recetas(
     )
 
     endpoint = provider.base_url.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": provider.model_id,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.2,
-        "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
-    }
-
     headers = {"Content-Type": "application/json"}
     if provider.api_key:
         headers["Authorization"] = f"Bearer {provider.api_key}"
 
-    resp = requests.post(
-        endpoint,
-        headers=headers,
-        json=payload,
-        timeout=timeout,
-    )
-    if resp.status_code >= 400:
-        detalle_error = resp.text[:1200]
-        raise RuntimeError(
-            "Laboratorio UTB respondió HTTP "
-            f"{resp.status_code}: {detalle_error}"
-        )
-
-    response_json = resp.json()
-    texto = _extraer_contenido_chat(response_json)
-    data = _extraer_json(texto)
-    propuestas = _validar_propuestas(data)
     source_files = {
         source_relative: source_text,
         **(archivos_relacionados or {}),
     }
-    propuestas = validar_propuestas_contextuales(
-        propuestas,
-        source_relative=source_relative,
-        source_text=source_text,
-        source_files=source_files,
-        metadata_hallazgo=metadata_hallazgo,
-        matriz_pruebas=matriz_pruebas,
-        intentos_fallidos=attempts,
-        strategy_reset=reset,
+
+    def request_proposals(
+        current_prompt: str,
+        *,
+        temperature: float,
+    ) -> list[AIRecipeProposal]:
+        payload = {
+            "model": provider.model_id,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": current_prompt},
+            ],
+            "temperature": temperature,
+            "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
+        }
+        resp = requests.post(
+            endpoint,
+            headers=headers,
+            json=payload,
+            timeout=timeout,
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(
+                "Laboratorio UTB respondió HTTP "
+                f"{resp.status_code}: {resp.text[:1200]}"
+            )
+        data = _extraer_json(
+            _extraer_contenido_chat(resp.json())
+        )
+        proposals = _validar_propuestas(data)
+        return validar_propuestas_contextuales(
+            proposals,
+            source_relative=source_relative,
+            source_text=source_text,
+            source_files=source_files,
+            metadata_hallazgo=metadata_hallazgo,
+            matriz_pruebas=matriz_pruebas,
+            intentos_fallidos=attempts,
+            strategy_reset=reset,
+        )
+
+    propuestas = request_proposals(
+        user_prompt,
+        temperature=0.2,
     )
+
+    invalid = [
+        item for item in propuestas
+        if not item.validacion_ok
+    ]
+    if invalid:
+        feedback = [
+            {
+                "id": item.id,
+                "enfoque": item.enfoque,
+                "errores": list(item.errores_validacion),
+                "propuesta": item.as_dict(),
+            }
+            for item in invalid
+        ]
+        refine_prompt = (
+            user_prompt
+            + "\n\nVALIDACIÓN LOCAL FALLIDA DE LA RESPUESTA ANTERIOR:\n"
+            + json.dumps(feedback, ensure_ascii=False, indent=2)
+            + "\n\nGenera nuevamente LAS TRES propuestas corrigiendo estos "
+              "errores. No devuelvas regex inválidas, archivos inexistentes, "
+              "símbolos inventados ni una variación superficial del mismo parche."
+        )
+        refined = request_proposals(
+            refine_prompt,
+            temperature=0.1,
+        )
+        if sum(item.validacion_ok for item in refined) > sum(
+            item.validacion_ok for item in propuestas
+        ):
+            propuestas = refined
+            contexto["auto_refinement"] = {
+                "ejecutado": True,
+                "motivo": "validación local de propuestas",
+            }
+
     contexto["validacion_local_propuestas"] = [
         {
             "id": item.id,
             "valida": item.validacion_ok,
             "errores": list(item.errores_validacion),
+            "archivos": [
+                str(change.get("archivo") or "")
+                for change in _cambios_propuesta(
+                    item,
+                    source_relative,
+                )
+            ],
         }
         for item in propuestas
     ]
@@ -1645,36 +1834,53 @@ def propuesta_a_correccion(
     control_id: str,
     source_relative: str,
 ) -> Correccion:
-    if propuesta.estrategia == "replace_exact":
-        op = {
-            "estrategia": "replace_exact",
-            "buscar": propuesta.buscar,
-            "reemplazar": propuesta.reemplazar,
-            "max_reemplazos": 1,
-        }
-    else:
-        op = {
-            "estrategia": "regex_replace",
-            "patron": propuesta.buscar,
-            "sustitucion": propuesta.reemplazar,
-            "max_reemplazos": 1,
-        }
+    changes = _cambios_propuesta(
+        propuesta,
+        source_relative,
+    )
+    normalized_changes: list[dict] = []
+    for change in changes:
+        strategy = str(change.get("estrategia") or "")
+        buscar = str(change.get("buscar") or "")
+        reemplazar = str(change.get("reemplazar") or "")
+        if strategy == "replace_exact":
+            operation = {
+                "estrategia": "replace_exact",
+                "buscar": buscar,
+                "reemplazar": reemplazar,
+                "max_reemplazos": 1,
+            }
+        elif strategy == "regex_replace":
+            operation = {
+                "estrategia": "regex_replace",
+                "patron": buscar,
+                "sustitucion": reemplazar,
+                "max_reemplazos": 1,
+            }
+        else:
+            raise ValueError(
+                f"estrategia IA no soportada: {strategy}"
+            )
+        normalized_changes.append({
+            "archivo": str(change.get("archivo") or source_relative),
+            "operaciones": [operation],
+        })
 
+    if not normalized_changes:
+        raise ValueError("la propuesta IA no contiene cambios")
+
+    first = normalized_changes[0]
     return Correccion(
         control_id=control_id,
-        archivo=(
-            propuesta.archivo_objetivo
-            or source_relative
-        ),
+        archivo=first["archivo"],
         descripcion=(
             f"Receta IA {propuesta.id}: {propuesta.titulo}. "
             f"{propuesta.explicacion}"
         ),
         requiere_reinicio=propuesta.requiere_reinicio,
-        operaciones=[op],
+        operaciones=list(first["operaciones"]),
+        cambios=normalized_changes,
     )
-
-
 def inferir_archivo_control(
     cfg: ConfigObjetivo,
     control_id: str,

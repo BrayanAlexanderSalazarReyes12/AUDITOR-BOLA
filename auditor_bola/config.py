@@ -107,6 +107,10 @@ class Correccion:
     control_id: str
     archivo: str
     operaciones: list[dict] = field(default_factory=list)
+    # Plan transaccional multiarchivo. Cada elemento:
+    # {"archivo": "ruta", "operaciones": [{...}]}
+    # Si está vacío se usa archivo + operaciones por compatibilidad.
+    cambios: list[dict] = field(default_factory=list)
     descripcion: str | None = None
     requiere_reinicio: bool = False
 
