@@ -4033,6 +4033,75 @@ def _infer_automatic_p1_checks(
             }
         )
 
+    # Cuando no hay un test explícito, una ruta con semántica
+    # fuertemente privilegiada y un conjunto de roles conocido permite crear
+    # una prueba negativa para una identidad de bajo privilegio. No asumimos
+    # que el rol privilegiado necesariamente deba tener acceso; solo exigimos
+    # que la identidad no privilegiada sea rechazada.
+    strong_sensitive_tokens = (
+        "/admin", "admin/", "audit", "auditoria", "auditoría",
+        "prioriz", "manage", "management", "gestion", "gestión",
+        "roles", "permissions", "permisos", "privileged",
+    )
+    low_accounts = [
+        account
+        for account in detection.accounts
+        if str(account.get("username") or "")
+        and str(account.get("role") or "").lower()
+        not in privileged_roles
+    ]
+    if privileged_roles and low_accounts:
+        for item in endpoint_inventory:
+            route = str(item.get("ruta") or "")
+            method = str(item.get("metodo") or "").upper()
+            if method not in {
+                "GET", "POST", "PUT", "PATCH", "DELETE"
+            }:
+                continue
+            lower_route = route.lower()
+            if not any(
+                token in lower_route
+                for token in strong_sensitive_tokens
+            ):
+                continue
+
+            # Evita duplicar contratos ya expresados por tests.
+            for account in low_accounts[:2]:
+                username = str(account.get("username") or "")
+                key = (username, method, route)
+                if key in seen_access:
+                    continue
+                seen_access.add(key)
+
+                sources = list(item.get("archivos") or [])
+                checks.append(
+                    {
+                        "tipo": "acceso",
+                        "id_control": (
+                            f"P1-AUTO-ACCESS-{access_index:03d}"
+                        ),
+                        "nombre": (
+                            "La operación privilegiada debe rechazar "
+                            f"{method} {route} para {username}"
+                        ),
+                        "cuenta": username,
+                        "metodo": method,
+                        "ruta": route,
+                        "acceso_esperado": False,
+                        "cuerpo": {},
+                        "codigos_permitidos": [200, 201, 204],
+                        "archivos_fuente": sources,
+                        "pistas_codigo": [
+                            "ruta con semántica privilegiada",
+                            "existen roles privilegiados distintos",
+                        ],
+                        "autogenerado": True,
+                        "confianza": "media-alta",
+                        "fuentes_evidencia": sources,
+                    }
+                )
+                access_index += 1
+
     checks.extend(
         _infer_agent_scope_checks(
             detection,
