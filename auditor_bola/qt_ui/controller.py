@@ -56,6 +56,7 @@ from ..remediation_knowledge import (
     guardar_conocimiento,
 )
 from ..runner import diagnosticar, filas_gui
+from ..source_locator import resolver_archivo_fuente
 
 
 class WorkerSignals(QObject):
@@ -110,6 +111,8 @@ class AuditorController(QObject):
         self.ai_proposals: list[AIRecipeProposal] = []
         self.ai_session_dir: Path | None = None
         self.ai_source_relative: str | None = None
+        self.ai_source_hash: str | None = None
+        self.ai_source_resolution: dict[str, Any] | None = None
         self.ai_target_row: dict | None = None
 
         self.pool = QThreadPool.globalInstance()
@@ -1741,10 +1744,161 @@ class AuditorController(QObject):
         )
         self.state_changed.emit()
 
+    @staticmethod
+    def _candidate_file_from_component(value: Any) -> str | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        # Componentes P2 pueden representarse como "archivo:VARIABLE".
+        # Solo se toma la parte izquierda cuando parece una ruta de archivo.
+        head = text.split(":", 1)[0].strip()
+        suffix = Path(head).suffix.lower()
+        if suffix or Path(head).name.lower().startswith("dockerfile"):
+            return head
+        return None
+
+    def resolve_ai_source(self, row: dict) -> dict[str, Any]:
+        """Resuelve y valida el archivo que originó el hallazgo.
+
+        La IA nunca debe generar un parche a ciegas. Primero se intenta usar
+        el archivo explícito del hallazgo/evidencia y luego el localizador
+        semántico del perfil. La selección manual queda únicamente como
+        fallback cuando no existe evidencia suficiente.
+        """
+        if not self.cfg or not self.target_root:
+            return {
+                "archivo": None,
+                "path": None,
+                "confianza": "ninguna",
+                "origen": "sin perfil/proyecto",
+                "candidatos": [],
+                "tiene_receta": False,
+            }
+
+        root = self.target_root.resolve()
+        control_id = str(row.get("id") or "").strip()
+        recipe = (
+            self.cfg.correccion_por_control(control_id)
+            if control_id
+            else None
+        )
+
+        explicit: list[tuple[str, str]] = []
+
+        def add_explicit(value: Any, origin: str) -> None:
+            if not value:
+                return
+            if isinstance(value, (list, tuple, set)):
+                for item in value:
+                    add_explicit(item, origin)
+                return
+            rel = str(value).replace("\\", "/").lstrip("./").strip()
+            if rel and (rel, origin) not in explicit:
+                explicit.append((rel, origin))
+
+        add_explicit(row.get("archivo"), "hallazgo")
+        add_explicit(row.get("archivos_fuente"), "hallazgo")
+        add_explicit(
+            self._candidate_file_from_component(row.get("componente")),
+            "componente del hallazgo",
+        )
+        for evidence in row.get("evidencia") or []:
+            if isinstance(evidence, dict):
+                add_explicit(
+                    evidence.get("archivo"),
+                    "evidencia del hallazgo",
+                )
+
+        for relative, origin in explicit:
+            candidate = (root / relative).resolve()
+            if (
+                candidate.is_file()
+                and candidate != root
+                and root in candidate.parents
+            ):
+                return {
+                    "archivo": candidate.relative_to(root).as_posix(),
+                    "path": str(candidate),
+                    "confianza": "alta",
+                    "origen": origin,
+                    "candidatos": [
+                        {
+                            "archivo": candidate.relative_to(root).as_posix(),
+                            "score": 1000,
+                            "razones": ["archivo asociado al hallazgo"],
+                        }
+                    ],
+                    "tiene_receta": bool(
+                        recipe and recipe.operaciones
+                    ),
+                }
+
+        resolution = resolver_archivo_fuente(
+            self.cfg,
+            root,
+            control_id=control_id,
+            metodo=row.get("metodo"),
+            ruta=row.get("ruta"),
+            descripcion=row.get("control"),
+        )
+        if not resolution.archivo:
+            return {
+                "archivo": None,
+                "path": None,
+                "confianza": resolution.confianza,
+                "origen": resolution.origen,
+                "candidatos": [
+                    {
+                        "archivo": item.archivo,
+                        "score": item.score,
+                        "razones": list(item.razones),
+                    }
+                    for item in resolution.candidatos
+                ],
+                "tiene_receta": bool(
+                    recipe and recipe.operaciones
+                ),
+            }
+
+        source = (root / resolution.archivo).resolve()
+        if (
+            not source.is_file()
+            or source == root
+            or root not in source.parents
+        ):
+            return {
+                "archivo": None,
+                "path": None,
+                "confianza": "ninguna",
+                "origen": "resolución inválida",
+                "candidatos": [],
+                "tiene_receta": bool(
+                    recipe and recipe.operaciones
+                ),
+            }
+
+        return {
+            "archivo": source.relative_to(root).as_posix(),
+            "path": str(source),
+            "confianza": resolution.confianza,
+            "origen": resolution.origen,
+            "candidatos": [
+                {
+                    "archivo": item.archivo,
+                    "score": item.score,
+                    "razones": list(item.razones),
+                }
+                for item in resolution.candidatos
+            ],
+            "tiene_receta": bool(
+                recipe and recipe.operaciones
+            ),
+        }
+
     def generate_ai(
         self,
         row: dict,
-        source_path: str | Path,
+        source_path: str | Path | None = None,
     ) -> None:
         if not self.cfg or not self.target_root:
             self.error_message.emit(
@@ -1753,9 +1907,26 @@ class AuditorController(QObject):
             )
             return
 
-        source = Path(source_path).expanduser().resolve()
+        resolution: dict[str, Any] | None = None
+        if source_path is None:
+            resolution = self.resolve_ai_source(row)
+            if not resolution.get("path"):
+                self.error_message.emit(
+                    "Archivo del hallazgo no localizado",
+                    (
+                        "Aegis no encontró con suficiente evidencia el "
+                        "archivo responsable de la vulnerabilidad. "
+                        "Selecciona el archivo manualmente para continuar."
+                    ),
+                )
+                return
+            source = Path(str(resolution["path"])).resolve()
+        else:
+            source = Path(source_path).expanduser().resolve()
+
+        root = self.target_root.resolve()
         try:
-            relative = source.relative_to(self.target_root).as_posix()
+            relative = source.relative_to(root).as_posix()
         except ValueError:
             self.error_message.emit(
                 "Archivo fuera del proyecto",
@@ -1763,10 +1934,38 @@ class AuditorController(QObject):
             )
             return
 
-        source_text = source.read_text(encoding="utf-8", errors="replace")
+        if not source.is_file():
+            self.error_message.emit(
+                "Archivo no disponible",
+                f"No se puede cargar el archivo asociado: {relative}",
+            )
+            return
+
+        source_bytes = source.read_bytes()
+        source_hash = hashlib.sha256(source_bytes).hexdigest()
+        source_text = source_bytes.decode("utf-8", errors="replace")
+
         self._refresh_ai_provider(silent=False)
         if not self.ai_provider:
             return
+
+        if resolution is None:
+            resolution = {
+                "archivo": relative,
+                "path": str(source),
+                "confianza": "alta",
+                "origen": "selección manual",
+                "candidatos": [],
+                "tiene_receta": bool(
+                    self.cfg.correccion_por_control(row["id"])
+                ),
+            }
+
+        self.log_message.emit(
+            "Archivo del hallazgo cargado para IA: "
+            f"{relative} · confianza={resolution.get('confianza')} · "
+            f"origen={resolution.get('origen')}"
+        )
 
         knowledge = buscar_conocimiento(
             control_id=row["id"],
@@ -1781,6 +1980,17 @@ class AuditorController(QObject):
             else None
         )
 
+        metadata = dict(row)
+        metadata["archivo_cargado_ia"] = {
+            "archivo": relative,
+            "sha256": source_hash,
+            "confianza_resolucion": resolution.get("confianza"),
+            "origen_resolucion": resolution.get("origen"),
+            "tiene_receta_previa": bool(
+                resolution.get("tiene_receta")
+            ),
+        }
+
         def work():
             proposals, context, provider = generar_tres_recetas(
                 self.cfg,
@@ -1790,7 +2000,7 @@ class AuditorController(QObject):
                 source_relative=relative,
                 source_text=source_text,
                 provider=self.ai_provider,
-                metadata_hallazgo=row,
+                metadata_hallazgo=metadata,
                 matriz_pruebas=[
                     item
                     for item in self.rows
@@ -1811,13 +2021,15 @@ class AuditorController(QObject):
             self.ai_proposals = list(proposals)
             self.ai_session_dir = Path(session)
             self.ai_source_relative = relative
+            self.ai_source_hash = source_hash
+            self.ai_source_resolution = dict(resolution or {})
             self.ai_target_row = dict(row)
             self.ai_proposals_changed.emit(
                 [proposal.as_dict() for proposal in proposals]
             )
             self.log_message.emit(
                 "Gemma generó tres recetas para "
-                f"{row['id']}."
+                f"{row['id']} usando {relative}."
             )
 
         self._run_async(
@@ -1843,6 +2055,41 @@ class AuditorController(QObject):
 
         proposal = self.ai_proposals[index]
         row = self.ai_target_row
+
+        source = (
+            self.target_root / self.ai_source_relative
+        ).resolve()
+        root = self.target_root.resolve()
+        if (
+            not source.is_file()
+            or source == root
+            or root not in source.parents
+        ):
+            self.error_message.emit(
+                "Archivo del hallazgo no disponible",
+                (
+                    "El archivo cargado para la receta ya no existe o "
+                    "quedó fuera del proyecto. Vuelve a generar la receta."
+                ),
+            )
+            return
+
+        current_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        if (
+            self.ai_source_hash
+            and current_hash != self.ai_source_hash
+        ):
+            self.error_message.emit(
+                "El archivo cambió",
+                (
+                    f"{self.ai_source_relative} cambió después de que la IA "
+                    "lo cargó. Por seguridad Aegis no aplicará una receta "
+                    "generada sobre una versión distinta. Regenera las "
+                    "propuestas sobre el archivo actual."
+                ),
+            )
+            return
+
         correction = propuesta_a_correccion(
             proposal,
             control_id=row["id"],
@@ -1863,6 +2110,22 @@ class AuditorController(QObject):
         }
 
         def work():
+            # Segunda comprobación inmediatamente antes del parcheo para
+            # impedir aplicar una receta si el archivo cambió entre el clic
+            # del usuario y la ejecución del worker.
+            if self.ai_source_hash:
+                live_source = (
+                    self.target_root / self.ai_source_relative
+                ).resolve()
+                live_hash = hashlib.sha256(
+                    live_source.read_bytes()
+                ).hexdigest()
+                if live_hash != self.ai_source_hash:
+                    raise RuntimeError(
+                        "El archivo del hallazgo cambió antes del parcheo; "
+                        "regenera las recetas IA sobre la versión actual."
+                    )
+
             result = ciclo_correctivo(
                 self.cfg,
                 row["id"],
@@ -1902,6 +2165,10 @@ class AuditorController(QObject):
 
         def success(result):
             state = result.get("estado_final") or "DESCONOCIDO"
+            if state == "CORREGIDO":
+                # Las propuestas fueron construidas sobre la versión anterior
+                # del archivo y no deben reutilizarse después del parche.
+                self.ai_source_hash = None
             self.info_message.emit(
                 "Resultado de receta IA",
                 f"{row['id']}: {state}",
