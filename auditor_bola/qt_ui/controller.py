@@ -957,6 +957,7 @@ class AuditorController(QObject):
                 progress_callback=lambda value, message: (
                     self.task_progress.emit(value, message)
                 ),
+                require_both_pillars=True,
             )
 
         def success(result):
