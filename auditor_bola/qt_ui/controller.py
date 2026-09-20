@@ -25,7 +25,12 @@ from ..ai_recipes import (
     propuesta_a_correccion,
 )
 from ..app_paths import default_config_dir, default_evidence_dir
-from ..config import ConfigObjetivo, RuntimeConfig, cargar_config
+from ..config import (
+    ChequeoPilar2,
+    ConfigObjetivo,
+    RuntimeConfig,
+    cargar_config,
+)
 from ..cycle import (
     ciclo_correctivo,
     controles_hallazgo,
@@ -405,6 +410,105 @@ class AuditorController(QObject):
         self._enforce_profile_base_url()
         self._persist_runtime_plan()
 
+    def _augment_controls_from_target(self) -> None:
+        """Añade controles inferibles sin pisar controles declarados.
+
+        Los perfiles generados por versiones anteriores podían contener muchos
+        endpoints detectados pero cero controles ejecutables. Para esos
+        perfiles, Aegis vuelve a analizar el código y agrega únicamente
+        controles P2 de alta confianza que no requieren inventar propietario,
+        rol esperado o credenciales.
+        """
+        if not self.cfg or not self.target_root:
+            return
+
+        try:
+            draft = build_profile_draft(
+                detect_project(self.target_root)
+            )
+        except Exception as exc:
+            self.log_message.emit(
+                "No se pudieron inferir controles del proyecto: "
+                f"{exc}"
+            )
+            return
+
+        inferred = list(draft.get("chequeos_pilar2") or [])
+        existing = {
+            item.id_control
+            for item in self.cfg.chequeos_pilar2
+        }
+        added: list[str] = []
+
+        for raw in inferred:
+            if not isinstance(raw, dict):
+                continue
+            control_id = str(raw.get("id_control") or "").strip()
+            if not control_id or control_id in existing:
+                continue
+            try:
+                check = ChequeoPilar2(**raw)
+            except TypeError as exc:
+                self.log_message.emit(
+                    f"Control inferido descartado {control_id}: {exc}"
+                )
+                continue
+            self.cfg.chequeos_pilar2.append(check)
+            existing.add(control_id)
+            added.append(control_id)
+
+        if not added:
+            return
+
+        if self.config_path and self.config_path.exists():
+            try:
+                payload = json.loads(
+                    self.config_path.read_text(encoding="utf-8")
+                )
+                if isinstance(payload, dict):
+                    payload["chequeos_pilar2"] = [
+                        asdict(item)
+                        for item in self.cfg.chequeos_pilar2
+                    ]
+                    metadata = dict(
+                        payload.get("metadata_detectada") or {}
+                    )
+                    metadata["controles_inferidos_automaticamente"] = [
+                        {
+                            "id_control": item.id_control,
+                            "nombre": item.nombre,
+                            "tipo": item.tipo,
+                        }
+                        for item in self.cfg.chequeos_pilar2
+                        if item.id_control.startswith("P2-AUTO-")
+                    ]
+                    metadata["total_controles_activos"] = (
+                        len(self.cfg.endpoints) * len(self.cfg.cuentas)
+                        + len(self.cfg.chequeos_acceso)
+                        + len(self.cfg.chequeos_agente)
+                        + len(self.cfg.chequeos_pilar2)
+                    )
+                    payload["metadata_detectada"] = metadata
+                    self.config_path.write_text(
+                        json.dumps(
+                            payload,
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+            except (OSError, json.JSONDecodeError) as exc:
+                self.log_message.emit(
+                    "No se pudo guardar los controles inferidos: "
+                    f"{exc}"
+                )
+
+        self.log_message.emit(
+            "Controles de seguridad inferidos automáticamente: "
+            + ", ".join(added)
+        )
+
     def _enforce_profile_base_url(self) -> None:
         """Sincroniza runtimes con la IP/puerto autorizados por config JSON."""
         if not self.cfg:
@@ -466,6 +570,7 @@ class AuditorController(QObject):
         self.log_message.emit(f"Perfil cargado: {profile}")
         if self.target_root:
             self._augment_runtime_from_target()
+            self._augment_controls_from_target()
         else:
             self._enforce_profile_base_url()
             self._persist_runtime_plan()
@@ -481,6 +586,7 @@ class AuditorController(QObject):
         self.log_message.emit(f"Aplicación cargada: {root}")
         if self.cfg:
             self._augment_runtime_from_target()
+            self._augment_controls_from_target()
         self.state_changed.emit()
 
     def set_evidence_base(self, path: str | Path) -> None:
@@ -651,6 +757,9 @@ class AuditorController(QObject):
                 "Carga o genera primero el perfil JSON.",
             )
             return
+
+        if self.target_root:
+            self._augment_controls_from_target()
 
         def work():
             return diagnosticar(
