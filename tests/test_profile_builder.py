@@ -1469,3 +1469,62 @@ def test_autoperfil_scope_python_soporta_get_json_y_alias(
     assert check["tool_field"] == "tool"
     assert check["count_field"] == "returned"
     assert check["tool_name"] == "list_records"
+
+
+
+def test_autoperfil_detecta_secret_con_constante_default_simbolica(
+    tmp_path,
+):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text(
+        "import os\n"
+        "DEFAULT_SECRET = 'dev-secret'\n"
+        "SECRET_KEY = os.getenv('APP_SECRET', DEFAULT_SECRET)\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    ids = {
+        item["id_control"]
+        for item in profile["chequeos_pilar2"]
+    }
+
+    assert "P2-AUTO-SECRET-001" in ids
+
+
+def test_autoperfil_bypass_no_se_suprime_por_rol_lejano(
+    tmp_path,
+):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    filler = "\n".join(
+        f"x_{i} = {i}"
+        for i in range(120)
+    )
+    (tmp_path / "api.py").write_text(
+        "def process(data, user):\n"
+        "    urgent = bool(data.get('urgent'))\n"
+        "    budget = 100\n"
+        "    if urgent:\n"
+        "        budget = 10000\n"
+        + filler
+        + "\n    role = user.role\n"
+        "    return budget\n",
+        encoding="utf-8",
+    )
+
+    profile = build_profile_draft(detect_project(tmp_path))
+    ids = {
+        item["id_control"]
+        for item in profile["chequeos_pilar2"]
+    }
+
+    assert any(
+        item.startswith("P2-AUTO-BYPASS-")
+        for item in ids
+    )
