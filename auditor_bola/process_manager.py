@@ -71,9 +71,18 @@ class LocalTargetProcess:
     primer arranque administrado, por ejemplo instalación de dependencias.
     """
 
-    def __init__(self, target_root: str | Path, runtime: RuntimeConfig):
+    def __init__(
+        self,
+        target_root: str | Path,
+        runtime: RuntimeConfig,
+        *,
+        authorized_base_url: str = "",
+    ):
         self.root = Path(target_root).resolve()
         self._configured_runtime = runtime
+        self.authorized_base_url = str(
+            authorized_base_url or ""
+        ).strip().rstrip("/")
         self.runtime = runtime
         self.process: subprocess.Popen | None = None
         self._service_running = False
@@ -172,6 +181,24 @@ class LocalTargetProcess:
             )
         return mode
 
+    def _apply_authorized_base_url(
+        self,
+        runtime: RuntimeConfig,
+    ) -> RuntimeConfig:
+        """Aplica la IP/puerto autorizados por el perfil JSON.
+
+        El runtime decide *cómo* arrancar la aplicación (Docker, Python,
+        Node, Java...), pero no puede cambiar el destino autorizado. Si el
+        JSON de config declara base_url, esa URL manda para todas las
+        estrategias del mismo objetivo.
+        """
+        if (
+            self.authorized_base_url
+            and self._runtime_mode(runtime) != "external"
+        ):
+            runtime.base_url = self.authorized_base_url
+        return runtime
+
     @staticmethod
     def _is_container_runtime(runtime: RuntimeConfig) -> bool:
         origin = str(runtime.origen or "").lower()
@@ -200,7 +227,9 @@ class LocalTargetProcess:
         )
 
     def _runtime_options(self) -> list[RuntimeConfig]:
-        configured = self._configured_runtime
+        configured = self._apply_authorized_base_url(
+            self._configured_runtime
+        )
         options = [configured]
 
         if configured.permitir_fallback_local:
@@ -218,7 +247,11 @@ class LocalTargetProcess:
                     configured.permitir_fallback_local,
                 )
                 try:
-                    options.append(RuntimeConfig(**data))
+                    options.append(
+                        self._apply_authorized_base_url(
+                            RuntimeConfig(**data)
+                        )
+                    )
                 except TypeError:
                     continue
 
@@ -1626,6 +1659,7 @@ class LocalTargetProcess:
             # tiene prioridad sobre el puerto estimado del perfil.
             detected_url = self._detect_runtime_local_url()
             if detected_url and detected_url != announced_url:
+                announced_url = detected_url
                 try:
                     detected = urlparse(detected_url)
                     detected_host = (detected.hostname or "").strip()
@@ -1640,7 +1674,20 @@ class LocalTargetProcess:
                         if detected_host in {"0.0.0.0", "localhost"}
                         else detected_host
                     )
-                    if (
+
+                    if self.authorized_base_url:
+                        expected = str(
+                            self.authorized_base_url
+                        ).rstrip("/")
+                        if detected_url.rstrip("/") != expected:
+                            self._emit_progress(
+                                88,
+                                "El runtime anunció "
+                                f"{detected_url}, pero el perfil JSON "
+                                f"autoriza {expected}. Se verificará la "
+                                "IP/puerto definidos en config.",
+                            )
+                    elif (
                         normalized_host != host
                         or int(detected_port) != int(port)
                     ):
@@ -1648,7 +1695,6 @@ class LocalTargetProcess:
                         self.runtime.base_url = detected_url
                         host = normalized_host
                         port = int(detected_port)
-                        announced_url = detected_url
                         self._emit_progress(
                             88,
                             "El servidor anunció una URL distinta. "
@@ -1680,10 +1726,23 @@ class LocalTargetProcess:
             )
             time.sleep(0.35)
 
+        mismatch = ""
+        if (
+            self.authorized_base_url
+            and announced_url
+            and announced_url.rstrip("/")
+            != self.authorized_base_url.rstrip("/")
+        ):
+            mismatch = (
+                f". El proceso anunció {announced_url}, pero config "
+                f"autoriza {self.authorized_base_url}"
+            )
+
         return (
             False,
             "el comando de inicio terminó, pero el servidor no abrió "
             f"{host}:{port} dentro de {timeout:.0f} s"
+            + mismatch
             + (f" ({last_error})" if last_error else ""),
         )
 
