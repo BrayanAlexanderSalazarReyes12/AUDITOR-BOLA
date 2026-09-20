@@ -898,3 +898,42 @@ def test_readiness_corrige_puerto_estimado_con_url_anunciada(
     assert "5050" in detail
     assert manager.runtime.base_url == "http://127.0.0.1:5050"
     connect.assert_called_with(("127.0.0.1", 5050), timeout=0.8)
+
+
+
+def test_start_backend_reserva_100_para_finalizacion_ui(tmp_path):
+    runtime = RuntimeConfig(
+        modo="service",
+        nombre="Servicio de prueba",
+        comando_inicio=["servicio", "start"],
+        base_url="http://127.0.0.1:5050",
+        espera_inicio=0,
+    )
+    manager = LocalTargetProcess(tmp_path, runtime)
+    progress = []
+
+    with patch.object(
+        manager,
+        "_select_runtime_if_needed",
+    ), patch.object(
+        manager,
+        "_cleanup_previous_instance",
+    ), patch.object(
+        manager,
+        "_prepare_if_needed",
+    ), patch.object(
+        manager,
+        "_run_control_command",
+    ), patch.object(
+        manager,
+        "_wait_until_target_ready",
+        return_value=(True, "127.0.0.1:5050 disponible"),
+    ):
+        manager.start(
+            progress_callback=lambda value, message: progress.append(
+                (value, message)
+            )
+        )
+
+    assert progress[-1][0] == 99
+    assert all(value <= 99 for value, _ in progress)
