@@ -31,6 +31,15 @@ def test_detecta_secreto_inseguro_en_fuente(tmp_path):
     )
     result = auditar_pilar2(_cfg([check]), tmp_path)[0]
     assert result.estado == "HALLAZGO"
+    assert result.vulnerable is True
+    assert result.familia == "SECRET"
+    assert result.severidad == "ALTA"
+    assert result.confianza == "alta"
+    assert result.causa_raiz == "gestion_secretos"
+    assert result.evidencia
+    assert result.evidencia[0]["tipo"] == "fuente_estatica"
+    assert result.evidencia[0]["linea_insegura"] == 1
+    assert result.recomendacion
 
 
 def test_docker_non_root_pasa(tmp_path):
@@ -115,3 +124,25 @@ def test_source_regex_detecta_configuracion_insegura(tmp_path):
 
     assert result.estado == "HALLAZGO"
     assert "regex insegura presente=True" in result.detalle
+
+
+def test_pilar2_conserva_evidencia_estructurada_en_dict(tmp_path):
+    (tmp_path / "settings.py").write_text(
+        "SESSION_COOKIE_SECURE = False\n",
+        encoding="utf-8",
+    )
+    check = ChequeoPilar2(
+        id_control="P2-COOKIE-001",
+        nombre="cookie session secure",
+        tipo="source_regex",
+        archivo="settings.py",
+        patron_inseguro=r"SESSION_COOKIE_SECURE\s*=\s*False",
+    )
+
+    result = auditar_pilar2(_cfg([check]), tmp_path)[0].as_dict()
+
+    assert result["estado"] == "HALLAZGO"
+    assert result["familia"] == "SESSION"
+    assert result["causa_raiz"] == "configuracion_sesion"
+    assert result["evidencia"][0]["archivo"] == "settings.py"
+    assert result["recomendacion"]

@@ -250,3 +250,85 @@ def test_id_cors_global_no_depende_del_endpoint_usado_como_sonda():
     assert len(first) == 1
     assert len(second) == 1
     assert first[0]["id_hallazgo"] == second[0]["id_hallazgo"]
+
+
+def test_runtime_matriz_vulnerable_es_hallazgo_confirmado_aun_con_confianza_media():
+    result = {
+        "pilar1": {
+            "bola": [],
+            "acceso": [],
+            "alcance_agente": [],
+            "matriz_acceso": [
+                {
+                    "vulnerable": True,
+                    "clasificacion": "POSIBLE_HALLAZGO",
+                    "fuente_politica": "candidato_rbac",
+                    "confianza": "media",
+                    "endpoint_detectado": "/api/admin/report",
+                    "metodo": "GET",
+                    "cuenta": "ana",
+                    "rol": "member",
+                    "http_status": 200,
+                    "acceso_esperado": False,
+                    "acceso_real": True,
+                    "detalle": "acceso permitido fuera de política inferida",
+                }
+            ],
+        },
+        "pilar2": [],
+        "resumen": {},
+    }
+
+    enriched = attach_runtime_consolidation(result)
+
+    assert len(enriched["hallazgos_consolidados"]) == 1
+    finding = enriched["hallazgos_consolidados"][0]
+    assert finding["estado"] == "confirmado"
+    assert finding["confianza"] == "media"
+    assert finding["familia"] == "RBAC_ABAC"
+    assert enriched["resumen"]["hallazgos_unicos_confirmados"] == 1
+
+
+def test_runtime_p2_conserva_severidad_recomendacion_y_evidencia():
+    result = {
+        "pilar1": {
+            "bola": [],
+            "acceso": [],
+            "alcance_agente": [],
+            "matriz_acceso": [],
+        },
+        "pilar2": [
+            {
+                "id_control": "P2-DEBUG-001",
+                "nombre": "debug habilitado",
+                "tipo": "source_regex",
+                "estado": "HALLAZGO",
+                "familia": "DEBUG",
+                "severidad": "MEDIA",
+                "confianza": "alta",
+                "causa_raiz": "configuracion_debug",
+                "detalle": "DEBUG=True en settings.py",
+                "archivo": "settings.py",
+                "evidencia": [
+                    {
+                        "tipo": "fuente_estatica",
+                        "archivo": "settings.py",
+                        "linea_insegura": 4,
+                    }
+                ],
+                "recomendacion": "Deshabilitar debug en producción.",
+            }
+        ],
+        "resumen": {},
+    }
+
+    findings = consolidate_runtime_results(result)
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding["familia"] == "DEBUG"
+    assert finding["severidad"] == "MEDIA"
+    assert finding["recomendacion"] == "Deshabilitar debug en producción."
+    assert finding["evidencias"][0]["evidencia_estructurada"][0][
+        "linea_insegura"
+    ] == 4

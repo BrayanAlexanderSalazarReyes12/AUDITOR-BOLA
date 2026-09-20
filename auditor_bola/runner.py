@@ -16,7 +16,11 @@ from .engine import (
     auditar_matriz_acceso,
 )
 from .pilar2 import auditar_pilar2
-from .security_model import attach_runtime_consolidation
+from .security_model import (
+    attach_runtime_consolidation,
+    infer_resource,
+    stable_finding_id,
+)
 
 
 ProgressCallback = Callable[[int, str], None]
@@ -160,6 +164,10 @@ def diagnosticar(
                 item.clasificacion == "POSIBLE_HALLAZGO"
                 for item in matriz_acceso
             ),
+            "matriz_hallazgos": sum(
+                item.vulnerable is True
+                for item in matriz_acceso
+            ),
             "matriz_cumple": sum(
                 item.clasificacion == "CUMPLE"
                 for item in matriz_acceso
@@ -220,29 +228,52 @@ def filas_gui(resultado: dict) -> list[dict]:
 
     for item in resultado["pilar1"].get("matriz_acceso", []):
         clasificacion = item.get("clasificacion") or "OBSERVADO"
-        if clasificacion == "ERROR":
+        vulnerable = item.get("vulnerable") is True
+        if vulnerable:
+            # Toda vulnerabilidad determinada por la matriz se presenta y se
+            # contabiliza como HALLAZGO. La clasificación original y su
+            # confianza se conservan como evidencia del hallazgo.
+            estado = "HALLAZGO"
+        elif clasificacion == "ERROR":
             estado = "ERROR"
         elif clasificacion == "NO_EJECUTABLE":
             estado = "OMITIDO"
-        elif clasificacion == "HALLAZGO_CONFIRMADO":
-            estado = (
-                "CONFIRMADO"
-                if item.get("id_control_referencia")
-                else "VULNERABLE"
-            )
-        elif clasificacion == "POSIBLE_HALLAZGO":
-            estado = "VULNERABLE"
         elif clasificacion == "CUMPLE":
             estado = "SIN_HALLAZGO"
         else:
             estado = "OBSERVADO"
+
+        source = str(item.get("fuente_politica") or "").lower()
+        family = "BOLA" if "bola" in source else "RBAC_ABAC"
+        endpoint = item.get("endpoint_detectado") or ""
+        method = item.get("metodo") or ""
+        finding_id = (
+            item.get("id_control_referencia")
+            or stable_finding_id(
+                family,
+                endpoint=endpoint,
+                method=method,
+                resource=infer_resource(endpoint),
+            )
+        )
+        evidence_bits = [clasificacion]
+        if item.get("fuente_politica"):
+            evidence_bits.append(
+                f"política={item.get('fuente_politica')}"
+            )
+        if item.get("confianza"):
+            evidence_bits.append(
+                f"confianza={item.get('confianza')}"
+            )
+        if item.get("http_status") is not None:
+            evidence_bits.append(
+                f"HTTP={item.get('http_status')}"
+            )
+
         filas.append(
             {
                 "pilar": "P1",
-                "id": (
-                    item.get("id_control_referencia")
-                    or "P1-MATRIX"
-                ),
+                "id": finding_id,
                 "control": (
                     "Matriz endpoint × usuario · "
                     f"{item['metodo']} {item['endpoint_detectado']}"
@@ -250,9 +281,14 @@ def filas_gui(resultado: dict) -> list[dict]:
                 "cuenta": item["cuenta"],
                 "estado": estado,
                 "detalle": (
-                    f"{clasificacion} · {item.get('detalle') or ''}"
+                    " · ".join(evidence_bits)
+                    + " · "
+                    + (item.get("detalle") or "")
                 ),
                 "tipo_control": "matriz_acceso",
+                "familia": family,
+                "vulnerable": vulnerable,
+                "confianza": item.get("confianza"),
                 "metodo": item["metodo"],
                 "ruta": item["endpoint_detectado"],
             }
@@ -275,6 +311,20 @@ def filas_gui(resultado: dict) -> list[dict]:
         )
 
     for item in resultado["pilar2"]:
+        detail_parts = [item.get("detalle") or ""]
+        if item.get("familia"):
+            detail_parts.append(f"familia={item['familia']}")
+        if item.get("severidad"):
+            detail_parts.append(f"severidad={item['severidad']}")
+        if item.get("confianza"):
+            detail_parts.append(f"confianza={item['confianza']}")
+        if item.get("causa_raiz"):
+            detail_parts.append(f"causa={item['causa_raiz']}")
+        if item.get("recomendacion") and item.get("estado") == "HALLAZGO":
+            detail_parts.append(
+                f"recomendación={item['recomendacion']}"
+            )
+
         filas.append(
             {
                 "pilar": "P2",
@@ -282,10 +332,18 @@ def filas_gui(resultado: dict) -> list[dict]:
                 "control": item["nombre"],
                 "cuenta": "-",
                 "estado": item["estado"],
-                "detalle": item["detalle"],
+                "detalle": " · ".join(
+                    part for part in detail_parts if part
+                ),
                 "tipo_control": item["tipo"],
-                "metodo": None,
-                "ruta": None,
+                "familia": item.get("familia"),
+                "severidad": item.get("severidad"),
+                "confianza": item.get("confianza"),
+                "causa_raiz": item.get("causa_raiz"),
+                "evidencia": item.get("evidencia") or [],
+                "recomendacion": item.get("recomendacion"),
+                "metodo": item.get("metodo"),
+                "ruta": item.get("ruta"),
             }
         )
 

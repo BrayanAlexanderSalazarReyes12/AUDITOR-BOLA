@@ -432,6 +432,16 @@ def _state_rank(state: str) -> int:
     }.get(state, 0)
 
 
+def _severity_rank(severity: str | None) -> int:
+    return {
+        "BAJA": 1,
+        "MEDIA": 2,
+        "ALTA": 3,
+        "CRITICA": 4,
+        "CRÍTICA": 4,
+    }.get(str(severity or "").upper(), 0)
+
+
 def consolidate_hypotheses(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     groups: dict[tuple[str, ...], dict[str, Any]] = {}
 
@@ -466,6 +476,8 @@ def consolidate_hypotheses(items: Iterable[dict[str, Any]]) -> list[dict[str, An
                 "propietario": item.get("propietario"),
                 "hipotesis": item.get("hipotesis"),
                 "causa_raiz": item.get("causa_raiz") or _root_cause(family),
+                "severidad": item.get("severidad"),
+                "recomendacion": item.get("recomendacion"),
                 "evidencias": [],
                 "casos_prueba": [],
                 "relacionado_con": [],
@@ -475,6 +487,13 @@ def consolidate_hypotheses(items: Iterable[dict[str, Any]]) -> list[dict[str, An
         state = str(item.get("estado") or "candidato")
         if _state_rank(state) > _state_rank(str(group["estado"])):
             group["estado"] = state
+
+        if _severity_rank(item.get("severidad")) > _severity_rank(
+            group.get("severidad")
+        ):
+            group["severidad"] = item.get("severidad")
+        if not group.get("recomendacion") and item.get("recomendacion"):
+            group["recomendacion"] = item.get("recomendacion")
 
         for evidence in item.get("evidencia") or []:
             if evidence not in group["evidencias"]:
@@ -783,11 +802,18 @@ def _runtime_item(
     evidence: dict[str, Any],
     resource: str | None = None,
     component: str | None = None,
+    confidence: str | None = None,
+    severity: str | None = None,
+    recommendation: str | None = None,
+    root_cause: str | None = None,
 ) -> dict[str, Any]:
     return {
         "familia": family,
         "estado": state,
-        "confianza": "alta" if state == "confirmado" else "media",
+        "confianza": (
+            confidence
+            or ("alta" if state == "confirmado" else "media")
+        ),
         "id_control": control_id,
         "endpoint": endpoint,
         "metodo": method,
@@ -797,7 +823,9 @@ def _runtime_item(
         "componente": component,
         "propietario": None,
         "hipotesis": str(detail or ""),
-        "causa_raiz": _root_cause(family),
+        "causa_raiz": root_cause or _root_cause(family),
+        "severidad": severity,
+        "recomendacion": recommendation,
         "evidencia": [{"tipo": "runtime", **evidence}],
         "caso_prueba": {
             "id_control": control_id,
@@ -883,7 +911,11 @@ def consolidate_runtime_results(result: dict[str, Any]) -> list[dict[str, Any]]:
 
     for raw in p1.get("matriz_acceso") or []:
         classification = str(raw.get("clasificacion") or "")
-        if classification not in {"HALLAZGO_CONFIRMADO", "POSIBLE_HALLAZGO"}:
+        vulnerable = raw.get("vulnerable") is True
+        if not vulnerable and classification not in {
+            "HALLAZGO_CONFIRMADO",
+            "POSIBLE_HALLAZGO",
+        }:
             continue
         family = _family_from_control(raw)
         if family == "GENERIC":
@@ -892,9 +924,12 @@ def consolidate_runtime_results(result: dict[str, Any]) -> list[dict[str, Any]]:
         items.append(
             _runtime_item(
                 family=family,
+                # Si el propio motor de matriz determinó vulnerable=True,
+                # el resultado forma parte de los hallazgos. La confianza de
+                # la política queda registrada por separado como evidencia.
                 state=(
                     "confirmado"
-                    if classification == "HALLAZGO_CONFIRMADO"
+                    if vulnerable or classification == "HALLAZGO_CONFIRMADO"
                     else "por_confirmar"
                 ),
                 control_id=raw.get("id_control_referencia"),
@@ -903,8 +938,11 @@ def consolidate_runtime_results(result: dict[str, Any]) -> list[dict[str, Any]]:
                 account=raw.get("cuenta"),
                 role=raw.get("rol"),
                 detail=raw.get("detalle"),
+                confidence=raw.get("confianza"),
                 evidence={
+                    "vulnerable": vulnerable,
                     "clasificacion": classification,
+                    "confianza": raw.get("confianza"),
                     "http_status": raw.get("http_status"),
                     "acceso_esperado": raw.get("acceso_esperado"),
                     "acceso_real": raw.get("acceso_real"),
@@ -921,6 +959,7 @@ def consolidate_runtime_results(result: dict[str, Any]) -> list[dict[str, Any]]:
         if str(raw.get("estado") or "").upper() != "HALLAZGO":
             continue
         family = _family_from_control(raw)
+        structured_evidence = raw.get("evidencia") or []
         items.append(
             _runtime_item(
                 family=family,
@@ -932,9 +971,16 @@ def consolidate_runtime_results(result: dict[str, Any]) -> list[dict[str, Any]]:
                 role=None,
                 detail=raw.get("detalle") or raw.get("nombre"),
                 component=raw.get("archivo"),
+                confidence=raw.get("confianza"),
+                severity=raw.get("severidad"),
+                recommendation=raw.get("recomendacion"),
+                root_cause=raw.get("causa_raiz"),
                 evidence={
-                    "tipo": raw.get("tipo"),
+                    "tipo_control": raw.get("tipo"),
                     "detalle": raw.get("detalle"),
+                    "severidad": raw.get("severidad"),
+                    "confianza": raw.get("confianza"),
+                    "evidencia_estructurada": structured_evidence,
                 },
             )
         )
