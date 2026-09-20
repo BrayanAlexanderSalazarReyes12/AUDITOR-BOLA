@@ -1,4 +1,4 @@
-# matrix-policy-evaluation-release: v1.2.1
+# matrix-policy-evaluation-release: v1.2.2
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.2.1' \
+            'Version: 1.2.2' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-2-1:
-    name: Publicar Release v1.2.1
+  release-v1-2-2:
+    name: Publicar Release v1.2.2
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.1]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.2]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,7 +253,7 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.2.1
+          # Aegis Auditor v1.2.2
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
@@ -272,7 +272,14 @@ jobs:
           - DELETE continúa protegido para evitar acciones destructivas durante el barrido automático.
           - Mejor correlación de propiedad de objetos mediante aliases de identidad como `user_id`, `account_id`, `cliente_id` y equivalentes.
           - Consolidación runtime de hallazgos únicos manteniendo todos los casos de prueba relacionados.
-          - Pilar 2 enriquecido con familia, severidad, confianza, causa raíz, evidencia estructurada, archivo/línea cuando aplica y recomendación de corrección.
+          - Pilar 2 evolucionado a motor genérico de descubrimiento por familias: evidencia → candidato → prueba → hallazgo → corrección → verificación.
+          - CORS selecciona endpoints seguros automáticamente y combina GET/OPTIONS con evidencia de ACAO, credenciales, Vary, métodos y headers.
+          - SECRET distingue documentación/tests de configuración desplegable, analiza fallbacks por entorno y evita exponer valores sensibles en la evidencia.
+          - LIMIT_BYPASS conserva señales estáticas como candidatos hasta una prueba diferencial con identidades y payload seguro.
+          - CONTAINER interpreta Dockerfiles multi-stage y correlaciona Compose/Kubernetes, usuario efectivo, privileged, UID 0, runAsNonRoot, Docker socket, host networking/PID y capabilities.
+          - Deduplicación semántica: varios casos de prueba pueden consolidarse en un único hallazgo cuando comparten causa raíz, sin fusionar secretos o componentes independientes.
+          - Nuevos estados y estadísticas separan candidatos, controles ejecutados, confirmados, seguros, por confirmar, no ejecutables y duplicados consolidados.
+          - Pilar 2 mantiene familia, severidad, confianza, causa raíz, evidencia estructurada, componente, casos de prueba y estrategia abstracta de corrección.
           - Los hallazgos vulnerables descubiertos por la matriz endpoint × identidad se contabilizan como hallazgos P1 y reciben IDs semánticos estables cuando no existe un control previo.
           - Se conserva la detección real de versiones, runtimes locales/Docker, documentación, cuentas, endpoints, recetas verificables y fallbacks de ejecución.
           - Validación automatizada en Python 3.11 y 3.12, Qt y CustomTkinter.
@@ -323,16 +330,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.2.1" >/dev/null 2>&1; then
-            gh release upload "v1.2.1" "${files[@]}" --clobber
-            gh release edit "v1.2.1" \
-              --title "Aegis Auditor v1.2.1" \
+          if gh release view "v1.2.2" >/dev/null 2>&1; then
+            gh release upload "v1.2.2" "${files[@]}" --clobber
+            gh release edit "v1.2.2" \
+              --title "Aegis Auditor v1.2.2" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.2.1" "${files[@]}" \
+            gh release create "v1.2.2" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.2.1" \
+              --title "Aegis Auditor v1.2.2" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
