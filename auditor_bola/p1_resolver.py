@@ -7,6 +7,10 @@ from typing import Any
 from urllib.parse import urljoin
 
 from .config import ConfigObjetivo, Endpoint
+from .security_semantics import (
+    infer_object_identity,
+    route_parameter_name,
+)
 from .transport import request_http
 
 
@@ -63,43 +67,31 @@ def _items(payload: Any) -> list[dict[str, Any]]:
         return [item for item in payload if isinstance(item, dict)]
     if not isinstance(payload, dict):
         return []
+
     for key in _LIST_FIELDS:
         value = payload.get(key)
         if isinstance(value, list):
-            return [item for item in value if isinstance(item, dict)]
-    if any(key in payload for key in _ID_FIELDS):
-        return [payload]
-    return []
+            items = [
+                item for item in value if isinstance(item, dict)
+            ]
+            if items:
+                return items
 
+    # Fallback genérico: muchas APIs envuelven colecciones con nombres
+    # específicos del dominio. Elegimos la lista de objetos más grande.
+    generic_lists = []
+    for value in payload.values():
+        if not isinstance(value, list):
+            continue
+        items = [
+            item for item in value if isinstance(item, dict)
+        ]
+        if items:
+            generic_lists.append(items)
+    if generic_lists:
+        return max(generic_lists, key=len)
 
-def _scalar_owner(value: Any) -> str:
-    if isinstance(value, str):
-        return value.strip()
-    if isinstance(value, dict):
-        for key in (
-            "username", "usuario", "user", "email", "name", "nombre"
-        ):
-            candidate = value.get(key)
-            if isinstance(candidate, str) and candidate.strip():
-                return candidate.strip()
-    return ""
-
-
-def _object_identity(item: dict[str, Any]) -> tuple[str, str]:
-    object_id = ""
-    owner = ""
-    for key in _ID_FIELDS:
-        value = item.get(key)
-        if value not in (None, ""):
-            object_id = str(value)
-            break
-    for key in _OWNER_FIELDS:
-        value = item.get(key)
-        if value not in (None, ""):
-            owner = _scalar_owner(value)
-            if owner:
-                break
-    return object_id, owner
+    return [payload] if isinstance(payload, dict) else []
 
 
 def resolve_live_bola_candidates(
@@ -151,6 +143,8 @@ def resolve_live_bola_candidates(
         found_id = ""
         found_owner = ""
         evidence_account = ""
+        evidence_id_field = ""
+        evidence_owner_field = ""
 
         for account in cfg.cuentas:
             if not account.username:
@@ -172,13 +166,27 @@ def resolve_live_bola_candidates(
             except ValueError:
                 continue
 
+            parameter_name = route_parameter_name(raw_route)
             for item in _items(payload):
-                object_id, owner = _object_identity(item)
-                if object_id and owner and owner in known_users:
-                    found_id = object_id
-                    found_owner = owner
-                    evidence_account = account.username
-                    break
+                evidence = infer_object_identity(
+                    item,
+                    known_users,
+                    route_parameter=parameter_name,
+                )
+                if not evidence:
+                    continue
+                found_id = str(evidence["id_prueba"])
+                found_owner = str(
+                    evidence["propietario_esperado"]
+                )
+                evidence_account = account.username
+                evidence_id_field = str(
+                    evidence.get("campo_id") or ""
+                )
+                evidence_owner_field = str(
+                    evidence.get("campo_propietario") or ""
+                )
+                break
             if found_id:
                 break
 
@@ -211,6 +219,8 @@ def resolve_live_bola_candidates(
                 f"objeto {found_id}",
                 f"propietario {found_owner}",
                 f"evidencia leída con {evidence_account}",
+                f"campo id {evidence_id_field}",
+                f"campo propietario {evidence_owner_field}",
             ],
         )
         resolved.append(endpoint)
