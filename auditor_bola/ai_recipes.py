@@ -1007,24 +1007,23 @@ def _identidades_de_prueba(
     return values
 
 
-def _aplicar_propuesta_en_memoria(
-    propuesta: AIRecipeProposal,
+def _aplicar_operacion_en_memoria(
+    *,
+    estrategia: str,
+    buscar: str,
+    reemplazar: str,
     source_text: str,
 ) -> str:
-    if propuesta.estrategia == "replace_exact":
-        if propuesta.buscar not in source_text:
+    if estrategia == "replace_exact":
+        if buscar not in source_text:
             raise RuntimeError(
                 "el bloque buscar no aparece literalmente en el archivo"
             )
-        patched = source_text.replace(
-            propuesta.buscar,
-            propuesta.reemplazar,
-            1,
-        )
-    elif propuesta.estrategia == "regex_replace":
+        patched = source_text.replace(buscar, reemplazar, 1)
+    elif estrategia == "regex_replace":
         try:
             pattern = re.compile(
-                propuesta.buscar,
+                buscar,
                 re.MULTILINE | re.DOTALL,
             )
         except re.error as exc:
@@ -1032,7 +1031,7 @@ def _aplicar_propuesta_en_memoria(
                 f"regex inválida: {exc}"
             ) from exc
         patched, count = pattern.subn(
-            propuesta.reemplazar,
+            reemplazar,
             source_text,
             count=1,
         )
@@ -1042,12 +1041,43 @@ def _aplicar_propuesta_en_memoria(
             )
     else:
         raise RuntimeError(
-            f"estrategia no soportada: {propuesta.estrategia}"
+            f"estrategia no soportada: {estrategia}"
         )
 
     if patched == source_text:
         raise RuntimeError("la receta no produciría ningún cambio")
     return patched
+
+
+def _cambios_propuesta(
+    propuesta: AIRecipeProposal,
+    source_relative: str,
+) -> list[dict]:
+    changes = [
+        dict(item)
+        for item in (propuesta.cambios or [])
+        if isinstance(item, dict)
+    ]
+    if changes:
+        return changes
+    return [{
+        "archivo": propuesta.archivo_objetivo or source_relative,
+        "estrategia": propuesta.estrategia,
+        "buscar": propuesta.buscar,
+        "reemplazar": propuesta.reemplazar,
+    }]
+
+
+def _aplicar_propuesta_en_memoria(
+    propuesta: AIRecipeProposal,
+    source_text: str,
+) -> str:
+    return _aplicar_operacion_en_memoria(
+        estrategia=propuesta.estrategia,
+        buscar=propuesta.buscar,
+        reemplazar=propuesta.reemplazar,
+        source_text=source_text,
+    )
 
 
 def _validar_sintaxis_basica(
@@ -1089,18 +1119,11 @@ def validar_propuestas_contextuales(
     intentos_fallidos: list[dict] | dict | None = None,
     strategy_reset: bool = False,
 ) -> list[AIRecipeProposal]:
-    """Marca recetas inseguras o no aplicables antes de mostrarlas.
-
-    Una identidad concreta observada en una fila de prueba no puede convertirse
-    en una regla hardcodeada de autorización. También se valida que el parche
-    realmente coincida con el archivo y, para formatos con parser estándar,
-    que conserve sintaxis válida.
-    """
+    """Valida aplicabilidad, sintaxis y novedad del plan antes de mostrarlo."""
     test_identities = _identidades_de_prueba(
         metadata_hallazgo,
         matriz_pruebas,
     )
-
     files = {
         source_relative: source_text,
         **(source_files or {}),
@@ -1114,44 +1137,82 @@ def validar_propuestas_contextuales(
 
     for proposal in propuestas:
         errors: list[str] = []
-        target = str(
-            proposal.archivo_objetivo or source_relative
-        ).replace("\\", "/")
-        proposal.archivo_objetivo = target
-        target_text = files.get(target)
-        if target_text is None:
+        working = dict(files)
+        changes = _cambios_propuesta(
+            proposal,
+            source_relative,
+        )
+        if not changes:
+            errors.append("la propuesta no contiene cambios")
             proposal.validacion_ok = False
-            proposal.errores_validacion = [
-                "archivo_objetivo no pertenece al contexto verificado"
-            ]
+            proposal.errores_validacion = errors
             continue
-        try:
-            patched = _aplicar_propuesta_en_memoria(
-                proposal,
-                target_text,
-            )
-        except Exception as exc:
-            proposal.validacion_ok = False
-            proposal.errores_validacion = [str(exc)]
-            continue
+
+        touched: list[str] = []
+        replacements: list[str] = []
+        for position, change in enumerate(changes, start=1):
+            target = str(change.get("archivo") or "").replace("\\", "/").strip()
+            strategy = str(change.get("estrategia") or "").strip()
+            buscar = str(change.get("buscar") or "")
+            reemplazar = str(change.get("reemplazar") or "")
+            if not target:
+                errors.append(
+                    f"cambio {position}: archivo vacío"
+                )
+                continue
+            if target not in working:
+                errors.append(
+                    f"cambio {position}: {target} no pertenece al contexto verificado"
+                )
+                continue
+            try:
+                patched = _aplicar_operacion_en_memoria(
+                    estrategia=strategy,
+                    buscar=buscar,
+                    reemplazar=reemplazar,
+                    source_text=working[target],
+                )
+            except Exception as exc:
+                errors.append(
+                    f"cambio {position} ({target}): {exc}"
+                )
+                continue
+
+            replacements.append(reemplazar)
+            working[target] = patched
+            if target not in touched:
+                touched.append(target)
+
+        if touched:
+            proposal.archivo_objetivo = touched[0]
+            proposal.cambios = changes
+            first = changes[0]
+            proposal.estrategia = str(first.get("estrategia") or "")
+            proposal.buscar = str(first.get("buscar") or "")
+            proposal.reemplazar = str(first.get("reemplazar") or "")
 
         for identity in sorted(test_identities):
-            if (
-                identity
-                and identity not in source_text
-                and identity in proposal.reemplazar
-            ):
-                errors.append(
-                    "la receta hardcodea una identidad usada por la prueba "
-                    f"({identity!r}) en vez de corregir la política general"
-                )
+            if not identity:
+                continue
+            for replacement in replacements:
+                if (
+                    identity not in source_text
+                    and identity in replacement
+                ):
+                    errors.append(
+                        "la receta hardcodea una identidad usada por la prueba "
+                        f"({identity!r}) en vez de corregir la política general"
+                    )
+                    break
 
-        errors.extend(
-            _validar_sintaxis_basica(
-                target,
-                patched,
+        for target in touched:
+            errors.extend(
+                f"{target}: {message}"
+                for message in _validar_sintaxis_basica(
+                    target,
+                    working[target],
+                )
             )
-        )
 
         for failed in failed_proposals:
             if not isinstance(failed, dict):
@@ -1161,12 +1222,18 @@ def validar_propuestas_contextuales(
                 or failed.get("explicacion")
                 or ""
             )
-            old_patch = str(failed.get("reemplazar") or "")
+            old_changes = failed.get("cambios") or []
+            old_patch = "\n".join(
+                str(item.get("reemplazar") or "")
+                for item in old_changes
+                if isinstance(item, dict)
+            ) or str(failed.get("reemplazar") or "")
             new_strategy = str(
                 proposal.estrategia_conceptual
                 or proposal.explicacion
                 or ""
             )
+            new_patch = "\n".join(replacements)
             ratio_strategy = difflib.SequenceMatcher(
                 None,
                 old_strategy.lower(),
@@ -1175,7 +1242,7 @@ def validar_propuestas_contextuales(
             ratio_patch = difflib.SequenceMatcher(
                 None,
                 old_patch,
-                proposal.reemplazar,
+                new_patch,
             ).ratio()
             ratio = max(ratio_strategy, ratio_patch)
             limit = 0.65 if strategy_reset else 0.92
@@ -1190,8 +1257,6 @@ def validar_propuestas_contextuales(
         proposal.errores_validacion = errors
 
     return propuestas
-
-
 def _recortar_archivos_relacionados(
     archivos: dict[str, str] | None,
     pistas: list[str],
