@@ -717,10 +717,54 @@ def test_docker_compose_conserva_runtime_nativo_como_alternativa(tmp_path):
 
     assert runtime["nombre"] == "Docker Compose"
     assert runtime["comando_inicio"][0] == "docker"
-    assert runtime["base_url"] == "http://127.0.0.1:8080"
+    assert runtime["base_url"] == "http://127.0.0.1:3000"
     assert len(runtime["alternativas"]) == 1
 
     native = runtime["alternativas"][0]
     assert native["nombre"] == "Node.js (npm)"
     assert native["comando_inicio"] == ["npm", "start"]
     assert native["base_url"] == "http://127.0.0.1:3000"
+
+
+
+def test_docker_compose_detecta_puerto_publicado(tmp_path):
+    (tmp_path / "compose.yml").write_text(
+        "services:\n"
+        "  app:\n"
+        "    image: demo\n"
+        "    ports:\n"
+        "      - \"8088:5000\"\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "run.py").write_text(
+        "from app import app\napp.run(port=5000)\n",
+        encoding="utf-8",
+    )
+
+    runtime, base_url = detect_runtime_profile(tmp_path)
+
+    assert runtime["nombre"] == "Docker Compose"
+    assert runtime["base_url"] == "http://127.0.0.1:8088"
+    assert base_url == "http://127.0.0.1:8088"
+
+
+def test_flask_run_py_detecta_puerto_explicito(tmp_path):
+    (tmp_path / "requirements.txt").write_text(
+        "Flask==3.1.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "run.py").write_text(
+        "from app import app\n"
+        "app.run(host='127.0.0.1', port=9090, debug=False)\n",
+        encoding="utf-8",
+    )
+
+    runtime, base_url = detect_runtime_profile(tmp_path)
+
+    assert runtime["comando_inicio"] == ["python", "run.py"]
+    assert runtime["base_url"] == "http://127.0.0.1:9090"
+    assert base_url == "http://127.0.0.1:9090"
