@@ -56,5 +56,34 @@ def test_diagnostico_no_declara_cero_hallazgos_si_no_hay_controles(tmp_path):
         endpoints=[],
     )
 
-    with pytest.raises(RuntimeError, match="0 controles activos"):
+    with pytest.raises(
+        RuntimeError,
+        match="Pilar 1 .*Pilar 2",
+    ):
         diagnosticar(cfg, tmp_path)
+
+
+
+def test_diagnostico_p1_p2_exige_ambos_pilares(tmp_path):
+    only_p2 = ConfigObjetivo(
+        sistema="solo-p2",
+        base_url="http://127.0.0.1:5050",
+        cuentas=[],
+        endpoints=[],
+        chequeos_pilar2=[
+            ChequeoPilar2(
+                id_control="P2-CONFIG-001",
+                nombre="config",
+                tipo="source_contains",
+                archivo="app.cfg",
+                patron_inseguro="debug=true",
+            )
+        ],
+    )
+    (tmp_path / "app.cfg").write_text(
+        "debug=true\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="Pilar 1"):
+        diagnosticar(only_p2, tmp_path)
