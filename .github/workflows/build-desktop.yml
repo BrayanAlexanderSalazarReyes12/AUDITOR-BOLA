@@ -1,4 +1,4 @@
-# matrix-policy-evaluation-release: v1.2.3
+# matrix-policy-evaluation-release: v1.2.4
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.2.3' \
+            'Version: 1.2.4' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-2-3:
-    name: Publicar Release v1.2.3
+  release-v1-2-4:
+    name: Publicar Release v1.2.4
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.3]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.2.4]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,7 +253,7 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.2.3
+          # Aegis Auditor v1.2.4
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
@@ -283,6 +283,13 @@ jobs:
           - La corrección asistida por IA carga automáticamente el archivo asociado al hallazgo antes de generar recetas, priorizando archivo, componente y evidencia del hallazgo.
           - Si no existe una referencia explícita, Aegis usa resolución semántica por control, método, ruta y descripción; la selección manual queda como fallback.
           - El archivo analizado por IA se protege con SHA-256: si cambia antes de aplicar el parche, Aegis bloquea la receta y exige regenerarla sobre la versión actual.
+          - La remediación IA ahora ejecuta diagnóstico de causa raíz antes de parchear y puede ampliar contexto a controller/handler, service, repository/DAO, seguridad y configuración relacionados.
+          - Cada intento conserva hipótesis, estrategia, archivo objetivo, resultado técnico y análisis del fallo para evitar repetir soluciones ineficaces.
+          - Tras dos intentos fallidos se activa STRATEGY_RESET: Aegis reanaliza el flujo completo y rechaza variaciones cosméticas de estrategias descartadas.
+          - Los parches se someten a validación sintáctica y, cuando aplica, build y tests reconocidos antes del reescaneo de seguridad.
+          - Estados de remediación explícitos incluyen PATCH_VERIFIED, PATCH_FAILED, PATCH_PARTIAL, BUILD_FAILED, TEST_FAILED, REGRESSION_DETECTED y MANUAL_REVIEW_REQUIRED.
+          - Si build, tests o verificación fallan, Aegis realiza rollback automático y conserva evidencia del fallo.
+          - El aprendizaje de recetas y medicina semántica ocurre únicamente después de PATCH_VERIFIED.
           - Los hallazgos vulnerables descubiertos por la matriz endpoint × identidad se contabilizan como hallazgos P1 y reciben IDs semánticos estables cuando no existe un control previo.
           - Se conserva la detección real de versiones, runtimes locales/Docker, documentación, cuentas, endpoints, recetas verificables y fallbacks de ejecución.
           - Validación automatizada en Python 3.11 y 3.12, Qt y CustomTkinter.
@@ -333,16 +340,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.2.3" >/dev/null 2>&1; then
-            gh release upload "v1.2.3" "${files[@]}" --clobber
-            gh release edit "v1.2.3" \
-              --title "Aegis Auditor v1.2.3" \
+          if gh release view "v1.2.4" >/dev/null 2>&1; then
+            gh release upload "v1.2.4" "${files[@]}" --clobber
+            gh release edit "v1.2.4" \
+              --title "Aegis Auditor v1.2.4" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.2.3" "${files[@]}" \
+            gh release create "v1.2.4" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.2.3" \
+              --title "Aegis Auditor v1.2.4" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
