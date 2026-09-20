@@ -3374,7 +3374,7 @@ def _infer_agent_scope_checks(
             continue
 
         task_match = re.search(
-            r"""(?is)["']tarea["']\s*:\s*
+            r"""(?isx)["']tarea["']\s*:\s*
             ["']([^"']{1,300})["']""",
             source_text,
         )
@@ -3382,8 +3382,8 @@ def _infer_agent_scope_checks(
             continue
 
         tool_match = re.search(
-            r"""(?is)["']herramienta["']\s*
-            (?:==|:)\s*["']([^"']+)["']""",
+            r"""(?isx)["']herramienta["']\s*
+            (?:\]|\)|\s)*(?:==|:)\s*["']([^"']+)["']""",
             source_text,
         )
         tool_name = (
