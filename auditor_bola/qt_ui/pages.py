@@ -309,6 +309,11 @@ class HomePage(QWidget):
             and row.get("estado") == "HALLAZGO"
             for row in rows
         )
+        matrix_vulnerable = sum(
+            row.get("pilar") == "P1"
+            and row.get("estado") == "VULNERABLE"
+            for row in rows
+        )
 
         self.project_metric.set_value(project, "Código objetivo")
         self.profile_metric.set_value(
@@ -332,7 +337,14 @@ class HomePage(QWidget):
         )
         self.findings_metric.set_value(
             str(p1 + p2),
-            f"P1 {p1} · P2 {p2}",
+            (
+                f"P1 {p1} · P2 {p2}"
+                + (
+                    f" · Matriz {matrix_vulnerable} vulnerable(s)"
+                    if matrix_vulnerable
+                    else ""
+                )
+            ),
         )
 
         meta = c.detected_metadata()
@@ -779,6 +791,10 @@ class AuditPage(QWidget):
                     item.setForeground(QColor("#8DE9CE"))
                 elif row.get("estado") == "ERROR":
                     item.setForeground(QColor("#FFD68E"))
+                elif row.get("estado") == "VULNERABLE":
+                    item.setForeground(QColor("#FFCF8E"))
+                elif row.get("estado") == "CONFIRMADO":
+                    item.setForeground(QColor("#D9B8FF"))
                 self.table.setItem(row_index, col, item)
 
         p1 = sum(
@@ -791,15 +807,40 @@ class AuditPage(QWidget):
             and row.get("estado") == "HALLAZGO"
             for row in rows
         )
-        self.p1.set_value(f"{p1} hallazgo(s)")
+        matrix_vulnerable = sum(
+            row.get("pilar") == "P1"
+            and row.get("estado") == "VULNERABLE"
+            for row in rows
+        )
+        self.p1.set_value(
+            f"{p1} hallazgo(s)"
+            + (
+                f" · matriz {matrix_vulnerable} vulnerable(s)"
+                if matrix_vulnerable
+                else ""
+            )
+        )
         self.p2.set_value(f"{p2} hallazgo(s)")
         self.total.set_value(
-            "Seguro" if rows and p1 + p2 == 0 else (
-                f"{p1 + p2} hallazgo(s)"
-                if rows
-                else "Sin diagnóstico"
+            (
+                "Seguro"
+                if rows and p1 + p2 == 0 and matrix_vulnerable == 0
+                else (
+                    f"{p1 + p2} hallazgo(s)"
+                    if rows
+                    else "Sin diagnóstico"
+                )
             ),
-            f"{len(rows)} control(es)" if rows else "P1 + P2",
+            (
+                f"{len(rows)} control(es)"
+                + (
+                    f" · {matrix_vulnerable} vulnerable(s) en matriz"
+                    if matrix_vulnerable
+                    else ""
+                )
+                if rows
+                else "P1 + P2"
+            ),
         )
 
 
