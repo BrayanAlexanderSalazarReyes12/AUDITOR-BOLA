@@ -1,4 +1,4 @@
-# active-runtime-and-audit-preflight-release: v1.1.18
+# live-p1-resolution-release: v1.1.19
 name: Build desktop executables
 
 on:
@@ -200,7 +200,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.1.18' \
+            'Version: 1.1.19' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -229,13 +229,13 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-1-18:
-    name: Publicar Release v1.1.18
+  release-v1-1-19:
+    name: Publicar Release v1.1.19
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.18]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.1.19]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,11 +253,11 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.1.18
+          # Aegis Auditor v1.1.19
 
           Nueva versión de **Aegis Auditor — Security Remediation Studio**.
 
-          ## Novedades de v1.1.18
+          ## Novedades de v1.1.19
           - Corrige la versión de la aplicación analizada: ya no se asigna
             `1.0.0` por defecto.
           - Detecta la versión real desde package.json, pom.xml, Gradle,
@@ -329,6 +329,10 @@ jobs:
           - Antes de iniciar Diagnosticar P1 + P2, Aegis valida cobertura ejecutable de ambos pilares y bloquea la ejecución incompleta antes de abrir el progreso.
           - Se mejora la detección de URL/puerto del runtime Python a partir de launchers y configuración local, sin usar el mapeo Docker como autoridad del runtime nativo.
           - Se filtran candidatos de cuentas falsos extraídos de texto o código que no cumplen el formato de un username válido.
+          - Aegis puede convertir candidatos BOLA del Pilar 1 en controles ejecutables usando evidencia de solo lectura del objetivo ya iniciado.
+          - El resolvedor P1 consulta colecciones autenticadas con GET, identifica pares objeto-propietario y persiste los controles resueltos en `chequeos_pilar1`.
+          - El descubrimiento P1 en vivo no ejecuta PATCH, PUT ni DELETE para evitar modificar datos reales durante la auto-configuración.
+          - Se añaden pruebas de regresión para resolución BOLA en vivo y para impedir inferencias cuando la API no expone propietario.
 
           ## Descargas
 
@@ -377,16 +381,16 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          if gh release view "v1.1.18" >/dev/null 2>&1; then
-            gh release upload "v1.1.18" "${files[@]}" --clobber
-            gh release edit "v1.1.18" \
-              --title "Aegis Auditor v1.1.18" \
+          if gh release view "v1.1.19" >/dev/null 2>&1; then
+            gh release upload "v1.1.19" "${files[@]}" --clobber
+            gh release edit "v1.1.19" \
+              --title "Aegis Auditor v1.1.19" \
               --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create "v1.1.18" "${files[@]}" \
+            gh release create "v1.1.19" "${files[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Aegis Auditor v1.1.18" \
+              --title "Aegis Auditor v1.1.19" \
               --notes-file RELEASE_NOTES.md \
               --latest
           fi
