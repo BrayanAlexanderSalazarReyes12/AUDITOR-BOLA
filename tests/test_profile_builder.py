@@ -1365,13 +1365,29 @@ def test_autoperfil_no_marca_bypass_si_hay_guardia_de_permiso(tmp_path):
     )
 
     profile = build_profile_draft(detect_project(tmp_path))
+    active_limit_checks = [
+        item
+        for item in profile["chequeos_pilar2"]
+        if item.get("familia") == "LIMIT_BYPASS"
+    ]
     limit_candidates = [
         item
         for item in profile["candidatos_pilar2"]
         if item.get("familia") == "LIMIT_BYPASS"
     ]
 
-    assert not limit_candidates
+    # La rama especial se conserva como evidencia de baja confianza, pero la
+    # guardia de rol impide convertirla en control/hallazgo activo.
+    assert not active_limit_checks
+    assert limit_candidates
+    assert all(
+        item["confianza"] == "baja"
+        for item in limit_candidates
+    )
+    assert all(
+        item["evidencia"][0]["guardia_autorizacion_cercana"] is True
+        for item in limit_candidates
+    )
 
 
 
