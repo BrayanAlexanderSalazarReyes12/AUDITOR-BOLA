@@ -61,7 +61,7 @@ def _familia(chequeo: ChequeoPilar2) -> str:
     control_id = str(chequeo.id_control or "").upper()
     tipo = str(chequeo.tipo or "").lower()
     nombre = str(chequeo.nombre or "").lower()
-    joined = f"{control_id} {tipo} {nombre}"
+    joined = f"{control_id} {tipo} {nombre}".lower()
 
     if "cors" in joined:
         return "CORS"
@@ -398,61 +398,3 @@ def _docker_non_root(
 def auditar_pilar2(
     cfg: ConfigObjetivo,
     source_root: str | Path | None = None,
-    progress_callback: Callable[[str], None] | None = None,
-) -> list[ResultadoPilar2]:
-    root = Path(source_root).resolve() if source_root else None
-    resultados: list[ResultadoPilar2] = []
-
-    for chequeo in cfg.chequeos_pilar2:
-        try:
-            if chequeo.tipo == "cors_reflection":
-                resultado = _cors(cfg, chequeo)
-            elif chequeo.tipo == "http_status_policy":
-                resultado = _http_status_policy(cfg, chequeo)
-            elif chequeo.tipo == "source_contains":
-                resultado = _source_contains(cfg, chequeo, root)
-            elif chequeo.tipo == "source_regex":
-                resultado = _source_regex(cfg, chequeo, root)
-            elif chequeo.tipo == "docker_non_root":
-                resultado = _docker_non_root(cfg, chequeo, root)
-            else:
-                raise ValueError(
-                    f"tipo de control no soportado: {chequeo.tipo}"
-                )
-        except Exception as exc:
-            family, severity, root_cause, recommendation = _metadata_hallazgo(
-                chequeo
-            )
-            resultado = ResultadoPilar2(
-                sistema=cfg.sistema,
-                id_control=chequeo.id_control,
-                nombre=chequeo.nombre,
-                tipo=chequeo.tipo,
-                vulnerable=False,
-                estado="ERROR",
-                detalle=str(exc),
-                http_status=None,
-                ts=_ts(),
-                familia=family,
-                severidad=severity,
-                confianza="baja",
-                causa_raiz=root_cause,
-                evidencia=[
-                    {
-                        "tipo": "error_ejecucion",
-                        "error": exc.__class__.__name__,
-                    }
-                ],
-                recomendacion=recommendation,
-                archivo=chequeo.archivo,
-                ruta=chequeo.ruta,
-                metodo=str(chequeo.metodo or "").upper() or None,
-            )
-        resultados.append(resultado)
-        if progress_callback:
-            progress_callback(
-                "Pilar 2 · "
-                f"{chequeo.nombre} · {resultado.estado}"
-            )
-
-    return resultados
