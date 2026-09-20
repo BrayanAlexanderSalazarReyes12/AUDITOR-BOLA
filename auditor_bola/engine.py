@@ -64,7 +64,12 @@ class ResultadoMatrizAcceso:
     metodo: str
     http_status: int | None
     acceso_real: bool | None
+    acceso_esperado: bool | None
+    vulnerable: bool | None
     clasificacion: str
+    fuente_politica: str | None
+    confianza: str | None
+    id_control_referencia: str | None
     detalle: str
     ts: str
 
@@ -246,6 +251,165 @@ def _clasificar_status_matriz(status: int) -> tuple[bool | None, str]:
     return None, "OBSERVADO"
 
 
+def _roles_normalizados(cfg: ConfigObjetivo) -> set[str]:
+    return {
+        str(role or "").strip().lower()
+        for role in cfg.roles_privilegiados
+        if str(role or "").strip()
+    }
+
+
+def _politica_esperada_matriz(
+    cfg: ConfigObjetivo,
+    cuenta: Cuenta,
+    metodo: str,
+    ruta: str,
+) -> tuple[
+    bool | None,
+    str | None,
+    str | None,
+    str | None,
+]:
+    """Deriva expectativa de acceso sin inventarla.
+
+    Prioridad:
+    1) control RBAC/ABAC explícito para la cuenta;
+    2) política BOLA ya resuelta;
+    3) consenso de un control explícito para el mismo rol;
+    4) candidato RBAC + rol claramente no privilegiado (confianza media).
+    """
+    method = metodo.upper()
+    normalized = _normalizar_ruta_matriz(ruta)
+
+    # 1. Control exacto por cuenta.
+    for check in cfg.chequeos_acceso:
+        if check.metodo.upper() != method:
+            continue
+        if _normalizar_ruta_matriz(check.ruta) != normalized:
+            continue
+        if check.cuenta != cuenta.username:
+            continue
+        return (
+            bool(check.acceso_esperado),
+            "control_acceso",
+            "alta",
+            check.id_control,
+        )
+
+    # 2. Política BOLA por propiedad/rol.
+    privileged_roles = _roles_normalizados(cfg)
+    for endpoint in cfg.endpoints:
+        if endpoint.metodo.upper() != method:
+            continue
+        if _normalizar_ruta_matriz(endpoint.ruta) != normalized:
+            continue
+        expected = (
+            cuenta.username == endpoint.propietario_esperado
+            or cuenta.role.strip().lower() in privileged_roles
+        )
+        return (
+            expected,
+            "control_bola",
+            "alta",
+            endpoint.id_control or "P1-BOLA",
+        )
+
+    # 3. Si existe un control explícito para otra cuenta del mismo rol,
+    # reutilizamos la política solo cuando todos los controles de ese rol
+    # coinciden.
+    role_expectations: list[tuple[bool, str]] = []
+    for check in cfg.chequeos_acceso:
+        if check.metodo.upper() != method:
+            continue
+        if _normalizar_ruta_matriz(check.ruta) != normalized:
+            continue
+        other = cfg.cuenta_por_username(check.cuenta)
+        if other is None:
+            continue
+        if other.role.strip().lower() != cuenta.role.strip().lower():
+            continue
+        role_expectations.append(
+            (bool(check.acceso_esperado), check.id_control)
+        )
+
+    if role_expectations:
+        values = {item[0] for item in role_expectations}
+        if len(values) == 1:
+            expected = next(iter(values))
+            refs = ",".join(
+                sorted({item[1] for item in role_expectations})
+            )
+            return (
+                expected,
+                "politica_mismo_rol",
+                "alta",
+                refs,
+            )
+
+    # 4. Candidato RBAC: solo inferimos que una cuenta NO privilegiada debe
+    # ser rechazada. No asumimos automáticamente que todo privilegiado deba
+    # entrar, porque puede haber políticas más finas.
+    if (
+        cuenta.role.strip().lower() not in privileged_roles
+        and privileged_roles
+    ):
+        for candidate in cfg.candidatos_pilar1:
+            if str(candidate.get("familia") or "").upper() != "RBAC_ABAC":
+                continue
+            candidate_method = str(
+                candidate.get("metodo") or ""
+            ).upper()
+            candidate_route = str(
+                candidate.get("ruta_detectada") or ""
+            )
+            if candidate_method != method:
+                continue
+            if _normalizar_ruta_matriz(candidate_route) != normalized:
+                continue
+            return (
+                False,
+                "candidato_rbac",
+                "media",
+                None,
+            )
+
+    return None, None, None, None
+
+
+def _cuerpo_matriz(
+    cfg: ConfigObjetivo,
+    cuenta: Cuenta,
+    metodo: str,
+    ruta: str,
+) -> dict | None:
+    if metodo.upper() not in {"POST", "PUT", "PATCH"}:
+        return None
+
+    normalized = _normalizar_ruta_matriz(ruta)
+
+    # Reutilizamos únicamente cuerpos ya declarados como pruebas de seguridad.
+    for check in cfg.chequeos_acceso:
+        if check.cuenta != cuenta.username:
+            continue
+        if check.metodo.upper() != metodo.upper():
+            continue
+        if _normalizar_ruta_matriz(check.ruta) != normalized:
+            continue
+        if isinstance(check.cuerpo, dict):
+            return dict(check.cuerpo)
+
+    for endpoint in cfg.endpoints:
+        if endpoint.metodo.upper() != metodo.upper():
+            continue
+        if _normalizar_ruta_matriz(endpoint.ruta) != normalized:
+            continue
+        if isinstance(endpoint.cuerpo_prueba, dict):
+            return dict(endpoint.cuerpo_prueba)
+
+    # Para el barrido general no fabricamos datos de negocio.
+    return {}
+
+
 def auditar_matriz_acceso(
     cfg: ConfigObjetivo,
     progress_callback: Callable[[str], None] | None = None,
@@ -299,7 +463,12 @@ def auditar_matriz_acceso(
                         metodo=metodo,
                         http_status=None,
                         acceso_real=None,
+                        acceso_esperado=None,
+                        vulnerable=None,
                         clasificacion="NO_EJECUTABLE",
+                        fuente_politica=None,
+                        confianza=None,
+                        id_control_referencia=None,
                         detalle=razon_ruta,
                         ts=_ts(),
                     )
@@ -315,7 +484,12 @@ def auditar_matriz_acceso(
                         metodo=metodo,
                         http_status=None,
                         acceso_real=None,
+                        acceso_esperado=None,
+                        vulnerable=None,
                         clasificacion="NO_EJECUTABLE",
+                        fuente_politica=None,
+                        confianza=None,
+                        id_control_referencia=None,
                         detalle=(
                             "DELETE omitido en matriz automática para evitar "
                             "eliminar datos del objetivo"
@@ -324,10 +498,22 @@ def auditar_matriz_acceso(
                     )
                 )
             else:
-                cuerpo = (
-                    {}
-                    if metodo in {"POST", "PUT", "PATCH"}
-                    else None
+                cuerpo = _cuerpo_matriz(
+                    cfg,
+                    cuenta,
+                    metodo,
+                    ruta,
+                )
+                (
+                    acceso_esperado,
+                    fuente_politica,
+                    confianza,
+                    id_control_referencia,
+                ) = _politica_esperada_matriz(
+                    cfg,
+                    cuenta,
+                    metodo,
+                    ruta,
                 )
                 try:
                     resp = request_http(
@@ -336,15 +522,43 @@ def auditar_matriz_acceso(
                         cuenta=cuenta,
                         cuerpo=cuerpo,
                     )
-                    acceso_real, clasificacion = (
+                    acceso_real, clasificacion_base = (
                         _clasificar_status_matriz(resp.status_code)
                     )
+                    vulnerable = (
+                        acceso_real != acceso_esperado
+                        if (
+                            acceso_real is not None
+                            and acceso_esperado is not None
+                        )
+                        else None
+                    )
+
+                    if vulnerable is True:
+                        clasificacion = (
+                            "HALLAZGO_CONFIRMADO"
+                            if confianza == "alta"
+                            else "POSIBLE_HALLAZGO"
+                        )
+                    elif vulnerable is False:
+                        clasificacion = "CUMPLE"
+                    else:
+                        clasificacion = clasificacion_base
+
                     detalle = (
                         f"HTTP {resp.status_code} · {razon_ruta}"
                     )
+                    if acceso_esperado is not None:
+                        detalle += (
+                            f" · esperado={acceso_esperado}"
+                            f" real={acceso_real}"
+                            f" · política={fuente_politica}"
+                            f" · confianza={confianza}"
+                        )
                 except Exception as exc:
                     resp = None
                     acceso_real = None
+                    vulnerable = None
                     clasificacion = "ERROR"
                     detalle = f"{type(exc).__name__}: {exc}"
 
@@ -360,7 +574,12 @@ def auditar_matriz_acceso(
                             resp.status_code if resp is not None else None
                         ),
                         acceso_real=acceso_real,
+                        acceso_esperado=acceso_esperado,
+                        vulnerable=vulnerable,
                         clasificacion=clasificacion,
+                        fuente_politica=fuente_politica,
+                        confianza=confianza,
+                        id_control_referencia=id_control_referencia,
                         detalle=detalle,
                         ts=_ts(),
                     )
