@@ -685,6 +685,9 @@ class AIRecipeProposal:
     # {"archivo": "...", "estrategia": "replace_exact|regex_replace",
     #  "buscar": "...", "reemplazar": "..."}
     cambios: list[dict] = field(default_factory=list)
+    # Vista previa determinista calculada por Aegis sobre el código real.
+    # No viene del modelo IA.
+    preview_cambios: list[dict] = field(default_factory=list)
     validacion_ok: bool = True
     errores_validacion: list[str] = field(default_factory=list)
 
@@ -1552,6 +1555,40 @@ def validar_propuestas_contextuales(
                         working,
                     )
                 )
+
+        proposal.preview_cambios = []
+        for target in touched:
+            original_text = files.get(target, "")
+            patched_text = working.get(target, original_text)
+            detected_target = detect_language_context(
+                target,
+                original_text,
+                None,
+            )
+            principal_target = detected_target.get("principal") or {}
+            diff_lines = list(
+                difflib.unified_diff(
+                    original_text.splitlines(keepends=True),
+                    patched_text.splitlines(keepends=True),
+                    fromfile=f"{target} · ANTES",
+                    tofile=f"{target} · DESPUÉS",
+                    n=4,
+                )
+            )
+            proposal.preview_cambios.append(
+                {
+                    "archivo": target,
+                    "lenguaje": str(
+                        principal_target.get("language") or ""
+                    ),
+                    "frameworks": list(
+                        principal_target.get("frameworks") or []
+                    ),
+                    "codigo_antes": original_text,
+                    "codigo_despues": patched_text,
+                    "diff": "".join(diff_lines),
+                }
+            )
 
         for failed in failed_proposals:
             if not isinstance(failed, dict):
