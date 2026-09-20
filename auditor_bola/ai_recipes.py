@@ -21,6 +21,7 @@ import requests
 
 from .app_paths import default_ai_config_path
 from .config import ConfigObjetivo, Correccion
+from .language_detection import detect_language_context
 from .remediation_knowledge import (
     RemediationKnowledge,
     normalizar_familia_control,
@@ -1333,6 +1334,11 @@ def diagnosticar_causa_raiz(
         pistas,
         max_chars=22000,
     )
+    language_context = detect_language_context(
+        source_relative,
+        source_text,
+        archivos_relacionados,
+    )
 
     expected = {
         "hallazgo": "resumen del hallazgo real",
@@ -1382,7 +1388,12 @@ def diagnosticar_causa_raiz(
         "Reconstruye el flujo usando únicamente archivos y símbolos realmente "
         "presentes en el contexto. No inventes clases, métodos, tablas, APIs, "
         "variables, rutas ni dependencias. Diferencia síntoma de causa raíz. "
-        "Los usuarios/cuentas del hallazgo son datos de prueba, no reglas de "
+        "Antes de razonar sobre el parche, usa lenguaje_y_framework_detectados "
+        "como restricción: cualquier corrección debe escribirse en el lenguaje "
+        "real del archivo objetivo y respetar la versión/framework observados. "
+        "No conviertas Python en pseudocódigo/JavaScript/Java ni mezcles sintaxis "
+        "de otro lenguaje. Los usuarios/cuentas del hallazgo son datos de prueba, "
+        "no reglas de "
         "autorización. Identifica qué evidencia confirma o contradice cada "
         "hipótesis. Si strategy_reset es true, dos intentos ya fallaron: debes "
         "considerar incorrecto el enfoque anterior, explicar por qué falló y "
@@ -1400,6 +1411,7 @@ def diagnosticar_causa_raiz(
         "hallazgo_objetivo": _redactar_estructura(metadata_hallazgo or {}),
         "matriz_pruebas": _redactar_estructura(matriz_pruebas or []),
         "archivo_inicial": source_relative,
+        "lenguaje_y_framework_detectados": language_context,
         "codigo_archivo_inicial": principal,
         "archivos_relacionados": related,
         "intentos_fallidos": _redactar_estructura(attempts),
@@ -1498,6 +1510,11 @@ def _construir_contexto(
         source_relative,
         *related.keys(),
     ]))
+    language_context = detect_language_context(
+        source_relative,
+        source_text,
+        archivos_relacionados,
+    )
 
     return {
         "sistema": cfg.sistema,
@@ -1521,6 +1538,7 @@ def _construir_contexto(
             conocimiento_reutilizable
         ),
         "archivo_inicial": source_relative,
+        "lenguaje_y_framework_detectados": language_context,
         "archivos_permitidos_para_parche": allowed,
         "codigo_relevante_redactado": recortado,
         "archivos_relacionados_redactados": related,
@@ -1612,8 +1630,13 @@ def generar_tres_recetas(
         "de un solo archivo. Todos los archivos declarados en cambios deben "
         "existir en archivos_permitidos_para_parche. "
         "No inventes archivos, clases, métodos, servicios, tablas, variables, "
-        "APIs ni dependencias. Respeta lenguaje, versión, framework, arquitectura "
-        "y convenciones observadas. Usa la causa_raiz_confirmada/probable y el "
+        "APIs ni dependencias. El campo lenguaje_y_framework_detectados es una "
+        "restricción de implementación: cada reemplazo debe usar la sintaxis del "
+        "lenguaje del archivo que modifica y las APIs realmente disponibles en "
+        "ese framework. Respeta lenguaje, versión, framework, arquitectura y "
+        "convenciones observadas. Si el archivo objetivo es Python, genera Python "
+        "válido; si es Java, Java válido; y así sucesivamente. "
+        "Usa la causa_raiz_confirmada/probable y el "
         "flujo_ejecucion; no parches solo el síntoma del endpoint. "
         "Los usuarios/cuentas de las pruebas son evidencia, NO política: nunca "
         "hardcodees una identidad concreta. Preserva accesos legítimos. "
@@ -1877,7 +1900,10 @@ def propuesta_a_correccion(
             f"Receta IA {propuesta.id}: {propuesta.titulo}. "
             f"{propuesta.explicacion}"
         ),
-        requiere_reinicio=propuesta.requiere_reinicio,
+        # Un parche de seguridad sobre código/configuración no se verifica
+        # contra un proceso viejo. Aegis debe reiniciar/recargar el objetivo
+        # antes de volver a ejecutar el exploit.
+        requiere_reinicio=True,
         operaciones=list(first["operaciones"]),
         cambios=normalized_changes,
     )
