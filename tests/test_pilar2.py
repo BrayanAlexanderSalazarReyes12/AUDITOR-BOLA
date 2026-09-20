@@ -58,9 +58,13 @@ def test_diagnostico_no_declara_cero_hallazgos_si_no_hay_controles(tmp_path):
 
     with pytest.raises(
         RuntimeError,
-        match="Pilar 1 .*Pilar 2",
+        match="0 controles activos",
     ):
-        diagnosticar(cfg, tmp_path)
+        diagnosticar(
+            cfg,
+            tmp_path,
+            require_both_pillars=True,
+        )
 
 
 
@@ -86,4 +90,8 @@ def test_diagnostico_p1_p2_exige_ambos_pilares(tmp_path):
     )
 
     with pytest.raises(RuntimeError, match="Pilar 1"):
-        diagnosticar(only_p2, tmp_path)
+        diagnosticar(
+            only_p2,
+            tmp_path,
+            require_both_pillars=True,
+        )
