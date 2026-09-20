@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Callable
 
 from .config import ConfigObjetivo
-from .engine import auditar, auditar_alcance_agente, auditar_controles_acceso
+from .engine import (
+    auditar,
+    auditar_alcance_agente,
+    auditar_controles_acceso,
+    auditar_matriz_acceso,
+)
 from .pilar2 import auditar_pilar2
 
 
@@ -30,7 +35,13 @@ def diagnosticar(
         + len(cfg.chequeos_agente)
     )
     p2_total = len(cfg.chequeos_pilar2)
+    matrix_total = (
+        len(cfg.endpoints_detectados) * len(cfg.cuentas)
+        if cfg.probar_todos_endpoints_con_todos_usuarios
+        else 0
+    )
     configured_total = p1_total + p2_total
+    execution_total = configured_total + matrix_total
 
     missing: list[str] = []
     if p1_total == 0:
@@ -56,7 +67,7 @@ def diagnosticar(
             "hubieran sido evaluados."
         )
 
-    total = configured_total
+    total = execution_total
     completed = 0
 
     def report(message: str, *, force: int | None = None) -> None:
@@ -98,6 +109,11 @@ def diagnosticar(
         else []
     )
 
+    matriz_acceso = auditar_matriz_acceso(
+        cfg,
+        progress_callback=lambda text: advance(text),
+    )
+
     if cfg.chequeos_pilar2:
         report("Iniciando Pilar 2 · Arquitectura y Configuración…")
     pilar2 = auditar_pilar2(
@@ -116,6 +132,9 @@ def diagnosticar(
             "bola": [item.as_dict() for item in bola],
             "acceso": [item.as_dict() for item in acceso],
             "alcance_agente": [item.as_dict() for item in agente],
+            "matriz_acceso": [
+                item.as_dict() for item in matriz_acceso
+            ],
         },
         "pilar2": [item.as_dict() for item in pilar2],
         "resumen": {
@@ -123,6 +142,23 @@ def diagnosticar(
             "controles_pilar1": p1_total,
             "controles_pilar2": p2_total,
             "controles_ejecutados": completed,
+            "matriz_endpoint_usuario_total": len(matriz_acceso),
+            "matriz_accesos": sum(
+                item.clasificacion == "ACCESO"
+                for item in matriz_acceso
+            ),
+            "matriz_denegados": sum(
+                item.clasificacion == "DENEGADO"
+                for item in matriz_acceso
+            ),
+            "matriz_no_concluyentes": sum(
+                item.clasificacion in {
+                    "NO_CONCLUYENTE",
+                    "NO_EJECUTABLE",
+                    "OBSERVADO",
+                }
+                for item in matriz_acceso
+            ),
             "bola_confirmados": sum(item.confirmado_bola for item in bola),
             "acceso_vulnerable": sum(item.vulnerable for item in acceso),
             "agente_vulnerable": sum(item.resultado.vulnerable for item in agente),
@@ -165,6 +201,33 @@ def filas_gui(resultado: dict) -> list[dict]:
                 "tipo_control": "acceso",
                 "metodo": item["metodo"],
                 "ruta": item["endpoint"],
+            }
+        )
+
+    for item in resultado["pilar1"].get("matriz_acceso", []):
+        clasificacion = item.get("clasificacion") or "OBSERVADO"
+        if clasificacion == "ERROR":
+            estado = "ERROR"
+        elif clasificacion == "NO_EJECUTABLE":
+            estado = "OMITIDO"
+        else:
+            estado = "OBSERVADO"
+        filas.append(
+            {
+                "pilar": "P1",
+                "id": "P1-MATRIX",
+                "control": (
+                    "Matriz endpoint × usuario · "
+                    f"{item['metodo']} {item['endpoint_detectado']}"
+                ),
+                "cuenta": item["cuenta"],
+                "estado": estado,
+                "detalle": (
+                    f"{clasificacion} · {item.get('detalle') or ''}"
+                ),
+                "tipo_control": "matriz_acceso",
+                "metodo": item["metodo"],
+                "ruta": item["endpoint_detectado"],
             }
         )
 
