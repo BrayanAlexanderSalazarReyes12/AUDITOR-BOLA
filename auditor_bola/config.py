@@ -120,6 +120,12 @@ class RuntimeConfig:
     modo: str = "process"  # process | command (legacy) | service | external
     nombre: str = ""
     origen: str = ""
+    # auto: usa la estrategia declarada y cae a alternativas ejecutables.
+    # local: prioriza procesos locales antes de contenedores.
+    # contenedor: prioriza Docker/Podman si están disponibles.
+    preferencia_arranque: str = "auto"
+    permitir_fallback_local: bool = True
+    descripcion_ejecucion: str = ""
     comando_inicio: list[str] = field(default_factory=list)
     comando_detener: list[str] = field(default_factory=list)
     comando_reinicio: list[str] = field(default_factory=list)
