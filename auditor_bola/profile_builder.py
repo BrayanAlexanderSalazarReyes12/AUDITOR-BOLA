@@ -1405,6 +1405,9 @@ def _runtime_template(
         "modo": "process",
         "nombre": name,
         "origen": origin,
+        "preferencia_arranque": "auto",
+        "permitir_fallback_local": True,
+        "descripcion_ejecucion": "",
         "comando_inicio": [],
         "comando_detener": [],
         "comando_reinicio": [],
@@ -1475,6 +1478,9 @@ def _detect_native_runtime(
                 return base, base["base_url"]
 
         base["nombre"] = f"Node.js ({package_manager})"
+        base["descripcion_ejecucion"] = (
+            "Ejecución local con Node.js usando el script del package.json."
+        )
         base["comando_inicio"] = start_command
         base["preparar_automaticamente"] = True
         if package_manager == "npm":
@@ -1498,6 +1504,10 @@ def _detect_native_runtime(
             base_url=base_url,
         )
         base["preparar_automaticamente"] = True
+        base["descripcion_ejecucion"] = (
+            "Ejecución local con Python; Aegis prioriza .venv/venv/env "
+            "del proyecto y luego Python del sistema."
+        )
 
         if (root / "requirements.txt").exists():
             base["comandos_preparacion"] = [
@@ -1723,6 +1733,10 @@ def _detect_runtime(
         base_url=docker_base_url,
     )
     docker_runtime["modo"] = "service"
+    docker_runtime["descripcion_ejecucion"] = (
+        "Docker Compose si está disponible; si Docker falta o el servicio "
+        "no abre el puerto esperado, Aegis intenta la alternativa local."
+    )
     docker_runtime["comando_inicio"] = [
         "docker",
         "compose",
@@ -2893,6 +2907,48 @@ def build_profile_draft(
             "cuentas_candidatas": list(detection.account_sources),
             "archivos_cuentas_escaneados": True,
             "perfil_generado_automaticamente": True,
+            "plan_ejecucion": {
+                "preferencia": str(
+                    detection.runtime.get("preferencia_arranque") or "auto"
+                ),
+                "fallback_local": bool(
+                    detection.runtime.get("permitir_fallback_local", True)
+                ),
+                "principal": {
+                    "nombre": detection.runtime.get("nombre"),
+                    "modo": detection.runtime.get("modo"),
+                    "origen": detection.runtime.get("origen"),
+                    "comando_inicio": detection.runtime.get(
+                        "comando_inicio"
+                    ),
+                    "comando_inicio_por_so": detection.runtime.get(
+                        "comando_inicio_por_so"
+                    ),
+                    "directorio_trabajo": detection.runtime.get(
+                        "directorio_trabajo"
+                    ),
+                    "base_url": detection.runtime.get("base_url"),
+                },
+                "alternativas": [
+                    {
+                        "nombre": item.get("nombre"),
+                        "modo": item.get("modo"),
+                        "origen": item.get("origen"),
+                        "comando_inicio": item.get("comando_inicio"),
+                        "comando_inicio_por_so": item.get(
+                            "comando_inicio_por_so"
+                        ),
+                        "directorio_trabajo": item.get(
+                            "directorio_trabajo"
+                        ),
+                        "base_url": item.get("base_url"),
+                    }
+                    for item in (
+                        detection.runtime.get("alternativas") or []
+                    )
+                    if isinstance(item, dict)
+                ],
+            },
         },
     }
 
