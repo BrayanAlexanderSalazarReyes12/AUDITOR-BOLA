@@ -92,13 +92,44 @@ jobs:
       - name: Crear DMG y ZIP
         shell: bash
         run: |
+          set -euo pipefail
+
+          rm -rf dmg-root
           mkdir -p dmg-root
           cp -R dist/AegisAuditor.app dmg-root/
           cp LICENSE NOTICE dmg-root/
-          hdiutil create -volname "Aegis Auditor" -srcfolder dmg-root -ov -format UDZO "dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg"
-          ditto -c -k --sequesterRsrc --keepParent dist/AegisAuditor.app "dist/AegisAuditor-macOS-${{ matrix.arch }}.zip"
-          shasum -a 256 "dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg" > "dist/AegisAuditor-macOS-${{ matrix.arch }}.sha256"
-          shasum -a 256 "dist/AegisAuditor-macOS-${{ matrix.arch }}.zip" >> "dist/AegisAuditor-macOS-${{ matrix.arch }}.sha256"
+
+          dmg="dist/AegisAuditor-macOS-${{ matrix.arch }}.dmg"
+          zip="dist/AegisAuditor-macOS-${{ matrix.arch }}.zip"
+
+          # GitHub macOS runners pueden dejar diskimages-helper ocupado unos
+          # segundos después del codesign. Limpiamos cualquier montaje previo
+          # y reintentamos la creación del DMG en vez de fallar el release por
+          # un "Resource busy" transitorio.
+          created=0
+          for attempt in 1 2 3 4; do
+            rm -f "$dmg"
+            hdiutil detach "/Volumes/Aegis Auditor" -force >/dev/null 2>&1 || true
+            sync
+            if hdiutil create               -volname "Aegis Auditor"               -srcfolder dmg-root               -ov               -format UDZO               "$dmg"; then
+              created=1
+              break
+            fi
+
+            echo "hdiutil falló en intento $attempt/4; reintentando..."
+            sleep $((attempt * 3))
+          done
+
+          if [ "$created" -ne 1 ] || [ ! -s "$dmg" ]; then
+            echo "No fue posible crear un DMG válido después de 4 intentos."
+            exit 1
+          fi
+
+          rm -f "$zip"
+          ditto -c -k --sequesterRsrc --keepParent             dist/AegisAuditor.app "$zip"
+
+          shasum -a 256 "$dmg" > "dist/AegisAuditor-macOS-${{ matrix.arch }}.sha256"
+          shasum -a 256 "$zip" >> "dist/AegisAuditor-macOS-${{ matrix.arch }}.sha256"
       - uses: actions/upload-artifact@v4
         with:
           name: Aegis-Auditor-macOS-${{ matrix.arch }}
@@ -272,6 +303,7 @@ jobs:
           - En proyectos Python, Aegis prioriza .venv/venv/env del proyecto antes de buscar Python del sistema.
           - La pantalla de Inicio muestra el comando de ejecución, política de arranque y alternativas locales configuradas.
           - Los workflows CI y la interfaz profesional fueron validados después de las correcciones del arranque local y la detección de puertos.
+          - El empaquetado macOS reintenta automáticamente la creación del DMG cuando el runner devuelve un error transitorio "Resource busy".
 
           ## Descargas
 
