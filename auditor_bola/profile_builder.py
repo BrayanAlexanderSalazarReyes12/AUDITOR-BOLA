@@ -4033,47 +4033,101 @@ def _infer_automatic_p1_checks(
             }
         )
 
-    # Cuando no hay un test explícito, una ruta con semántica
-    # fuertemente privilegiada y un conjunto de roles conocido permite crear
-    # una prueba negativa para una identidad de bajo privilegio. No asumimos
-    # que el rol privilegiado necesariamente deba tener acceso; solo exigimos
-    # que la identidad no privilegiada sea rechazada.
+    # Fallback de RBAC: cuando no hay contrato explícito para una ruta
+    # fuertemente privilegiada, usamos la separación de roles detectada para
+    # crear únicamente una prueba negativa de bajo privilegio. Se calcula
+    # contra los controles realmente creados y no contra un set auxiliar, para
+    # evitar perder rutas por deduplicaciones intermedias.
     strong_sensitive_tokens = (
         "/admin", "admin/", "audit", "auditoria", "auditoría",
         "prioriz", "manage", "management", "gestion", "gestión",
         "roles", "permissions", "permisos", "privileged",
+        "approve", "approval", "authorize", "authorization",
     )
-    low_accounts = [
+    role_names = {
+        str(account.get("role") or "").strip().lower()
+        for account in detection.accounts
+        if str(account.get("role") or "").strip()
+    }
+    high_role_accounts = [
         account
         for account in detection.accounts
         if str(account.get("username") or "")
         and str(account.get("role") or "").lower()
-        not in privileged_roles
+        in privileged_roles
     ]
-    if privileged_roles and low_accounts:
-        for item in endpoint_inventory:
+    low_accounts = [
+        account
+        for account in detection.accounts
+        if str(account.get("username") or "")
+        and (
+            str(account.get("role") or "").lower()
+            not in privileged_roles
+        )
+    ]
+
+    # Si un proyecto usa nombres de rol no incluidos en el diccionario común,
+    # conservamos el fallback solamente cuando hay una separación clara de
+    # roles y al menos una cuenta cuyo rol coincide con una señal de privilegio.
+    if not high_role_accounts and len(role_names) >= 2:
+        privilege_role_tokens = (
+            "admin", "root", "manager", "gerente", "coord",
+            "supervisor", "owner", "security", "operator",
+        )
+        high_role_accounts = [
+            account
+            for account in detection.accounts
+            if any(
+                token in str(account.get("role") or "").lower()
+                for token in privilege_role_tokens
+            )
+        ]
+        high_usernames = {
+            str(account.get("username") or "")
+            for account in high_role_accounts
+        }
+        if high_usernames:
+            low_accounts = [
+                account
+                for account in detection.accounts
+                if str(account.get("username") or "")
+                and str(account.get("username") or "")
+                not in high_usernames
+            ]
+
+    if high_role_accounts and low_accounts:
+        existing_access_keys = {
+            (
+                str(item.get("cuenta") or ""),
+                str(item.get("metodo") or "").upper(),
+                str(item.get("ruta") or ""),
+            )
+            for item in checks
+            if str(item.get("tipo") or "").lower() == "acceso"
+        }
+
+        strong_routes = [
+            item
+            for item in endpoint_inventory
+            if str(item.get("metodo") or "").upper()
+            in {"GET", "POST", "PUT", "PATCH", "DELETE"}
+            and any(
+                token in str(item.get("ruta") or "").lower()
+                for token in strong_sensitive_tokens
+            )
+        ]
+
+        for item in strong_routes:
             route = str(item.get("ruta") or "")
             method = str(item.get("metodo") or "").upper()
-            if method not in {
-                "GET", "POST", "PUT", "PATCH", "DELETE"
-            }:
-                continue
-            lower_route = route.lower()
-            if not any(
-                token in lower_route
-                for token in strong_sensitive_tokens
-            ):
-                continue
+            sources = list(item.get("archivos") or [])
 
-            # Evita duplicar contratos ya expresados por tests.
-            for account in low_accounts[:2]:
+            for account in low_accounts[:3]:
                 username = str(account.get("username") or "")
                 key = (username, method, route)
-                if key in seen_access:
+                if key in existing_access_keys:
                     continue
-                seen_access.add(key)
 
-                sources = list(item.get("archivos") or [])
                 checks.append(
                     {
                         "tipo": "acceso",
@@ -4093,13 +4147,14 @@ def _infer_automatic_p1_checks(
                         "archivos_fuente": sources,
                         "pistas_codigo": [
                             "ruta con semántica privilegiada",
-                            "existen roles privilegiados distintos",
+                            "separación de roles detectada",
                         ],
                         "autogenerado": True,
                         "confianza": "media-alta",
                         "fuentes_evidencia": sources,
                     }
                 )
+                existing_access_keys.add(key)
                 access_index += 1
 
     checks.extend(
