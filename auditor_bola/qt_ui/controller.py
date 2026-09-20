@@ -43,7 +43,10 @@ from ..cycle import (
     corregir_controles,
     verificar_control,
 )
-from ..language_detection import detect_language_context
+from ..language_detection import (
+    detect_language_context,
+    detect_source_language,
+)
 from ..process_manager import LocalTargetProcess
 from ..p1_resolver import resolve_live_bola_candidates
 from ..profile_builder import (
@@ -976,6 +979,29 @@ class AuditorController(QObject):
             return None
         process = self._ensure_process()
         return process.restart
+
+    def detect_source_language_info(
+        self,
+        relative_path: str,
+    ) -> dict:
+        """Detecta lenguaje/framework del archivo cargado para la UI y la IA."""
+        if not self.target_root or not relative_path:
+            return {}
+        root = self.target_root.resolve()
+        path = (root / relative_path).resolve()
+        if path == root or root not in path.parents or not path.is_file():
+            return {}
+        try:
+            text = path.read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+        except OSError:
+            text = ""
+        return detect_source_language(
+            relative_path,
+            text,
+        ).as_dict()
 
     # ------------------------------------------------------------------
     # Carga y perfiles
@@ -2323,9 +2349,12 @@ class AuditorController(QObject):
                     resultado=result,
                 )
 
-            if result.get("estado_patch") == "PATCH_VERIFIED":
+            if result.get("estado_patch") in {
+                "PATCH_VERIFIED",
+                "PATCH_VERIFIED_WITH_WARNINGS",
+            }:
                 provider = self.ai_provider
-                guardar_receta_biblioteca(
+                saved_recipe = guardar_receta_biblioteca(
                     correction,
                     sistema=self.cfg.sistema,
                     version_objetivo=self.cfg.version_objetivo,
@@ -2345,6 +2374,11 @@ class AuditorController(QObject):
                         else None
                     ),
                     verificada=True,
+                )
+                result["receta_guardada"] = str(saved_recipe)
+                self.log_message.emit(
+                    "Medicina verificada guardada: "
+                    f"{saved_recipe}"
                 )
 
                 knowledge = None
@@ -2415,8 +2449,8 @@ class AuditorController(QObject):
                         "archivo_extension": Path(
                             target_relative
                         ).suffix.lower(),
-                        "resultado": "PATCH_VERIFIED",
-                        "estado_patch": "PATCH_VERIFIED",
+                        "resultado": str(result.get("estado_patch")),
+                        "estado_patch": str(result.get("estado_patch")),
                     },
                 )
             return result
@@ -2434,6 +2468,14 @@ class AuditorController(QObject):
                 self.ai_source_hashes.clear()
                 self.ai_failed_attempts.pop(row["id"], None)
                 self.ai_auto_regenerations.pop(row["id"], None)
+                saved_recipe_path = str(
+                    result.get("receta_guardada") or ""
+                ).strip()
+                if saved_recipe_path:
+                    self.log_message.emit(
+                        "Receta de corrección persistida en biblioteca: "
+                        + saved_recipe_path
+                    )
 
                 if patch_state == "PATCH_VERIFIED_WITH_WARNINGS":
                     warnings = result.get("qa_advertencias") or []
