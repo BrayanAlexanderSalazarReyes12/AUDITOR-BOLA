@@ -20,6 +20,13 @@ from .ai_recipes import (
     propuesta_a_correccion,
 )
 from .cycle import ciclo_correctivo
+from .adaptive_repair import (
+    AdaptiveAttempt,
+    MAX_ADAPTIVE_ATTEMPTS,
+    compact_feedback,
+    choose_next_proposal,
+    strategy_reset_required,
+)
 from .source_locator import resolver_archivo_fuente
 from .remediation_knowledge import (
     KnowledgeCandidate,
@@ -1700,210 +1707,186 @@ class AIAssistantMixin:
             return
 
         def task():
-            selected_proposal, selected_control = (
-                self._install_ai_recipe_in_memory()
-            )
+            # Ciclo adaptativo automático: prueba las alternativas de la ronda
+            # y, después de dos fallos, obliga a la IA a cambiar de estrategia.
+            selected_proposal = proposal
+            selected_recipe = self.ai_current_recipe
+            attempt_history = []
+            attempted_ids = set()
+            current_proposals = [proposal]
+            proposal_index = 0
+            last_result = None
 
-            if self.ai_session_dir:
-                guardar_seleccion_ia(
-                    self.ai_session_dir,
-                    propuesta=selected_proposal,
-                    correccion=self.ai_current_recipe,
+            for attempt_number in range(1, MAX_ADAPTIVE_ATTEMPTS + 1):
+                if proposal_index >= len(current_proposals):
+                    source_path = self.target_root / self.ai_source_relative
+                    source_text = source_path.read_text(encoding="utf-8")
+                    reset = strategy_reset_required(len(attempt_history))
+                    new_proposals, context, used_provider = generar_tres_recetas(
+                        self.cfg,
+                        control_id=control,
+                        descripcion=descripcion,
+                        detalle=detalle,
+                        source_relative=self.ai_source_relative,
+                        source_text=source_text,
+                        provider=self.ai_provider,
+                        metadata_hallazgo=metadata,
+                        matriz_pruebas=matriz,
+                        intento_anterior=compact_feedback(attempt_history),
+                        conocimiento_reutilizable=(
+                            asdict(active_knowledge.knowledge)
+                            if active_knowledge is not None
+                            else None
+                        ),
+                        strategy_reset=reset,
+                    )
+                    current_proposals = list(new_proposals)
+                    proposal_index = 0
+                    attempted_ids = set()
+                    self.ai_proposals = list(new_proposals)
+                    if self.ai_session_dir:
+                        (self.ai_session_dir / f"ronda_adaptativa_{attempt_number}.json").write_text(
+                            json.dumps(
+                                {
+                                    "attempt_number": attempt_number,
+                                    "strategy_reset": reset,
+                                    "contexto": context,
+                                    "propuestas": [item.as_dict() for item in new_proposals],
+                                    "proveedor": used_provider.public_dict(),
+                                },
+                                ensure_ascii=False,
+                                indent=2,
+                            ),
+                            encoding="utf-8",
+                        )
+
+                candidate = choose_next_proposal(
+                    current_proposals[proposal_index:],
+                    attempted_ids,
                 )
+                if candidate is None:
+                    proposal_index = len(current_proposals)
+                    continue
 
-            reiniciar = self._prepare_restart_callback([selected_control])
-            selector = (
-                self._selected_selector()
-                if hasattr(self, "_selected_selector")
-                else None
-            )
-            result = ciclo_correctivo(
-                self.cfg,
-                selected_control,
-                self.target_root,
-                evidence_base=self.evidence_base,
-                reiniciar=reiniciar,
-                selector=selector,
-            )
-
-            if self.ai_session_dir:
-                guardar_seleccion_ia(
-                    self.ai_session_dir,
-                    propuesta=selected_proposal,
-                    correccion=self.ai_current_recipe,
-                    resultado=result,
+                selected_proposal = candidate
+                attempted_ids.add(str(candidate.id))
+                proposal_index = next(
+                    (
+                        index + 1
+                        for index, item in enumerate(current_proposals)
+                        if item is candidate
+                    ),
+                    proposal_index + 1,
                 )
+                selected_recipe = propuesta_a_correccion(
+                    selected_proposal,
+                    control_id=control,
+                    source_relative=self.ai_source_relative,
+                )
+                self.cfg.correcciones = [
+                    item for item in self.cfg.correcciones
+                    if item.control_id != control
+                ]
+                self.cfg.correcciones.append(selected_recipe)
+                self.ai_current_recipe = selected_recipe
 
-            estado = result.get("estado_final")
-            source_rel = self.ai_current_recipe.archivo
-            extension = Path(source_rel).suffix.lower()
-            caso = {
-                "sistema": self.cfg.sistema,
-                "version": self.cfg.version_objetivo,
-                "control_id": selected_control,
-                "tipo_control": row.get("tipo_control"),
-                "metodo": row.get("metodo"),
-                "ruta": row.get("ruta"),
-                "extension": extension,
-                "enfoque": selected_proposal.enfoque,
+                if self.ai_session_dir:
+                    guardar_seleccion_ia(
+                        self.ai_session_dir,
+                        propuesta=selected_proposal,
+                        correccion=selected_recipe,
+                    )
+
+                reiniciar = self._prepare_restart_callback([control])
+                selector = (
+                    self._selected_selector()
+                    if hasattr(self, "_selected_selector")
+                    else None
+                )
+                result = ciclo_correctivo(
+                    self.cfg,
+                    control,
+                    self.target_root,
+                    evidence_base=self.evidence_base,
+                    reiniciar=reiniciar,
+                    selector=selector,
+                    attempt_number=attempt_number,
+                    proposal_id=selected_proposal.id,
+                    estrategia=selected_proposal.estrategia_conceptual,
+                    hipotesis=selected_proposal.hipotesis_id,
+                )
+                last_result = result
+                estado = str(result.get("estado_final") or "")
+
+                if estado in {"CORREGIDO", "CORREGIDO_CON_ADVERTENCIAS"}:
+                    result["adaptive_repair"] = {
+                        "habilitado": True,
+                        "intentos_realizados": attempt_number,
+                        "max_intentos": MAX_ADAPTIVE_ATTEMPTS,
+                        "estrategia_cambiada": strategy_reset_required(
+                            len(attempt_history)
+                        ),
+                        "historial": compact_feedback(attempt_history),
+                        "propuesta_final": selected_proposal.as_dict(),
+                    }
+                    if self.ai_session_dir:
+                        guardar_seleccion_ia(
+                            self.ai_session_dir,
+                            propuesta=selected_proposal,
+                            correccion=selected_recipe,
+                            resultado=result,
+                        )
+                    return result, selected_proposal, selected_recipe, attempt_history
+
+                attempt_history.append(
+                    AdaptiveAttempt(
+                        number=attempt_number,
+                        proposal_id=str(selected_proposal.id),
+                        enfoque=str(selected_proposal.enfoque),
+                        estrategia_conceptual=str(
+                            selected_proposal.estrategia_conceptual
+                        ),
+                        estado_final=estado,
+                        estado_patch=str(result.get("estado_patch") or ""),
+                        motivo=str(result.get("motivo") or ""),
+                        estado_despues=(
+                            str(result.get("estado_despues"))
+                            if result.get("estado_despues") is not None
+                            else None
+                        ),
+                        regresiones=list(result.get("regresiones") or []),
+                    )
+                )
+                result["adaptive_repair"] = {
+                    "habilitado": True,
+                    "intentos_realizados": attempt_number,
+                    "max_intentos": MAX_ADAPTIVE_ATTEMPTS,
+                    "estrategia_cambiada": strategy_reset_required(
+                        len(attempt_history)
+                    ),
+                    "historial": compact_feedback(attempt_history),
+                }
+                if self.ai_session_dir:
+                    guardar_seleccion_ia(
+                        self.ai_session_dir,
+                        propuesta=selected_proposal,
+                        correccion=selected_recipe,
+                        resultado=result,
+                    )
+
+            if last_result is None:
+                raise RuntimeError("El ciclo adaptativo no produjo ningún resultado.")
+            last_result["adaptive_repair"] = {
+                "habilitado": True,
+                "agotado": True,
+                "intentos_realizados": len(attempt_history),
+                "max_intentos": MAX_ADAPTIVE_ATTEMPTS,
+                "estrategia_cambiada": strategy_reset_required(
+                    len(attempt_history)
+                ),
+                "historial": compact_feedback(attempt_history),
             }
-
-            if estado == "CORREGIDO":
-                provider = self.ai_provider
-                library_path = guardar_receta_biblioteca(
-                    self.ai_current_recipe,
-                    sistema=self.cfg.sistema,
-                    version_objetivo=self.cfg.version_objetivo,
-                    metodo=row.get("metodo"),
-                    ruta=row.get("ruta"),
-                    tipo_control=row.get("tipo_control"),
-                    titulo=selected_proposal.titulo,
-                    fuente="gemma",
-                    proveedor=provider.provider_name if provider else None,
-                    modelo=provider.model_id if provider else None,
-                    verificada=True,
-                )
-                result["instancia_concreta"] = str(library_path)
-
-                if active_knowledge is not None:
-                    registrar_uso_conocimiento(
-                        active_knowledge.path,
-                        exitoso=True,
-                        caso_exitoso=caso,
-                    )
-                    result["conocimiento_reutilizado"] = str(
-                        active_knowledge.path
-                    )
-                else:
-                    try:
-                        correction_info = (
-                            result.get("correccion_aplicada") or {}
-                        )
-                        backup = correction_info.get("backup")
-                        archivo = correction_info.get(
-                            "archivo",
-                            source_rel,
-                        )
-                        if not backup:
-                            raise RuntimeError(
-                                "La evidencia no contiene el backup "
-                                "necesario para generalizar la corrección."
-                            )
-
-                        codigo_antes = Path(backup).read_text(
-                            encoding="utf-8"
-                        )
-                        codigo_despues = (
-                            self.target_root / archivo
-                        ).read_text(encoding="utf-8")
-                        diff = correction_info.get("diff") or ""
-
-                        knowledge, knowledge_context, _ = (
-                            generalizar_correccion_exitosa(
-                                self.cfg,
-                                control_id=selected_control,
-                                descripcion=descripcion,
-                                detalle=detalle,
-                                metadata_hallazgo=metadata,
-                                matriz_pruebas=matriz,
-                                source_relative=archivo,
-                                codigo_antes=codigo_antes,
-                                codigo_despues=codigo_despues,
-                                diff=diff,
-                                propuesta=selected_proposal,
-                                provider=provider,
-                            )
-                        )
-                        if (
-                            extension
-                            and extension
-                            not in knowledge.lenguajes_observados
-                        ):
-                            knowledge.lenguajes_observados.append(
-                                extension
-                            )
-                        knowledge_path = guardar_conocimiento(
-                            knowledge,
-                            caso_exitoso=caso,
-                        )
-                        result["conocimiento_aprendido"] = str(
-                            knowledge_path
-                        )
-
-                        if self.ai_session_dir:
-                            (
-                                self.ai_session_dir
-                                / "conocimiento_aprendido.json"
-                            ).write_text(
-                                json.dumps(
-                                    {
-                                        "path": str(knowledge_path),
-                                        "knowledge": asdict(knowledge),
-                                        "contexto_redactado": (
-                                            knowledge_context
-                                        ),
-                                    },
-                                    ensure_ascii=False,
-                                    indent=2,
-                                )
-                                + "\n",
-                                encoding="utf-8",
-                            )
-                    except Exception as exc:
-                        # La corrección ya fue demostrada dinámicamente. Un
-                        # fallo de la segunda llamada a Gemma no debe hacer que
-                        # el Auditor pierda ese aprendizaje. Guardamos una
-                        # medicina semántica mínima y verificada como respaldo.
-                        try:
-                            fallback = crear_conocimiento_respaldo_verificado(
-                                control_id=selected_control,
-                                descripcion=descripcion,
-                                tipo_control=row.get("tipo_control"),
-                                extension=extension,
-                            )
-                            fallback_path = guardar_conocimiento(
-                                fallback,
-                                caso_exitoso=caso,
-                            )
-                            result["conocimiento_aprendido"] = str(
-                                fallback_path
-                            )
-                            result["conocimiento_fallback"] = str(exc)
-
-                            if self.ai_session_dir:
-                                (
-                                    self.ai_session_dir
-                                    / "conocimiento_aprendido.json"
-                                ).write_text(
-                                    json.dumps(
-                                        {
-                                            "path": str(fallback_path),
-                                            "knowledge": asdict(fallback),
-                                            "modo": "fallback_verificado",
-                                            "motivo_fallback": str(exc),
-                                        },
-                                        ensure_ascii=False,
-                                        indent=2,
-                                    )
-                                    + "\n",
-                                    encoding="utf-8",
-                                )
-                        except Exception as fallback_exc:
-                            result["conocimiento_error"] = (
-                                "Falló la extracción semántica con IA: "
-                                f"{exc}. También falló el guardado de respaldo: "
-                                f"{fallback_exc}"
-                            )
-            elif active_knowledge is not None:
-                try:
-                    registrar_uso_conocimiento(
-                        active_knowledge.path,
-                        exitoso=False,
-                    )
-                except Exception:
-                    pass
-
-            return result
+            return last_result, selected_proposal, selected_recipe, attempt_history
 
         def done(result):
             estado = result.get("estado_final")
@@ -1923,100 +1906,272 @@ class AIAssistantMixin:
                 )
             if knowledge_path:
                 self._log(
-                    "Nueva medicina semántica aprendida: "
-                    f"{knowledge_path}"
-                )
-            if reused_path:
+           def done(payload):
+            result, applied_proposal, applied_recipe, attempt_history = payload
+            estado = result.get("estado_final")
+            instance_path = result.get("instancia_concreta")
+            knowledge_path = result.get("conocimiento_aprendido")
+            reused_path = result.get("conocimiento_reutilizado")
+            knowledge_error = result.get("conocimiento_error")
+            knowledge_fallback = result.get("conocimiento_fallback")
+            adaptive = result.get("adaptive_repair") or {}
+
+            self.ai_current_recipe = applied_recipe
+            self._log(
+                f"Receta Gemma {applied_proposal.id} aplicada a {control}: {estado}"
+            )
+            self._log(
+                "Corrección adaptativa: "
+                f"{adaptive.get('intentos_realizados', len(attempt_history))}/"
+                f"{MAX_ADAPTIVE_ATTEMPTS} intento(s)."
+            )
+            if adaptive.get("estrategia_cambiada"):
                 self._log(
-                    "Medicina conocida validada también en este sistema: "
-                    f"{reused_path}"
+                    "Se cambió de estrategia automáticamente después de dos "
+                    "fallos y se volvió a generar una solución con la evidencia."
                 )
+            if instance_path:
+                self._log(f"Instancia concreta verificada guardada: {instance_path}")
+            if knowledge_path:
+                self._log(f"Nueva medicina semántica aprendida: {knowledge_path}")
+            if reused_path:
+                self._log(f"Medicina conocida validada: {reused_path}")
             if knowledge_fallback:
                 self._log(
-                    "La corrección funcionó y se guardó una medicina "
-                    "verificada de respaldo porque la extracción enriquecida "
-                    f"con IA falló: {knowledge_fallback}"
+                    "La extracción enriquecida falló; se guardó medicina "
+                    f"verificada de respaldo: {knowledge_fallback}"
                 )
             if knowledge_error:
-                self._log(
-                    "La corrección funcionó, pero no se pudo "
-                    f"guardar ninguna medicina: {knowledge_error}"
-                )
+                self._log(f"Error de aprendizaje reusable: {knowledge_error}")
 
-            mensaje = f"{control}: {estado}"
-            if knowledge_path:
-                mensaje += (
-                    "\n\nSe aprendió una medicina reutilizable en:\n"
-                    f"{knowledge_path}"
-                )
-                if knowledge_fallback:
-                    mensaje += (
-                        "\n\nLa medicina se guardó en modo de respaldo "
-                        "verificado porque la extracción semántica enriquecida "
-                        "con IA no pudo completarse."
-                    )
-            elif reused_path:
-                mensaje += (
-                    "\n\nLa medicina conocida funcionó también en este "
-                    "aplicativo y se actualizó su historial."
-                )
-            if knowledge_error:
-                mensaje += (
-                    "\n\nLa corrección sí fue válida, pero la extracción "
-                    "del conocimiento reusable falló. El parche y la "
-                    "evidencia se conservaron."
-                )
-            if estado == "NO_CORREGIDO":
-                motivo = result.get("motivo") or (
-                    "La verificación reprodujo nuevamente el hallazgo."
-                )
-                mensaje += f"\n\n{motivo}"
-
-            messagebox.showinfo(
-                "Resultado de receta Gemma",
-                mensaje,
+            mensaje = (
+                f"{control}: {estado}\n\n"
+                f"Propuesta verificada: {applied_proposal.id} — "
+                f"{applied_proposal.titulo}\n"
+                f"Intentos adaptativos: "
+                f"{adaptive.get('intentos_realizados', len(attempt_history))}/"
+                f"{MAX_ADAPTIVE_ATTEMPTS}"
             )
-
-            if estado == "NO_CORREGIDO":
-                feedback = {
-                    "propuesta_anterior": proposal.as_dict(),
-                    "receta_anterior": asdict(self.ai_current_recipe),
-                    "resultado": {
-                        "estado_final": result.get("estado_final"),
-                        "estado_despues": result.get("estado_despues"),
-                        "estado_global_despues": result.get(
-                            "estado_global_despues"
-                        ),
-                        "motivo": result.get("motivo"),
-                        "regresiones": result.get("regresiones", []),
-                    },
-                    "correccion_aplicada": result.get(
-                        "correccion_aplicada"
-                    ),
-                }
-                if messagebox.askyesno(
-                    "Reformular recetas",
-                    (
-                        "La implementación no solucionó el hallazgo y el "
-                        "auditor hizo rollback.\n\n"
-                        "¿Deseas generar 3 implementaciones nuevas usando "
-                        "el fallo como retroalimentación?"
-                    ),
-                ):
-                    self._generate_ai_recipes(
-                        intento_anterior=feedback,
-                        conocimiento=active_knowledge,
+            if adaptive.get("estrategia_cambiada"):
+                mensaje += (
+                    "\nSe cambió el enfoque automáticamente después de dos fallos."
+                )
+            if knowledge_path:
+                mensaje += f"\n\nMedicina reutilizable:\n{knowledge_path}"
+            if knowledge_fallback:
+                mensaje += (
+                    "\n\nSe guardó además una medicina de respaldo verificada."
+                )
+            if knowledge_error:
+                mensaje += (
+                    "\n\nEl parche sí quedó verificado, pero el aprendizaje "
+                    "enriquecido no pudo completarse."
+                )
+            if estado not in {"CORREGIDO", "CORREGIDO_CON_ADVERTENCIAS"}:
+                mensaje += (
+                    "\n\n"
+                    + str(
+                        result.get("motivo")
+                        or "El ciclo adaptativo agotó sus intentos sin verificar la corrección."
                     )
-                    return
+                )
 
             self._refresh_recipe_library()
             self._diagnose()
+
+            if estado in {"CORREGIDO", "CORREGIDO_CON_ADVERTENCIAS"}:
+                self._show_ai_correction_result(
+                    result,
+                    applied_proposal,
+                    applied_recipe,
+                )
+            else:
+                messagebox.showwarning(
+                    "Corrección IA no verificada",
+                    mensaje,
+                )
 
         self._run_background(
             task,
             done,
             f"Aplicando receta Gemma {proposal.id}…",
         )
+
+    def _show_ai_correction_result(self, result: dict, proposal: AIRecipeProposal, recipe):
+        """Ventana de verificación legible: pasos, antes/después y diff."""
+        window = tk.Toplevel(self)
+        window.title("Parche verificado — Aegis Auditor")
+        width = max(980, min(1500, window.winfo_screenwidth() - 80))
+        height = max(680, min(950, window.winfo_screenheight() - 100))
+        window.geometry(f"{width}x{height}")
+        window.minsize(900, 620)
+
+        outer = ttk.Frame(window, padding=14)
+        outer.pack(fill="both", expand=True)
+        outer.columnconfigure(0, weight=1)
+        outer.rowconfigure(2, weight=1)
+
+        verified = result.get("estado_patch") == "PATCH_VERIFIED"
+        ttk.Label(
+            outer,
+            text=(
+                "Parche aplicado correctamente"
+                if verified
+                else "Parche aplicado con advertencias"
+            ),
+            font=("Segoe UI", 18, "bold"),
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            outer,
+            text=(
+                f"{result.get('control', '-')}  •  {proposal.id}  •  "
+                f"{proposal.enfoque}  •  {result.get('estado_final', '-')}"
+            ),
+        ).grid(row=1, column=0, sticky="w", pady=(2, 10))
+
+        summary = ttk.LabelFrame(outer, text="Resumen del proceso", padding=10)
+        summary.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        steps = [
+            "1. Identificación del lenguaje — Completada",
+            "2. Aplicación del parche — Completada",
+            (
+                "3. Reinicio del servicio — "
+                + (
+                    "Completado"
+                    if (result.get("reinicio_servicio") or {}).get("exitoso")
+                    else "No requerido"
+                )
+            ),
+            (
+                "4. Verificación de seguridad — "
+                + (
+                    "Sin reproducción"
+                    if (result.get("reescaneo_seguridad") or {}).get("estado")
+                    == "SIN_HALLAZGO"
+                    else str(
+                        (result.get("reescaneo_seguridad") or {}).get("estado")
+                        or "Revisar"
+                    )
+                )
+            ),
+        ]
+        for row, value in enumerate(steps):
+            ttk.Label(summary, text=value).grid(
+                row=row, column=0, sticky="w", pady=2
+            )
+        adaptive = result.get("adaptive_repair") or {}
+        ttk.Label(
+            summary,
+            text=(
+                f"Intentos adaptativos: {adaptive.get('intentos_realizados', 1)}/"
+                f"{adaptive.get('max_intentos', MAX_ADAPTIVE_ATTEMPTS)}"
+                + (
+                    "  •  estrategia cambiada"
+                    if adaptive.get("estrategia_cambiada")
+                    else ""
+                )
+            ),
+        ).grid(row=4, column=0, sticky="w", pady=(6, 0))
+
+        panes = tk.PanedWindow(
+            outer, orient=tk.HORIZONTAL, sashwidth=7, relief="flat", bd=0
+        )
+        panes.grid(row=3, column=0, sticky="nsew")
+        outer.rowconfigure(3, weight=1)
+
+        correction = result.get("correccion_aplicada") or {}
+        archivo = str(correction.get("archivo") or recipe.archivo or "")
+        target = (Path(self.target_root).resolve() / archivo).resolve()
+        after_text = ""
+        before_text = ""
+        if target.is_file():
+            try:
+                after_text = target.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                pass
+        if correction.get("backup"):
+            try:
+                before_text = Path(str(correction["backup"])).read_text(
+                    encoding="utf-8", errors="replace"
+                )
+            except OSError:
+                pass
+
+        def numbered(text):
+            return "\n".join(
+                f"{n:>5} │ {line}"
+                for n, line in enumerate(text.splitlines(), start=1)
+            )
+
+        for title, content in (
+            (f"Antes — {archivo}", numbered(before_text)),
+            (f"Después — {archivo}", numbered(after_text)),
+        ):
+            frame = ttk.LabelFrame(panes, text=title, padding=6)
+            panes.add(frame, minsize=430, stretch="always")
+            frame.rowconfigure(0, weight=1)
+            frame.columnconfigure(0, weight=1)
+            widget = tk.Text(frame, wrap="none", font=("Consolas", 10))
+            ybar = ttk.Scrollbar(frame, orient="vertical", command=widget.yview)
+            xbar = ttk.Scrollbar(frame, orient="horizontal", command=widget.xview)
+            widget.configure(yscrollcommand=ybar.set, xscrollcommand=xbar.set)
+            widget.grid(row=0, column=0, sticky="nsew")
+            ybar.grid(row=0, column=1, sticky="ns")
+            xbar.grid(row=1, column=0, sticky="ew")
+            widget.insert("1.0", content)
+            widget.configure(state="disabled")
+
+        footer = ttk.Frame(outer)
+        footer.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(
+            footer,
+            text="Ver diff completo",
+            command=lambda: self._show_text_window(
+                "Diff completo del parche",
+                str(correction.get("diff") or "Sin diff disponible."),
+            ),
+        ).pack(side="left")
+        ttk.Button(
+            footer,
+            text="Ver historial adaptativo",
+            command=lambda: self._show_text_window(
+                "Historial de intentos adaptativos",
+                json.dumps(
+                    adaptive.get("historial") or [],
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            ),
+        ).pack(side="left", padx=6)
+        ttk.Button(
+            footer,
+            text="Aceptar",
+            command=window.destroy,
+        ).pack(side="right")
+        window.transient(self)
+        window.lift()
+        window.focus_force()
+
+    def _show_text_window(self, title: str, content: str):
+        window = tk.Toplevel(self)
+        window.title(title)
+        window.geometry("1100x700")
+        frame = ttk.Frame(window, padding=10)
+        frame.pack(fill="both", expand=True)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+        widget = tk.Text(frame, wrap="none", font=("Consolas", 10))
+        ybar = ttk.Scrollbar(frame, orient="vertical", command=widget.yview)
+        xbar = ttk.Scrollbar(frame, orient="horizontal", command=widget.xview)
+        widget.configure(yscrollcommand=ybar.set, xscrollcommand=xbar.set)
+        widget.grid(row=0, column=0, sticky="nsew")
+        ybar.grid(row=0, column=1, sticky="ns")
+        xbar.grid(row=1, column=0, sticky="ew")
+        widget.insert("1.0", content)
+        widget.configure(state="disabled")
+        ttk.Button(
+            frame, text="Cerrar", command=window.destroy
+        ).grid(row=2, column=0, sticky="e", pady=(8, 0))
 
     def _save_ai_recipe_to_profile(self):
         if (
