@@ -3294,12 +3294,26 @@ def _extract_owner_samples(
         detection.root,
         max_files=None,
     ):
-        if not _is_p1_evidence_source(relative):
-            continue
         text = _read_text(path, limit=MAX_TEXT_SCAN_BYTES)
         if not text:
             continue
         source = relative.as_posix()
+
+        # Las semillas de propiedad también suelen vivir en db.py/db.js o
+        # inicializadores Java. Son evidencia P1 válida cuando contienen datos
+        # de objetos, aunque no estén dentro de tests/fixtures/seeds.
+        evidence_source = _is_p1_evidence_source(relative)
+        has_seed_data = bool(
+            re.search(
+                r"(?is)INSERT\\s+INTO|executemany\\s*\\(|"
+                r"VALUES\\s*\\(|"
+                r"\\b(?:users|tickets|orders|products|records|registros)\\b.{0,180}\\b"
+                r"(?:owner|owned_by|created_by|propietario|user_id|usuario_id)\\b",
+                text,
+            )
+        )
+        if not evidence_source and not has_seed_data:
+            continue
 
         # Evidencia estructurada: soporta aliases como codigo/creador,
         # author/record_id, created_by/uuid, etc.
