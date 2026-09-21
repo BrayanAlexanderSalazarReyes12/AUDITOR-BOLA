@@ -716,14 +716,19 @@ def ciclo_correctivo(
                 "fallos_nuevos": new_failures,
             }
             manifest["qa_advertencias"] = []
-            manifest["qa_advertencias"].append(
-                {
-                    "tipo": "SUITE_FUNCIONAL_PREEXISTENTE",
-                    "estado": "FAILED",
-                    "detalle": qa_post_tests,
-                    "ignorable_para_parche": True,
-                }
-            ) if qa_existing_failure else None
+            if qa_validation.tests.estado == "FAILED":
+                manifest["qa_advertencias"].append(
+                    {
+                        "tipo": (
+                            "SUITE_FUNCIONAL_PREEXISTENTE"
+                            if qa_existing_failure
+                            else "SUITE_FUNCIONAL_POST_SECURITY"
+                        ),
+                        "estado": "FAILED",
+                        "detalle": qa_post_tests,
+                        "ignorable_para_parche": True,
+                    }
+                )
 
             manifest["criterios_exito"]["functional_test_success"] = not qa_new_failure
             manifest["criterios_exito"]["tests_aplicables"] = post_applicable
