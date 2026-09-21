@@ -1,6 +1,6 @@
-# security-patching-release: v1.4.2-alpha-alpha
-# release-publish: v1.4.2-alpha-alpha
-# v1.4.2-alpha-alpha-release-ready: build and publish desktop artifacts after CI/version synchronization
+# security-patching-release: v1.4.2-alpha
+# release-publish: v1.4.2-alpha
+# v1.4.2-alpha-release-ready: build and publish desktop artifacts after CI/version synchronization
 name: Build desktop executables
 
 on:
@@ -232,12 +232,12 @@ jobs:
 
 
   release-v1-4-1:
-    name: Publicar Release v1.4.2-alpha-alpha
+    name: Publicar Release v1.4.2-alpha
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.4.2-alpha-alpha]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.4.2-alpha]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -255,7 +255,7 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.4.2-alpha-alpha
+          # Aegis Auditor v1.4.2-alpha
 
           Automatización adaptativa de correcciones IA: prueba alternativas, conserva evidencia y cambia de estrategia tras dos fallos consecutivos. La interfaz final muestra el código antes/después con números de línea, diff completo e historial de intentos.
 
@@ -318,7 +318,7 @@ jobs:
           credenciales del usuario no forman parte del release.
           EOF
 
-      - name: Publicar Release v1.4.2-alpha-alpha
+      - name: Publicar Release v1.4.2-alpha
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -341,7 +341,7 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          gh release create "v1.4.2-alpha-alpha" "${files[@]}" \
+          gh release create "v1.4.2-alpha" "${files[@]}" \
             --target "${GITHUB_SHA}" \
-            --title "Aegis Auditor v1.4.2-alpha-alpha" \
+            --title "Aegis Auditor v1.4.2-alpha" \
             --notes-file RELEASE_NOTES.md
