@@ -806,8 +806,17 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
                 r"['\"](/[^'\"]+)['\"]",
                 block,
             )
+            servlet_methods = [
+                method.upper()
+                for method in re.findall(
+                    r"\\bdo(Get|Post|Put|Patch|Delete|Options|Head)\\s*\\(",
+                    text,
+                    re.I,
+                )
+            ]
             for route in urls:
-                add("ANY", route, source, "servlet")
+                for method in dict.fromkeys(servlet_methods or ["ANY"]):
+                    add(method, route, source, "servlet")
 
         # JAX-RS.
         class_path_match = re.search(
