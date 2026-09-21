@@ -1,5 +1,5 @@
-# security-patching-release: v1.3.2
-# release-publish: v1.3.2
+# security-patching-release: v1.4.0
+# release-publish: v1.4.0
 name: Build desktop executables
 
 on:
@@ -201,7 +201,7 @@ jobs:
             > "$root/usr/share/applications/aegis-auditor.desktop"
           printf '%s\n' \
             'Package: aegis-auditor' \
-            'Version: 1.3.2' \
+            'Version: 1.4.0' \
             'Section: devel' \
             'Priority: optional' \
             'Architecture: ${{ matrix.deb_arch }}' \
@@ -231,12 +231,12 @@ jobs:
 
 
   release-v1-3-1:
-    name: Publicar Release v1.3.2
+    name: Publicar Release v1.4.0
     needs:
       - windows-x64
       - macos
       - linux
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.3.2]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v1.4.0]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -254,7 +254,7 @@ jobs:
         shell: bash
         run: |
           cat > RELEASE_NOTES.md <<'EOF'
-          # Aegis Auditor v1.3.2
+          # Aegis Auditor v1.4.0
 
           Versión estable centrada en el ciclo real de corrección de vulnerabilidades y en una vista previa de código legible antes de aplicar una medicina:
           **detectar → parchear código real → reiniciar → reescanear → verificar → guardar medicina**.
@@ -315,7 +315,7 @@ jobs:
           credenciales del usuario no forman parte del release.
           EOF
 
-      - name: Publicar Release v1.3.2
+      - name: Publicar Release v1.4.0
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -338,7 +338,7 @@ jobs:
 
           files+=("LICENSE" "NOTICE")
 
-          gh release create "v1.3.2" "${files[@]}" \
+          gh release create "v1.4.0" "${files[@]}" \
             --target "${GITHUB_SHA}" \
-            --title "Aegis Auditor v1.3.2" \
+            --title "Aegis Auditor v1.4.0" \
             --notes-file RELEASE_NOTES.md
