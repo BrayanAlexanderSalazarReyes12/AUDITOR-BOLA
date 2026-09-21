@@ -295,6 +295,33 @@ def _detect_tests(root: Path) -> tuple[list[str] | None, bool]:
     return None, False
 
 
+def qa_failure_signature(detail: str) -> list[str]:
+    """Extrae identificadores estables de fallos QA para comparar baseline/post."""
+    import re
+
+    text = str(detail or "")
+    found: list[str] = []
+    patterns = (
+        r"(?m)^FAILED\\s+([^\\s]+)",
+        r"(?m)^ERROR\\s+([^\\s]+)",
+        r"(?m)^[-=]+\\s+([A-Za-z0-9_./\\:-]+::[A-Za-z0-9_./\\:-]+)",
+        r"(?m)^([A-Za-z0-9_./\\:-]+::test_[A-Za-z0-9_./\\:-]+)\\s*$",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            value = str(match.group(1) or "").strip()
+            if value and value not in found:
+                found.append(value)
+    if not found and text:
+        # Último recurso: conservar solo las líneas de resumen de pytest.
+        for line in text.splitlines():
+            stripped = line.strip()
+            if " failed" in stripped.lower() or " errors" in stripped.lower():
+                if len(stripped) <= 300 and stripped not in found:
+                    found.append(stripped)
+    return found
+
+
 def validate_project_after_patch(
     target_root: str | Path,
     relative_file: str | Iterable[str],
