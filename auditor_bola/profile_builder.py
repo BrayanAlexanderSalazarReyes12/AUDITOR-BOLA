@@ -3128,8 +3128,8 @@ def _infer_p1_candidates(
         # mantienen la ruta literal (/profile) y reciben el identificador
         # mediante ?id=..., req.query, request.args o getParameter.
         query_id = re.search(
-            r"(?i)(?:getparameter\\s*\\(|args\\.get\\s*\\(|"
-            r"query\\.(?:id|\\w+_id)|query\\[['\"](?:id|\\w+_id)['\"]\\])",
+            r"(?i)(?:getparameter\s*\(|args\.get\s*\(|
+            r"query\.(?:id|\w+_id)|query\[['\"](?:id|\w+_id)['\"]\])",
             lower_source,
         )
         if query_id and method in {"GET", "PATCH", "PUT", "DELETE"}:
@@ -3956,8 +3956,8 @@ def _infer_automatic_p1_checks(
             if source
         ).lower()
         param_match = re.search(
-            r"(?i)(?:getparameter\\s*\\(|args\\.get\\s*\\(|"
-            r"query\\.(?:id|\\w+_id)|query\\[['\"](?:id|\\w+_id)['\"]\\])",
+            r"(?i)(?:getparameter\s*\(|args\.get\s*\(|
+            r"query\.(?:id|\w+_id)|query\[['\"](?:id|\w+_id)['\"]\])",
             source_text,
         )
         if not param_match:
