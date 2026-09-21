@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QListView,
     QAbstractItemView,
     QDialog,
+    QTabWidget,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -492,6 +493,176 @@ class LoadCenterDialog(AegisDialog):
         self.accept()
         signal.emit()
 
+
+
+
+class CorrectionResultDialog(QDialog):
+    """Ventana independiente de evidencia de una corrección IA."""
+
+    def __init__(self, payload: dict, target_root=None, parent=None):
+        super().__init__(parent)
+        self.payload = payload or {}
+        self.target_root = Path(target_root).resolve() if target_root else None
+        self.setWindowTitle("Aegis Auditor — Resultado de corrección")
+        self.setWindowIcon(brand_icon())
+        self.setWindowFlag(Qt.WindowType.Window, True)
+        self.setModal(False)
+        self.configure_dialog_size(preferred=(1320, 820), minimum=(920, 620))
+        self._build()
+
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(16, 14, 16, 14)
+        root.setSpacing(10)
+
+        correction = self.payload.get("correccion") or {}
+        state = str(self.payload.get("estado_patch") or self.payload.get("estado_final") or "DESCONOCIDO")
+        verified = state in {"PATCH_VERIFIED", "PATCH_VERIFIED_WITH_WARNINGS", "CORREGIDO"}
+        title = "Parche aplicado correctamente" if verified else "Corrección requiere revisión"
+
+        hero = Card(elevated=True)
+        hl = QHBoxLayout(hero)
+        hl.setContentsMargins(16, 12, 16, 12)
+        icon = QLabel("✓" if verified else "!")
+        icon.setObjectName("DialogBrandIcon")
+        icon.setFixedSize(46, 46)
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hl.addWidget(icon)
+
+        texts = QVBoxLayout()
+        h = QLabel(title)
+        h.setObjectName("DialogTitle")
+        texts.addWidget(h)
+        control = QLabel(
+            f"{self.payload.get('control_id') or correction.get('control_id') or 'Control'} · {state}"
+        )
+        control.setObjectName("DialogSubtitle")
+        texts.addWidget(control)
+        motivo = QLabel(str(self.payload.get("motivo") or correction.get("mensaje") or ""))
+        motivo.setWordWrap(True)
+        motivo.setObjectName("DialogSubtitle")
+        texts.addWidget(motivo)
+        hl.addLayout(texts, 1)
+        root.addWidget(hero)
+
+        steps = Card()
+        sl = QHBoxLayout(steps)
+        sl.setContentsMargins(12, 10, 12, 10)
+        languages = self.payload.get("lenguajes_modificados") or []
+        language = (
+            languages[0].get("lenguaje")
+            if languages and isinstance(languages[0], dict)
+            else "Detectado"
+        )
+        restart_data = self.payload.get("reinicio_servicio") or {}
+        restart = str(restart_data.get("estado") or (
+            "Completado" if restart_data.get("completado") else "No requerido"
+        ))
+        verification = (
+            "Sin reproducción"
+            if self.payload.get("estado_final") in {"CORREGIDO", "CORREGIDO_CON_ADVERTENCIAS"}
+            else "Revisar"
+        )
+        for number, label, value in (
+            ("1", "Identificación", str(language or "Detectado")),
+            ("2", "Aplicación del parche", "Archivo modificado"),
+            ("3", "Reinicio del servicio", restart),
+            ("4", "Verificación de seguridad", verification),
+        ):
+            box = QFrame()
+            box.setObjectName("DialogHero")
+            bl = QVBoxLayout(box)
+            bl.setContentsMargins(10, 8, 10, 8)
+            n = QLabel(f"{number}. {label}")
+            n.setObjectName("SectionTitle")
+            v = QLabel(value)
+            v.setObjectName("DialogSubtitle")
+            v.setWordWrap(True)
+            bl.addWidget(n)
+            bl.addWidget(v)
+            sl.addWidget(box, 1)
+        root.addWidget(steps)
+
+        tabs = QTabWidget()
+        tabs.setObjectName("CorrectionTabs")
+        before, after = self._code_pair(correction)
+        tabs.addTab(self._text_panel(before), "Código antes")
+        tabs.addTab(self._text_panel(after), "Código después")
+        tabs.addTab(
+            self._text_panel(str(correction.get("diff") or "Sin diff disponible")),
+            "Diff completo",
+        )
+
+        qa = self.payload.get("validacion_tecnica") or {}
+        qa_payload = {
+            "estado_final": self.payload.get("estado_final"),
+            "estado_patch": state,
+            "motivo": self.payload.get("motivo"),
+            "validacion_tecnica": qa,
+            "qa_comparacion": self.payload.get("qa_comparacion"),
+            "qa_advertencias": self.payload.get("qa_advertencias"),
+            "criterios_exito": self.payload.get("criterios_exito"),
+        }
+        tabs.addTab(
+            self._text_panel(json.dumps(qa_payload, ensure_ascii=False, indent=2)),
+            "QA y evidencia",
+        )
+        root.addWidget(tabs, 1)
+
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        close = QPushButton("✓  Aceptar")
+        close.setObjectName("PrimaryButton")
+        close.setMinimumWidth(150)
+        close.clicked.connect(self.accept)
+        footer.addWidget(close)
+        root.addLayout(footer)
+
+    def _text_panel(self, content: str):
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(2, 2, 2, 2)
+        text = QPlainTextEdit()
+        text.setPlainText(content)
+        text.setReadOnly(True)
+        text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        layout.addWidget(text)
+        return panel
+
+    def _code_pair(self, correction: dict):
+        after = ""
+        before = ""
+        relative = str(correction.get("archivo") or "")
+        files = correction.get("archivos") or []
+        if files and isinstance(files[0], dict):
+            relative = str(files[0].get("archivo") or relative)
+
+        if self.target_root and relative:
+            target = self.target_root / relative
+            try:
+                after = target.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                pass
+
+        backup = str(correction.get("backup") or "")
+        if backup:
+            backup_path = Path(backup)
+            if not backup_path.is_absolute() and self.target_root:
+                backup_path = self.target_root / backup_path
+            try:
+                before = backup_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                pass
+
+        if not before and after and correction.get("diff"):
+            before = (
+                "No fue posible recuperar el backup completo desde la evidencia.\n\n"
+                + str(correction.get("diff"))
+            )
+        return (
+            before or "Código anterior no disponible.",
+            after or "Código modificado no disponible.",
+        )
 
 class AccountManagerDialog(AegisDialog):
     """Editor de cuentas de prueba y roles del perfil."""
