@@ -431,6 +431,7 @@ def ciclo_correctivo(
     try:
         correccion = apply_correction(cfg, control_id, target_root, evidence)
         evidence.write_json("cambios/correccion.json", correccion.as_dict())
+        manifest["correccion"] = correccion.as_dict()
 
         modified_files = [
             str(item.get("archivo") or "")
