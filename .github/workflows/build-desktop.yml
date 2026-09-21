@@ -230,7 +230,7 @@ jobs:
           if-no-files-found: error
 
 
-  release-v1-3-1:
+  release-v1-4-0:
     name: Publicar Release v1.4.0
     needs:
       - windows-x64
