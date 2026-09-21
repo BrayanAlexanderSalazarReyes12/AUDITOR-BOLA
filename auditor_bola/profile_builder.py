@@ -3128,7 +3128,7 @@ def _infer_p1_candidates(
         # mantienen la ruta literal (/profile) y reciben el identificador
         # mediante ?id=..., req.query, request.args o getParameter.
         query_id = re.search(
-            r"(?:getparameter\s*\(|args\.get\s*\(|query\.(?:id|\w+_id)|query\[['"](?:id|\w+_id)['"]\])",
+            r"(?:getparameter\s*\(|args\.get\s*\(|query\.(?:id|\w+_id)|query\[['\"](?:id|\w+_id)['\"]\])",
             lower_source,
         )
         if query_id and method in {"GET", "PATCH", "PUT", "DELETE"}:
