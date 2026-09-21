@@ -496,7 +496,7 @@ class LoadCenterDialog(AegisDialog):
 
 
 
-class CorrectionResultDialog(QDialog):
+class CorrectionResultDialog(AegisDialog):
     """Ventana independiente de evidencia de una corrección IA."""
 
     def __init__(self, payload: dict, target_root=None, parent=None):
