@@ -97,6 +97,7 @@ class AuditorController(QObject):
     log_message = Signal(str)
     error_message = Signal(str, str)
     info_message = Signal(str, str)
+    correction_result = Signal(object)
     ai_proposals_changed = Signal(list)
     evidence_changed = Signal()
 
@@ -1564,6 +1565,7 @@ class AuditorController(QObject):
                 f"Corrección {row['id']}: {state}"
             )
             self.evidence_changed.emit()
+            self.correction_result.emit(payload or {})
             self.diagnose()
 
         self._run_async(
