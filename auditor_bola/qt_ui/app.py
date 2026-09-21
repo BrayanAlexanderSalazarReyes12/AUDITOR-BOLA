@@ -44,6 +44,7 @@ from ..version import __version__
 from .controller import AuditorController
 from .dialogs import (
     AutoProfileDialog,
+    CorrectionResultDialog,
     LoadCenterDialog,
     styled_existing_directory,
     styled_open_file,
@@ -726,10 +727,24 @@ class AegisMainWindow(QMainWindow):
                 body,
             )
         )
+        # Las correcciones verificadas abren una ventana independiente con
+        # evidencia completa; el flujo principal sigue disponible.
+        c.correction_result.connect(self._show_correction_result)
         c.ai_proposals_changed.connect(
             self._ai_proposals_ready
         )
         c.evidence_changed.connect(self.evidence.refresh)
+
+    def _show_correction_result(self, payload):
+        dialog = CorrectionResultDialog(
+            payload or {},
+            target_root=self.controller.target_root,
+            parent=self,
+        )
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+        self._correction_dialog = dialog
 
     # ------------------------------------------------------------------
     # Navegación
