@@ -3937,6 +3937,112 @@ def _infer_automatic_p1_checks(
 
     # BOLA: requiere una relación objeto -> propietario explícita.
     bola_index = 1
+
+    # Materializa IDOR/BOLA con ?id=... cuando el framework no expresa el
+    # identificador en la ruta. La propiedad se obtiene de la misma evidencia
+    # de datos que alimenta los controles /{id}.
+    for item in endpoint_inventory:
+        method = str(item.get("metodo") or "").upper()
+        raw_route = str(item.get("ruta") or "")
+        if method not in {"GET", "PATCH", "PUT", "DELETE"}:
+            continue
+        source_files = list(item.get("archivos") or [])
+        source_text = "\n".join(
+            _read_text(
+                detection.root / source,
+                limit=MAX_TEXT_SCAN_BYTES,
+            )
+            for source in source_files
+            if source
+        ).lower()
+        param_match = re.search(
+            r"(?i)(?:getparameter\\s*\\(|args\\.get\\s*\\(|"
+            r"query\\.(?:id|\\w+_id)|query\\[['\"](?:id|\\w+_id)['\"]\\])",
+            source_text,
+        )
+        if not param_match:
+            continue
+
+        parameter = "id"
+        quoted = re.search(
+            r"['\"]([a-z0-9_]+)['\"]",
+            param_match.group(0),
+            re.I,
+        )
+        if quoted:
+            parameter = quoted.group(1)
+
+        route_tokens = [
+            token.lower()
+            for token in re.findall(r"[A-Za-zÀ-ÿ_]+", raw_route)
+            if len(token) >= 3
+        ]
+        eligible_samples = [
+            evidence
+            for evidence in owner_samples
+            if evidence.get("propietario_esperado") in usernames
+        ]
+        ranked_samples = sorted(
+            eligible_samples,
+            key=lambda evidence: sum(
+                1
+                for token in route_tokens
+                if token in (
+                    str(evidence.get("archivo") or "")
+                    + " "
+                    + str(evidence.get("contexto") or "")
+                ).lower()
+            ),
+            reverse=True,
+        )
+        if not ranked_samples:
+            continue
+        sample = ranked_samples[0]
+        object_id = str(sample.get("id_prueba") or "").strip()
+        owner = str(sample.get("propietario_esperado") or "").strip()
+        if not object_id or owner not in usernames:
+            continue
+
+        separator = "&" if "?" in raw_route else "?"
+        profile_route = (
+            raw_route
+            + separator
+            + f"{parameter}={{id}}"
+        )
+        control_id = f"P1-AUTO-BOLA-{bola_index:03d}"
+        bola_index += 1
+        checks.append(
+            {
+                "tipo": "bola",
+                "id_control": control_id,
+                "nombre": f"Control de propiedad sobre {method} {profile_route}",
+                "descripcion": (
+                    "El acceso al objeto identificado por parámetro debe "
+                    "respetar propietario o rol privilegiado."
+                ),
+                "metodo": method,
+                "ruta": profile_route,
+                "id_prueba": object_id,
+                "propietario_esperado": owner,
+                "cuerpo_prueba": None,
+                "codigos_permitidos": [200, 201, 204],
+                "archivos_fuente": source_files,
+                "pistas_codigo": [
+                    f"parámetro de objeto: {parameter}",
+                    "propietario",
+                    "owner",
+                    "autorización por objeto",
+                ],
+                "autogenerado": True,
+                "confianza": "alta",
+                "fuentes_evidencia": list(
+                    dict.fromkeys(
+                        source_files
+                        + [str(sample.get("archivo") or "")]
+                    )
+                ),
+            }
+        )
     for item in endpoint_inventory:
         method = str(item.get("metodo") or "").upper()
         raw_route = str(item.get("ruta") or "")
