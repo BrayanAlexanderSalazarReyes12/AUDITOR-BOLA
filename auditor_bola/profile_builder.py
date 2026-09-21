@@ -3124,6 +3124,39 @@ def _infer_p1_candidates(
                     }
                 )
 
+        # IDOR/BOLA por parámetro de consulta. Algunos frameworks
+        # mantienen la ruta literal (/profile) y reciben el identificador
+        # mediante ?id=..., req.query, request.args o getParameter.
+        query_id = re.search(
+            r"(?i)(?:getparameter\\s*\\(|args\\.get\\s*\\(|"
+            r"query\\.(?:id|\\w+_id)|query\\[['\"](?:id|\\w+_id)['\"]\\])",
+            lower_source,
+        )
+        if query_id and method in {"GET", "PATCH", "PUT", "DELETE"}:
+            key = ("bola-query", method, route)
+            if key not in seen:
+                seen.add(key)
+                candidates.append(
+                    {
+                        "familia": "BOLA",
+                        "tipo_control": "bola",
+                        "metodo": method,
+                        "ruta_detectada": route,
+                        "parametro_objeto": "id",
+                        "archivos_fuente": source_files,
+                        "requiere_confirmacion": [
+                            "ruta_ejecutable",
+                            "id_prueba",
+                            "propietario_esperado",
+                            "parametro_objeto",
+                        ],
+                        "motivo": (
+                            "El endpoint obtiene un identificador de objeto "
+                            "desde un parámetro de consulta."
+                        ),
+                    }
+                )
+
         if (
             any(token in lower_route for token in sensitive_tokens)
             or any(token in lower_source for token in auth_source_tokens)
