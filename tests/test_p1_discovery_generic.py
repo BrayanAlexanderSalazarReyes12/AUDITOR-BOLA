@@ -7,6 +7,7 @@ def test_query_parameter_idor_and_db_owner_are_discovered(tmp_path: Path):
     (tmp_path / "app.py").write_text(
         '''
 from flask import request
+@app.get("/profile")
 def profile():
     user_id = request.args.get("id")
     return get_user(user_id)
