@@ -1,5 +1,6 @@
 # security-patching-release: v1.4.1
 # release-publish: v1.4.1
+# v1.4.1-release-ready: build and publish desktop artifacts after CI/version synchronization
 name: Build desktop executables
 
 on:
