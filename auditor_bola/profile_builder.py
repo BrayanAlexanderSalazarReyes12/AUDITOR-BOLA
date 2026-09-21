@@ -3464,6 +3464,63 @@ def _extract_owner_samples(
                     match.group(0),
                 )
 
+
+    # SQL posicional sin lista de columnas:
+    # INSERT INTO USERS VALUES (1,'admin',...). En Java/H2 y otros proyectos
+    # pequeños es una fuente común de evidencia de propiedad.
+    schema_by_table: dict[str, list[str]] = {}
+    for path, relative in _iter_source_files(
+        detection.root,
+        max_files=None,
+    ):
+        text = _read_text(path, limit=MAX_TEXT_SCAN_BYTES)
+        if not text:
+            continue
+        for create in re.finditer(
+            r"(?is)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+            r"([A-Za-z0-9_.\"-]+)\s*\((.*?)\)",
+            text,
+        ):
+            table = create.group(1).split(".")[-1].strip('"').lower()
+            columns: list[str] = []
+            for definition in _split_sql_values(create.group(2)):
+                match = re.match(
+                    r"\s*[\"']?([A-Za-z_][A-Za-z0-9_]*)[\"']?\s+",
+                    definition,
+                )
+                if match:
+                    columns.append(match.group(1))
+            if columns:
+                schema_by_table[table] = columns
+
+        for insert_match in re.finditer(
+            r"(?is)INSERT\s+INTO\s+([A-Za-z0-9_.\"-]+)\s+VALUES\s*\(([^;]+?)\)",
+            text,
+        ):
+            table = insert_match.group(1).split(".")[-1].strip('"').lower()
+            columns = schema_by_table.get(table)
+            if not columns:
+                continue
+            values = _split_sql_values(insert_match.group(2))
+            if len(values) != len(columns):
+                continue
+            mapping = {
+                column: _clean_literal(value)
+                for column, value in zip(columns, values)
+            }
+            evidence = infer_object_identity(
+                mapping,
+                usernames,
+                identity_aliases=identity_aliases,
+            )
+            if evidence:
+                add_sample(
+                    evidence,
+                    relative.as_posix(),
+                    "positional-sql-owner",
+                    insert_match.group(0),
+                )
+
     return samples
 
 
