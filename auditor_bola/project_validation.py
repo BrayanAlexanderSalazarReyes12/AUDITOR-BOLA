@@ -302,9 +302,9 @@ def qa_failure_signature(detail: str) -> list[str]:
     text = str(detail or "")
     found: list[str] = []
     patterns = (
-        r"(?m)^FAILED\\s+([^\\s]+)",
-        r"(?m)^ERROR\\s+([^\\s]+)",
-        r"(?m)^[-=]+\\s+([A-Za-z0-9_./\\:-]+::[A-Za-z0-9_./\\:-]+)",
+        r"(?m)^FAILED\s+([^\s]+)",
+        r"(?m)^ERROR\s+([^\s]+)",
+        r"(?m)^[-=]+\s+([A-Za-z0-9_./\:-]+::[A-Za-z0-9_./\:-]+)",
         r"(?m)^([A-Za-z0-9_./\\:-]+::test_[A-Za-z0-9_./\\:-]+)\\s*$",
     )
     for pattern in patterns:
