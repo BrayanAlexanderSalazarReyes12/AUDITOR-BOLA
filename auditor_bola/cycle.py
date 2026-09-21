@@ -341,6 +341,36 @@ def ciclo_correctivo(
     evidence.write_json("baseline/resultados.json", baseline)
     estado_inicial = estado_control(baseline, control_id, selector)
 
+    # QA baseline: permite distinguir un fallo que ya existía antes del
+    # parche de una regresión introducida por la corrección.
+    qa_baseline_payload = None
+    if estado_inicial == "HALLAZGO":
+        try:
+            qa_baseline = validate_project_after_patch(
+                target_root,
+                [control_id],
+                run_build=False,
+                run_tests=True,
+            )
+            qa_baseline_payload = qa_baseline.as_dict()
+            evidence.write_json(
+                "baseline/functional_qa.json",
+                qa_baseline_payload,
+            )
+        except Exception as exc:
+            qa_baseline_payload = {
+                "tests": {
+                    "nombre": "tests",
+                    "estado": "NO_DISPONIBLE",
+                    "detalle": f"QA baseline no disponible: {exc}",
+                },
+                "tests_aplicables": False,
+            }
+            evidence.write_json(
+                "baseline/functional_qa.json",
+                qa_baseline_payload,
+            )
+
     manifest = {
         "sistema": cfg.sistema,
         "version_objetivo": cfg.version_objetivo,
@@ -365,6 +395,7 @@ def ciclo_correctivo(
             "estado": None,
         },
         "evidencia": str(evidence.root),
+        "qa_baseline": qa_baseline_payload,
     }
 
     if estado_inicial == "SIN_HALLAZGO":
@@ -651,52 +682,113 @@ def ciclo_correctivo(
                 qa_payload,
             )
 
-            qa_warning = bool(
-                qa_validation.tests_aplicables
-                and qa_validation.tests.estado != "OK"
+            qa_baseline_tests = str(
+                ((qa_baseline_payload or {}).get("tests") or {}).get("detalle")
+                or ""
             )
-            manifest["qa_advertencias"] = []
-            if qa_warning:
-                manifest["qa_advertencias"].append(
-                    {
-                        "tipo": "SUITE_FUNCIONAL",
-                        "estado": qa_validation.tests.estado,
-                        "detalle": qa_validation.tests.detalle,
-                        "nota": (
-                            "El exploit original dejó de reproducirse. "
-                            "La suite funcional falló después del cambio; "
-                            "puede contener una prueba que todavía espera el "
-                            "comportamiento vulnerable o una regresión que "
-                            "requiere revisión. El parche NO se revierte "
-                            "automáticamente por este motivo."
-                        ),
-                    }
+            qa_post_tests = str(
+                (qa_validation.tests.detalle or "")
+            )
+            baseline_test_state = str(
+                ((qa_baseline_payload or {}).get("tests") or {}).get("estado")
+                or "NO_DISPONIBLE"
+            )
+            baseline_applicable = bool(
+                (qa_baseline_payload or {}).get("tests_aplicables")
+            )
+            post_applicable = bool(qa_validation.tests_aplicables)
+
+            # Un fallo funcional solo es relevante para el parche si aparece
+            # nuevo después de aplicarlo. Si ya existía en baseline, se conserva
+            # como deuda del proyecto y NO se presenta como error del parche.
+            qa_new_failure = bool(
+                post_applicable
+                and qa_validation.tests.estado == "FAILED"
+                and (
+                    not baseline_applicable
+                    or baseline_test_state == "OK"
+                    or qa_post_tests != qa_baseline_tests
                 )
-
-            manifest["criterios_exito"]["functional_test_success"] = (
-                qa_validation.tests.estado in {"OK", "NO_APLICA"}
             )
-            manifest["criterios_exito"]["tests_aplicables"] = bool(
-                qa_validation.tests_aplicables
+            qa_existing_failure = bool(
+                post_applicable
+                and qa_validation.tests.estado == "FAILED"
+                and baseline_applicable
+                and baseline_test_state == "FAILED"
+                and not qa_new_failure
             )
 
-            if qa_warning:
-                manifest["estado_final"] = "CORREGIDO_CON_ADVERTENCIAS"
-                manifest["estado_patch"] = "PATCH_VERIFIED_WITH_WARNINGS"
+            manifest["qa_comparacion"] = {
+                "baseline_estado": baseline_test_state,
+                "posterior_estado": qa_validation.tests.estado,
+                "fallo_nuevo": qa_new_failure,
+                "fallo_preexistente": qa_existing_failure,
+                "baseline_detalle": qa_baseline_tests,
+                "posterior_detalle": qa_post_tests,
+            }
+            manifest["qa_advertencias"] = []
+            manifest["qa_advertencias"].append(
+                {
+                    "tipo": "SUITE_FUNCIONAL_PREEXISTENTE",
+                    "estado": "FAILED",
+                    "detalle": qa_post_tests,
+                    "ignorable_para_parche": True,
+                }
+            ) if qa_existing_failure else None
+
+            manifest["criterios_exito"]["functional_test_success"] = not qa_new_failure
+            manifest["criterios_exito"]["tests_aplicables"] = post_applicable
+
+            if qa_new_failure:
+                # Un QA nuevo después del parche es una regresión hasta que la
+                # siguiente estrategia adaptativa demuestre lo contrario.
+                _rollback_seguro(
+                    cfg,
+                    correccion,
+                    target_root,
+                    evidence,
+                    reiniciar,
+                    manifest,
+                )
+                manifest["estado_final"] = "NO_CORREGIDO"
+                manifest["estado_patch"] = "QA_REGRESSION"
                 manifest["motivo"] = (
-                    "El código fue modificado y la vulnerabilidad ya no se "
-                    "reproduce. Se conserva el parche. La suite funcional "
-                    "reportó fallos posteriores que deben revisarse por "
-                    "separado; no se usaron para restaurar el comportamiento "
-                    "vulnerable."
+                    "El reescaneo de seguridad confirmó que el hallazgo ya no "
+                    "se reproduce, pero la suite funcional presentó un fallo "
+                    "nuevo después del parche. El cambio fue revertido y la "
+                    "evidencia se entrega a la siguiente iteración adaptativa."
+                )
+                manifest["failure_analysis"] = _failure_analysis(
+                    manifest,
+                    expected=(
+                        "resolver el hallazgo y mantener el comportamiento "
+                        "funcional que pasaba antes del parche"
+                    ),
+                    observed="QA_REGRESSION",
+                    evidence={
+                        "baseline": qa_baseline_payload,
+                        "posterior": qa_payload,
+                    },
+                )
+                evidence.write_json("manifest.json", manifest)
+                return manifest
+
+            # Si el mismo test ya fallaba antes del parche, no es una regresión
+            # causada por esta receta. La seguridad sigue siendo verificable.
+            manifest["estado_final"] = "CORREGIDO"
+            manifest["estado_patch"] = "PATCH_VERIFIED"
+            if qa_existing_failure:
+                manifest["motivo"] = (
+                    "El código fue modificado y el exploit original dejó de "
+                    "reproducirse. La suite funcional conserva fallos que ya "
+                    "existían antes del parche; no se atribuyen a esta "
+                    "corrección."
                 )
             else:
-                manifest["estado_final"] = "CORREGIDO"
-                manifest["estado_patch"] = "PATCH_VERIFIED"
                 manifest["motivo"] = (
                     "El código fue modificado, el exploit original dejó de "
                     "reproducirse y las validaciones posteriores no detectaron "
-                    "fallos funcionales ejecutables."
+                    "fallos funcionales nuevos."
                 )
 
             evidence.write_json("manifest.json", manifest)
