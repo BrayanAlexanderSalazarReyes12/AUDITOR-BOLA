@@ -30,3 +30,4 @@ Se agrega cobertura para la orquestación adaptativa y el cambio de estrategia d
 ## Seguridad
 
 La IA no decide por sí sola que un parche es correcto. El estado PATCH_VERIFIED / PATCH_VERIFIED_WITH_WARNINGS continúa dependiendo de la evidencia producida por el ciclo de validación, reinicio, reescaneo y QA.
+<!-- release v1.4.1 -->
