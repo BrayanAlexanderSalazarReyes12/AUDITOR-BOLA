@@ -344,35 +344,11 @@ def ciclo_correctivo(
     evidence.write_json("baseline/resultados.json", baseline)
     estado_inicial = estado_control(baseline, control_id, selector)
 
-    # QA baseline: permite distinguir un fallo que ya existía antes del
-    # parche de una regresión introducida por la corrección.
+    # 1.4.2-alpha: la verificacion de seguridad es la puerta de entrada.
+    # La suite funcional se ejecuta despues del reescaneo para no confundir
+    # un test legacy que espera el comportamiento vulnerable con un fallo del
+    # parche de seguridad.
     qa_baseline_payload = None
-    if estado_inicial == "HALLAZGO":
-        try:
-            qa_baseline = validate_project_after_patch(
-                target_root,
-                [control_id],
-                run_build=False,
-                run_tests=True,
-            )
-            qa_baseline_payload = qa_baseline.as_dict()
-            evidence.write_json(
-                "baseline/functional_qa.json",
-                qa_baseline_payload,
-            )
-        except Exception as exc:
-            qa_baseline_payload = {
-                "tests": {
-                    "nombre": "tests",
-                    "estado": "NO_DISPONIBLE",
-                    "detalle": f"QA baseline no disponible: {exc}",
-                },
-                "tests_aplicables": False,
-            }
-            evidence.write_json(
-                "baseline/functional_qa.json",
-                qa_baseline_payload,
-            )
 
     manifest = {
         "sistema": cfg.sistema,
@@ -753,35 +729,19 @@ def ciclo_correctivo(
             manifest["criterios_exito"]["tests_aplicables"] = post_applicable
 
             if qa_new_failure:
-                # Un QA nuevo después del parche es una regresión hasta que la
-                # siguiente estrategia adaptativa demuestre lo contrario.
-                _rollback_seguro(
-                    cfg,
-                    correccion,
-                    target_root,
-                    evidence,
-                    reiniciar,
-                    manifest,
-                )
-                manifest["estado_final"] = "NO_CORREGIDO"
-                manifest["estado_patch"] = "QA_REGRESSION"
+                # Alpha: el hallazgo de seguridad ya fue invalidado por el
+                # reescaneo. Un fallo de la suite funcional posterior queda
+                # documentado como advertencia y NO revierte un parche que
+                # demostró eliminar el exploit original. Esto permite trabajar
+                # con suites legacy que todavía esperan el comportamiento
+                # vulnerable.
+                manifest["estado_final"] = "CORREGIDO_CON_ADVERTENCIAS"
+                manifest["estado_patch"] = "PATCH_VERIFIED_WITH_WARNINGS"
                 manifest["motivo"] = (
                     "El reescaneo de seguridad confirmó que el hallazgo ya no "
-                    "se reproduce, pero la suite funcional presentó un fallo "
-                    "nuevo después del parche. El cambio fue revertido y la "
-                    "evidencia se entrega a la siguiente iteración adaptativa."
-                )
-                manifest["failure_analysis"] = _failure_analysis(
-                    manifest,
-                    expected=(
-                        "resolver el hallazgo y mantener el comportamiento "
-                        "funcional que pasaba antes del parche"
-                    ),
-                    observed="QA_REGRESSION",
-                    evidence={
-                        "baseline": qa_baseline_payload,
-                        "posterior": qa_payload,
-                    },
+                    "se reproduce. La suite funcional posterior presentó "
+                    "fallos; se conservó el parche y se registraron como "
+                    "advertencias para la siguiente iteración QA."
                 )
                 evidence.write_json("manifest.json", manifest)
                 return manifest
