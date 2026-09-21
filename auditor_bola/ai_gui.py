@@ -1888,25 +1888,7 @@ class AIAssistantMixin:
             }
             return last_result, selected_proposal, selected_recipe, attempt_history
 
-        def done(result):
-            estado = result.get("estado_final")
-            instance_path = result.get("instancia_concreta")
-            knowledge_path = result.get("conocimiento_aprendido")
-            reused_path = result.get("conocimiento_reutilizado")
-            knowledge_error = result.get("conocimiento_error")
-            knowledge_fallback = result.get("conocimiento_fallback")
-
-            self._log(
-                f"Receta Gemma {proposal.id} aplicada a {control}: {estado}"
-            )
-            if instance_path:
-                self._log(
-                    "Instancia concreta verificada guardada: "
-                    f"{instance_path}"
-                )
-            if knowledge_path:
-                self._log(
-           def done(payload):
+        def done(payload):
             result, applied_proposal, applied_recipe, attempt_history = payload
             estado = result.get("estado_final")
             instance_path = result.get("instancia_concreta")
@@ -1944,6 +1926,155 @@ class AIAssistantMixin:
             if knowledge_error:
                 self._log(f"Error de aprendizaje reusable: {knowledge_error}")
 
+            if self.ai_session_dir:
+                guardar_seleccion_ia(
+                    self.ai_session_dir,
+                    propuesta=applied_proposal,
+                    correccion=applied_recipe,
+                    resultado=result,
+                )
+
+            source_rel = applied_recipe.archivo
+            extension = Path(source_rel).suffix.lower()
+            caso = {
+                "sistema": self.cfg.sistema,
+                "version": self.cfg.version_objetivo,
+                "control_id": control,
+                "tipo_control": row.get("tipo_control"),
+                "metodo": row.get("metodo"),
+                "ruta": row.get("ruta"),
+                "extension": extension,
+                "enfoque": applied_proposal.enfoque,
+            }
+
+            if estado in {"CORREGIDO", "CORREGIDO_CON_ADVERTENCIAS"}:
+                provider = self.ai_provider
+                library_path = guardar_receta_biblioteca(
+                    applied_recipe,
+                    sistema=self.cfg.sistema,
+                    version_objetivo=self.cfg.version_objetivo,
+                    metodo=row.get("metodo"),
+                    ruta=row.get("ruta"),
+                    tipo_control=row.get("tipo_control"),
+                    titulo=applied_proposal.titulo,
+                    fuente="gemma",
+                    proveedor=provider.provider_name if provider else None,
+                    modelo=provider.model_id if provider else None,
+                    verificada=True,
+                )
+                result["instancia_concreta"] = str(library_path)
+
+                if active_knowledge is not None:
+                    registrar_uso_conocimiento(
+                        active_knowledge.path,
+                        exitoso=True,
+                        caso_exitoso=caso,
+                    )
+                    result["conocimiento_reutilizado"] = str(
+                        active_knowledge.path
+                    )
+                else:
+                    try:
+                        correction_info = result.get("correccion_aplicada") or {}
+                        backup = correction_info.get("backup")
+                        archivo = correction_info.get("archivo", source_rel)
+                        if not backup:
+                            raise RuntimeError(
+                                "La evidencia no contiene el backup necesario "
+                                "para generalizar la corrección."
+                            )
+                        codigo_antes = Path(backup).read_text(
+                            encoding="utf-8"
+                        )
+                        codigo_despues = (
+                            self.target_root / archivo
+                        ).read_text(encoding="utf-8")
+                        diff = correction_info.get("diff") or ""
+
+                        knowledge, knowledge_context, _ = (
+                            generalizar_correccion_exitosa(
+                                self.cfg,
+                                control_id=control,
+                                descripcion=descripcion,
+                                detalle=detalle,
+                                metadata_hallazgo=metadata,
+                                matriz_pruebas=matriz,
+                                source_relative=archivo,
+                                codigo_antes=codigo_antes,
+                                codigo_despues=codigo_despues,
+                                diff=diff,
+                                propuesta=applied_proposal,
+                                provider=provider,
+                            )
+                        )
+                        if (
+                            extension
+                            and extension not in knowledge.lenguajes_observados
+                        ):
+                            knowledge.lenguajes_observados.append(extension)
+
+                        knowledge_path = guardar_conocimiento(
+                            knowledge,
+                            caso_exitoso=caso,
+                        )
+                        result["conocimiento_aprendido"] = str(knowledge_path)
+
+                        if self.ai_session_dir:
+                            (
+                                self.ai_session_dir / "conocimiento_aprendido.json"
+                            ).write_text(
+                                json.dumps(
+                                    {
+                                        "path": str(knowledge_path),
+                                        "knowledge": asdict(knowledge),
+                                        "contexto_redactado": knowledge_context,
+                                    },
+                                    ensure_ascii=False,
+                                    indent=2,
+                                )
+                                + "\n",
+                                encoding="utf-8",
+                            )
+                    except Exception as exc:
+                        try:
+                            fallback = crear_conocimiento_respaldo_verificado(
+                                control_id=control,
+                                descripcion=descripcion,
+                                tipo_control=row.get("tipo_control"),
+                                extension=extension,
+                            )
+                            fallback_path = guardar_conocimiento(
+                                fallback,
+                                caso_exitoso=caso,
+                            )
+                            result["conocimiento_aprendido"] = str(fallback_path)
+                            result["conocimiento_fallback"] = str(exc)
+
+                            if self.ai_session_dir:
+                                (
+                                    self.ai_session_dir
+                                    / "conocimiento_aprendido.json"
+                                ).write_text(
+                                    json.dumps(
+                                        {
+                                            "path": str(fallback_path),
+                                            "knowledge": asdict(fallback),
+                                            "modo": "fallback_verificado",
+                                            "motivo_fallback": str(exc),
+                                        },
+                                        ensure_ascii=False,
+                                        indent=2,
+                                    )
+                                    + "\n",
+                                    encoding="utf-8",
+                                )
+                        except Exception as fallback_exc:
+                            result["conocimiento_error"] = (
+                                "Falló la extracción semántica con IA: "
+                                f"{exc}. También falló el guardado de respaldo: "
+                                f"{fallback_exc}"
+                            )
+
             mensaje = (
                 f"{control}: {estado}\n\n"
                 f"Propuesta verificada: {applied_proposal.id} — "
@@ -1956,15 +2087,22 @@ class AIAssistantMixin:
                 mensaje += (
                     "\nSe cambió el enfoque automáticamente después de dos fallos."
                 )
-            if knowledge_path:
-                mensaje += f"\n\nMedicina reutilizable:\n{knowledge_path}"
-            if knowledge_fallback:
+            if result.get("conocimiento_aprendido"):
                 mensaje += (
-                    "\n\nSe guardó además una medicina de respaldo verificada."
+                    "\n\nMedicina reutilizable:\n"
+                    f"{result['conocimiento_aprendido']}"
+                )
+            if result.get("conocimiento_reutilizado"):
+                mensaje += (
+                    "\n\nLa medicina conocida también funcionó en este aplicativo."
+                )
+            if result.get("conocimiento_fallback"):
+                mensaje += (
+                    "\n\nLa medicina se guardó en modo de respaldo verificado."
                 )
             if knowledge_error:
                 mensaje += (
-                    "\n\nEl parche sí quedó verificado, pero el aprendizaje "
+                    "\n\nEl parche quedó verificado, pero el aprendizaje "
                     "enriquecido no pudo completarse."
                 )
             if estado not in {"CORREGIDO", "CORREGIDO_CON_ADVERTENCIAS"}:
