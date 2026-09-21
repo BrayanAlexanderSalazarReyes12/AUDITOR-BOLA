@@ -937,20 +937,22 @@ class AIPage(QWidget):
         )
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
-        self.detail.setMinimumHeight(70)
-        self.detail.setMaximumHeight(112)
+        self.detail.setFixedHeight(82)
         self.detail.setPlaceholderText(
             "Detalle técnico de la receta seleccionada."
         )
+        self.detail.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        right_l.addWidget(self.detail, 0)
 
         right_l.addWidget(
             SectionHeader(
                 "Vista previa del código",
                 (
-                    "ÁREA PRINCIPAL · archivo real cargado · "
-                    "rojo = eliminado · verde = añadido. "
-                    "Desplázate vertical y horizontalmente para revisar "
-                    "todo el parche antes de aplicarlo."
+                    "CÓDIGO REAL DEL ARCHIVO · rojo = eliminado · "
+                    "verde = añadido · usa las barras de desplazamiento "
+                    "para revisar líneas largas y archivos completos."
                 ),
             )
         )
@@ -960,7 +962,7 @@ class AIPage(QWidget):
         self.diff_view.setLineWrapMode(
             QTextEdit.LineWrapMode.NoWrap
         )
-        self.diff_view.setMinimumHeight(320)
+        self.diff_view.setMinimumHeight(380)
         self.diff_view.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
@@ -970,32 +972,22 @@ class AIPage(QWidget):
             "background:#050F17;"
             "border:1px solid #1D6A91;"
             "border-radius:10px;"
-            "padding:14px;"
+            "padding:12px;"
             "font-family:Consolas, 'Courier New', monospace;"
-            "font-size:14px;"
+            "font-size:13px;"
             "selection-background-color:#164765;"
             "}"
         )
-
-        # El código es el elemento principal de esta pantalla. El detalle de
-        # la receta ocupa solo una franja superior; el resto queda reservado
-        # al diff real para que el usuario pueda leer y revisar el parche.
-        code_split = QSplitter(Qt.Orientation.Vertical)
-        code_split.setChildrenCollapsible(False)
-        code_split.setHandleWidth(8)
-        code_split.addWidget(self.detail)
-        code_split.addWidget(self.diff_view)
-        code_split.setStretchFactor(0, 0)
-        code_split.setStretchFactor(1, 4)
-        code_split.setSizes([96, 620])
-        right_l.addWidget(code_split, 1)
+        # El detalle nunca debe competir con el código por altura. La vista
+        # del parche ocupa explícitamente todo el espacio restante.
+        right_l.addWidget(self.diff_view, 1)
 
         split.addWidget(left)
         split.addWidget(right)
-        left.setMinimumWidth(360)
-        split.setStretchFactor(0, 4)
-        split.setStretchFactor(1, 8)
-        split.setSizes([420, 800])
+        left.setMinimumWidth(330)
+        split.setStretchFactor(0, 0)
+        split.setStretchFactor(1, 1)
+        split.setSizes([360, 1040])
         layout.addWidget(split, 1)
 
         self.refresh_provider()
