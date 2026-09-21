@@ -18,7 +18,10 @@ from .language_detection import (
     detect_source_language,
     requires_service_restart,
 )
-from .project_validation import validate_project_after_patch
+from .project_validation import (
+    qa_failure_signature,
+    validate_project_after_patch,
+)
 from .runner import diagnosticar, filas_gui
 
 
@@ -701,13 +704,19 @@ def ciclo_correctivo(
             # Un fallo funcional solo es relevante para el parche si aparece
             # nuevo después de aplicarlo. Si ya existía en baseline, se conserva
             # como deuda del proyecto y NO se presenta como error del parche.
+            baseline_signature = qa_failure_signature(qa_baseline_tests)
+            post_signature = qa_failure_signature(qa_post_tests)
+            new_failures = [
+                item for item in post_signature
+                if item not in baseline_signature
+            ]
             qa_new_failure = bool(
                 post_applicable
                 and qa_validation.tests.estado == "FAILED"
                 and (
                     not baseline_applicable
                     or baseline_test_state == "OK"
-                    or qa_post_tests != qa_baseline_tests
+                    or bool(new_failures)
                 )
             )
             qa_existing_failure = bool(
@@ -725,6 +734,9 @@ def ciclo_correctivo(
                 "fallo_preexistente": qa_existing_failure,
                 "baseline_detalle": qa_baseline_tests,
                 "posterior_detalle": qa_post_tests,
+                "baseline_fallos": baseline_signature,
+                "posterior_fallos": post_signature,
+                "fallos_nuevos": new_failures,
             }
             manifest["qa_advertencias"] = []
             manifest["qa_advertencias"].append(
