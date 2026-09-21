@@ -4012,7 +4012,7 @@ def _infer_automatic_p1_checks(
             if source
         ).lower()
         param_match = re.search(
-            r"(?:getparameter\s*\(|args\.get\s*\(|query\.(?:id|\w+_id)|query\[['"](?:id|\w+_id)['"]\])",
+            r'(?:getparameter\s*\(|args\.get\s*\(|query\[[\'"](?:id|\w+_id)[\'"]\])',
             source_text,
             re.I,
         )
