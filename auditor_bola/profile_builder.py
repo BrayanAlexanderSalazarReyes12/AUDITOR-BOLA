@@ -24,6 +24,7 @@ from .security_semantics import (
 
 from .security_model import enrich_profile
 from .pilar2_engine import discover_pilar2
+from .seed_data import seed_records
 
 
 TEXT_EXTENSIONS = {
@@ -477,6 +478,45 @@ def _literal_methods(text: str) -> list[str]:
     return [method.upper() for method in methods]
 
 
+def _route_mounts(root: Path) -> dict[tuple[str, str], str]:
+    """Resuelve imports locales y prefijos de Blueprint/Express."""
+    mounts = {}
+    for path, relative in _iter_source_files(root):
+        text = _read_text(path)
+        if path.suffix == ".py":
+            imports = {}
+            for match in re.finditer(r"from\s+([\w.]+)\s+import\s+(\w+)(?:\s+as\s+(\w+))?", text):
+                module, symbol, alias = match.groups()
+                if module.startswith("."):
+                    levels = len(module) - len(module.lstrip("."))
+                    parent = path.parent
+                    for _ in range(levels - 1):
+                        parent = parent.parent
+                    target = parent / module.lstrip(".").replace(".", "/")
+                else:
+                    target = root / module.replace(".", "/")
+                target = target.with_suffix(".py")
+                if target.is_file():
+                    imports[alias or symbol] = (target.relative_to(root).as_posix(), symbol)
+            for match in re.finditer(
+                r"\.register_blueprint\(\s*(\w+)\s*,\s*url_prefix\s*=\s*['\"]([^'\"]*)['\"]", text
+            ):
+                if match[1] in imports:
+                    mounts[imports[match[1]]] = match[2]
+        elif path.suffix in {".js", ".ts", ".cjs", ".mjs"}:
+            imports = {}
+            for match in re.finditer(r"(?:const|let|var)\s+(\w+)\s*=\s*require\(['\"](\.[^'\"]+)['\"]\)", text):
+                target = (path.parent / match[2]).resolve()
+                if not target.suffix:
+                    target = target.with_suffix(path.suffix)
+                if target.is_file() and target.is_relative_to(root):
+                    imports[match[1]] = target.relative_to(root).as_posix()
+            for match in re.finditer(r"\.use\(\s*['\"]([^'\"]*)['\"]\s*,\s*(\w+)\s*\)", text):
+                if match[2] in imports:
+                    mounts[(imports[match[2]], "*")] = match[1]
+    return mounts
+
+
 def _extract_routes(root: Path) -> list[DetectedRoute]:
     """Inventaría rutas declaradas estáticamente en todo el proyecto.
 
@@ -485,6 +525,7 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
     """
 
     found: dict[tuple[str, str, str], DetectedRoute] = {}
+    mounts = _route_mounts(root)
 
     def add(
         method: str,
@@ -583,7 +624,7 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
 
         # Flask / FastAPI / Starlette. Para Blueprint conservamos
         # url_prefix, porque una ruta "/<id>" no es ejecutable sin su prefijo.
-        blueprint_prefixes: dict[str, str] = {}
+        blueprint_prefixes = {receiver: prefix for (file, receiver), prefix in mounts.items() if file == source}
         for bp_match in re.finditer(
             r"(?m)^\s*(\w+)\s*=\s*Blueprint\s*\("
             r".{0,800}?\burl_prefix\s*=\s*['\"]([^'\"]+)['\"]",
@@ -595,7 +636,7 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
         for match in re.finditer(
             r"@(app|router|bp|blueprint|\w+)"
             r"\.(get|post|put|patch|delete|options|head)"
-            r"\(\s*['\"]([^'\"]+)['\"]",
+            r"\(\s*['\"]([^'\"]*)['\"]",
             text,
             re.I,
         ):
@@ -615,7 +656,7 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
 
         for match in re.finditer(
             r"@(app|router|bp|blueprint|\w+)\.route"
-            r"\(\s*['\"]([^'\"]+)['\"]([^)]*)\)",
+            r"\(\s*['\"]([^'\"]*)['\"]([^)]*)\)",
             text,
             re.I | re.S,
         ):
@@ -642,14 +683,14 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
             for match in re.finditer(
                 r"\b(?:app|router|server|fastify|\w+)"
                 r"\.(get|post|put|patch|delete|options|head|all)"
-                r"\(\s*['\"]([^'\"]+)['\"]",
+                r"\(\s*['\"](/[^'\"]*)['\"]",
                 text,
                 re.I,
             ):
                 method = match.group(1).upper()
                 add(
                     "ANY" if method == "ALL" else method,
-                    match.group(2),
+                    _join_route_paths(mounts.get((source, "*"), ""), match.group(2)),
                     source,
                     "javascript-router",
                 )
@@ -809,7 +850,7 @@ def _extract_routes(root: Path) -> list[DetectedRoute]:
             servlet_methods = [
                 method.upper()
                 for method in re.findall(
-                    r"\\bdo(Get|Post|Put|Patch|Delete|Options|Head)\\s*\\(",
+                    r"\bdo(Get|Post|Put|Patch|Delete|Options|Head)\s*\(",
                     text,
                     re.I,
                 )
@@ -1696,6 +1737,17 @@ def _detect_native_runtime(
             base_url="http://127.0.0.1:8080",
         )
 
+        pom_text = _read_text(root / "pom.xml")
+        if "spring-boot" not in frameworks and re.search(r"<packaging>\s*war\s*</packaging>", pom_text):
+            final_name = re.search(r"<finalName>\s*([^<]+)\s*</finalName>", pom_text)
+            context = final_name[1].strip() if final_name else root.name
+            base.update({
+                "modo": "external", "nombre": "Servlet WAR (Tomcat)",
+                "base_url": "http://127.0.0.1:8080/" + context,
+                "descripcion_ejecucion": "Compile con Maven y despliegue el WAR en un contenedor Servlet compatible; indique su URL con contexto.",
+            })
+            return base, base["base_url"]
+
         if (root / "mvnw.cmd").exists() or (root / "mvnw").exists():
             base["nombre"] = "Maven Wrapper"
             base["origen"] = "mvnw"
@@ -1844,7 +1896,7 @@ def _detect_runtime(
         from_descriptor.setdefault("origen", "auditor-package.json")
         from_descriptor.setdefault(
             "base_url",
-            "http://127.0.0.1:8000",
+            _detect_native_runtime(root, languages, frameworks)[1] or "http://127.0.0.1:8000",
         )
         from_descriptor.setdefault("alternativas", [])
         return from_descriptor, from_descriptor["base_url"]
@@ -1997,7 +2049,7 @@ def _account_from_mapping(
     username = next(
         (
             _clean_literal(lowered[key])
-            for key in _USERNAME_KEYS
+            for key in sorted(_USERNAME_KEYS, key=lambda key: (key != "username", key in {"email", "correo"}, key))
             if key in lowered and _clean_literal(lowered[key])
         ),
         None,
@@ -2020,7 +2072,7 @@ def _account_from_mapping(
     password = next(
         (
             _clean_literal(lowered[key])
-            for key in _PASSWORD_KEYS
+            for key in sorted(_PASSWORD_KEYS, key=lambda key: (key != "password", key))
             if key in lowered and _clean_literal(lowered[key])
         ),
         None,
@@ -2028,7 +2080,7 @@ def _account_from_mapping(
     role = next(
         (
             _clean_literal(lowered[key])
-            for key in _ROLE_KEYS
+            for key in sorted(_ROLE_KEYS, key=lambda key: (key != "role", key))
             if key in lowered and _clean_literal(lowered[key])
         ),
         None,
@@ -2199,6 +2251,11 @@ def _extract_accounts_from_text(
     source: str,
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     found: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+    for record in seed_records(text):
+        candidate = _account_from_mapping(record, source=source, confidence="alta")
+        if candidate:
+            found.append(candidate)
 
     found.extend(
         _extract_table_accounts(
@@ -2959,6 +3016,31 @@ def detect_runtime_profile(
     )
 
 
+def _configure_detected_auth(detection: ProjectDetection) -> None:
+    for route in detection.routes:
+        if route.method != "POST":
+            continue
+        text = _read_text(detection.root / route.source)
+        if not all(word in text for word in ("username", "password")):
+            continue
+        login = {"ruta": route.path, "campo_usuario": "username", "campo_password": "password"}
+        if "request.form" in text and re.search(r"session\[", text):
+            auth_type = "session"
+            login.update(formato="form", codigos_exito=[200, 201, 204])
+        elif "getSession(" in text and "getParameter(" in text:
+            auth_type = "session"
+            login.update(formato="form", codigos_exito=[302, 303])
+        elif re.search(r"\btoken\s*:", text) and "req.body" in text:
+            auth_type = "login_bearer"
+            login.update(formato="json", token_json_path="token", codigos_exito=[200, 201])
+        else:
+            continue
+        for account in detection.accounts:
+            if account.get("password"):
+                account.update(auth_type=auth_type, login=dict(login))
+        return
+
+
 def detect_project(root: str | Path) -> ProjectDetection:
     root_path = Path(root).expanduser().resolve()
     if not root_path.exists() or not root_path.is_dir():
@@ -3014,6 +3096,7 @@ def detect_project(root: str | Path) -> ProjectDetection:
         account_sources=account_sources,
     )
     detection.notes.append(f"Base URL sugerida: {base_url}")
+    _configure_detected_auth(detection)
     detection.notes.append(
         f"Cuentas candidatas detectadas: {len(accounts)}"
     )
@@ -3346,15 +3429,29 @@ def _extract_owner_samples(
         evidence_source = _is_p1_evidence_source(relative)
         has_seed_data = bool(
             re.search(
-                r"(?is)INSERT\\s+INTO|executemany\\s*\\(|"
-                r"VALUES\\s*\\(|"
-                r"\\b(?:users|tickets|orders|products|records|registros)\\b.{0,180}\\b"
-                r"(?:owner|owned_by|created_by|propietario|user_id|usuario_id)\\b",
+                r"(?is)INSERT\s+INTO|executemany\s*\(|"
+                r"VALUES\s*\(|"
+                r"\b(?:users|tickets|orders|products|records|registros)\b.{0,180}\b"
+                r"(?:owner|owned_by|created_by|propietario|user_id|usuario_id)\b",
                 text,
             )
         )
         if not evidence_source and not has_seed_data:
             continue
+
+        for record in seed_records(text):
+            evidence = infer_object_identity(record, usernames, identity_aliases=identity_aliases)
+            # El perfil de una cuenta pertenece a la identidad de esa fila.
+            username = str(record.get("username") or "")
+            if not evidence and username in usernames and record.get("id") is not None:
+                evidence = {
+                    "id_prueba": str(record["id"]),
+                    "propietario_esperado": username,
+                    "campo_id": "id", "campo_propietario": "username",
+                    "confianza": "alta",
+                }
+            if evidence:
+                add_sample(evidence, source, "literal-seed-owner", json.dumps(record, ensure_ascii=False))
 
         # Evidencia estructurada: soporta aliases como codigo/creador,
         # author/record_id, created_by/uuid, etc.
@@ -4012,21 +4109,15 @@ def _infer_automatic_p1_checks(
             if source
         ).lower()
         param_match = re.search(
-            r"(?:getparameter\s*\(|args\.get\s*\(|query\.(?:id|\w+_id)|query\[['\"](?:id|\w+_id)['\"]\])",
+            r"(?:(?:getparameter|args\.get)\s*\(\s*['\"](?P<call>id|\w+_id)['\"]|"
+            r"query\.(?P<attr>id|\w+_id)\b|query\[['\"](?P<index>id|\w+_id)['\"]\])",
             source_text,
             re.I,
         )
         if not param_match:
             continue
 
-        parameter = "id"
-        quoted = re.search(
-            r"['\"]([a-z0-9_]+)['\"]",
-            param_match.group(0),
-            re.I,
-        )
-        if quoted:
-            parameter = quoted.group(1)
+        parameter = next(value for value in param_match.groupdict().values() if value)
 
         route_tokens = [
             token.lower()
@@ -4123,6 +4214,11 @@ def _infer_automatic_p1_checks(
             }
             and len(token) >= 3
         ]
+        source_text = "\n".join(_read_text(detection.root / source) for source in item.get("archivos", []))
+        # Un SELECT sobre cuentas vincula su id al username en las semillas,
+        # aunque la ruta se llame /profile y el archivo de datos db.py.
+        if re.search(r"\bSELECT\b.{0,180}\busername\b", source_text, re.I | re.S):
+            route_tokens.append("username")
         eligible_samples = [
             evidence
             for evidence in owner_samples

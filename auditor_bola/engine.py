@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import re
+import requests
 from typing import Any, Callable
 
 from .agent_scope import ResultadoAlcanceAgente, evaluar_alcance_agente
@@ -32,6 +33,7 @@ class Hallazgo:
     ts: str
     id_control: str | None = None
     descripcion: str | None = None
+    error: str | None = None
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -51,6 +53,7 @@ class ResultadoAcceso:
     http_status: int
     vulnerable: bool
     ts: str
+    error: str | None = None
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -116,6 +119,7 @@ def _disparar(base_url: str, endpoint: Endpoint, cuenta: Cuenta):
         endpoint.metodo,
         _armar_url(base_url, endpoint),
         cuenta=cuenta,
+        base_url=base_url,
         cuerpo=endpoint.cuerpo_prueba,
     )
 
@@ -127,10 +131,21 @@ def auditar(
     """Prueba BOLA para cada combinación cuenta + endpoint declarada."""
     hallazgos: list[Hallazgo] = []
     for endpoint in cfg.endpoints:
+        start_index = len(hallazgos)
         for cuenta in cfg.cuentas:
             esperado = _acceso_esperado(cuenta, endpoint, cfg.roles_privilegiados)
-            resp = _disparar(cfg.base_url, endpoint, cuenta)
-            real = resp.status_code in endpoint.codigos_permitidos
+            error = None
+            status = 0
+            try:
+                resp = _disparar(cfg.base_url, endpoint, cuenta)
+                status = resp.status_code
+                if status not in (*endpoint.codigos_permitidos, 401, 403, 404):
+                    error = f"Respuesta no concluyente: HTTP {status}"
+                elif esperado and status not in endpoint.codigos_permitidos:
+                    error = f"La cuenta autorizada no pudo acceder al objeto (HTTP {status})"
+            except requests.RequestException as exc:
+                error = f"No se pudo ejecutar la prueba: {type(exc).__name__}"
+            real = status in endpoint.codigos_permitidos and error is None
             confirmado = real and not esperado
             hallazgos.append(
                 Hallazgo(
@@ -141,11 +156,12 @@ def auditar(
                     rol=cuenta.role,
                     acceso_esperado=esperado,
                     acceso_real=real,
-                    http_status=resp.status_code,
+                    http_status=status,
                     confirmado_bola=confirmado,
                     ts=_ts(),
                     id_control=endpoint.id_control,
                     descripcion=endpoint.descripcion,
+                    error=error,
                 )
             )
             if progress_callback:
@@ -154,6 +170,11 @@ def auditar(
                     f"{endpoint.metodo.upper()} {endpoint.ruta} · "
                     f"cuenta {cuenta.username}"
                 )
+        baseline = [item for item in hallazgos[start_index:] if item.acceso_esperado]
+        if baseline and not any(item.acceso_real for item in baseline):
+            for item in hallazgos[start_index:]:
+                item.error = item.error or "Objeto no validado con una cuenta autorizada"
+                item.confirmado_bola = False
     return hallazgos
 
 
@@ -169,13 +190,19 @@ def auditar_controles_acceso(
             raise ValueError(
                 f"control '{chequeo.id_control}': cuenta '{chequeo.cuenta}' no configurada"
             )
-        resp = request_http(
-            chequeo.metodo,
-            cfg.base_url + chequeo.ruta,
-            cuenta=cuenta,
-            cuerpo=chequeo.cuerpo,
-        )
-        real = resp.status_code in chequeo.codigos_permitidos
+        error = None
+        status = 0
+        try:
+            resp = request_http(
+                chequeo.metodo, cfg.base_url + chequeo.ruta,
+                cuenta=cuenta, base_url=cfg.base_url, cuerpo=chequeo.cuerpo,
+            )
+            status = resp.status_code
+            if status not in (*chequeo.codigos_permitidos, 401, 403):
+                error = f"Respuesta no concluyente: HTTP {status}"
+        except requests.RequestException as exc:
+            error = f"No se pudo ejecutar la prueba: {type(exc).__name__}"
+        real = status in chequeo.codigos_permitidos and error is None
         resultados.append(
             ResultadoAcceso(
                 sistema=cfg.sistema,
@@ -187,9 +214,10 @@ def auditar_controles_acceso(
                 metodo=chequeo.metodo.upper(),
                 acceso_esperado=chequeo.acceso_esperado,
                 acceso_real=real,
-                http_status=resp.status_code,
-                vulnerable=real != chequeo.acceso_esperado,
+                http_status=status,
+                vulnerable=error is None and real != chequeo.acceso_esperado,
                 ts=_ts(),
+                error=error,
             )
         )
         if progress_callback:
@@ -247,7 +275,7 @@ def _ruta_ejecutable_matriz(
 
 
 def _clasificar_status_matriz(status: int) -> tuple[bool | None, str]:
-    if 200 <= status < 400:
+    if 200 <= status < 300:
         return True, "ACCESO"
     if status in {401, 403}:
         return False, "DENEGADO"
@@ -724,6 +752,7 @@ def auditar_matriz_acceso(
                         metodo,
                         cfg.base_url + ejecutable,
                         cuenta=cuenta,
+                        base_url=cfg.base_url,
                         cuerpo=cuerpo,
                     )
                     (
@@ -825,11 +854,13 @@ def auditar_alcance_agente(
             chequeo.direct_metodo,
             cfg.base_url + chequeo.direct_ruta,
             cuenta=cuenta,
+            base_url=cfg.base_url,
         )
         resp_agente = request_http(
             "POST",
             cfg.base_url + chequeo.agent_ruta,
             cuenta=cuenta,
+            base_url=cfg.base_url,
             cuerpo=chequeo.agent_cuerpo,
             timeout=15,
         )

@@ -1,0 +1,4016 @@
+{
+  "sistema": "vulncommerce-node",
+  "version_objetivo": "1.0.0",
+  "base_url": "http://127.0.0.1:3000",
+  "cuentas": [
+    {
+      "username": "admin",
+      "password": "admin123",
+      "role": "ADMIN",
+      "auth_type": "login_bearer",
+      "token": null,
+      "headers": {},
+      "login": {
+        "ruta": "/api/login",
+        "campo_usuario": "username",
+        "campo_password": "password",
+        "formato": "json",
+        "token_json_path": "token",
+        "codigos_exito": [
+          200,
+          201
+        ]
+      }
+    },
+    {
+      "username": "analyst",
+      "password": "analyst123",
+      "role": "ANALYST",
+      "auth_type": "login_bearer",
+      "token": null,
+      "headers": {},
+      "login": {
+        "ruta": "/api/login",
+        "campo_usuario": "username",
+        "campo_password": "password",
+        "formato": "json",
+        "token_json_path": "token",
+        "codigos_exito": [
+          200,
+          201
+        ]
+      }
+    },
+    {
+      "username": "user",
+      "password": "user123",
+      "role": "USER",
+      "auth_type": "login_bearer",
+      "token": null,
+      "headers": {},
+      "login": {
+        "ruta": "/api/login",
+        "campo_usuario": "username",
+        "campo_password": "password",
+        "formato": "json",
+        "token_json_path": "token",
+        "codigos_exito": [
+          200,
+          201
+        ]
+      }
+    }
+  ],
+  "roles_privilegiados": [
+    "ADMIN"
+  ],
+  "runtime": {
+    "modo": "process",
+    "directorio_trabajo": ".",
+    "espera_inicio": 2.0,
+    "variables": {},
+    "comando_inicio": [
+      "npm",
+      "start"
+    ],
+    "preparar_automaticamente": true,
+    "comandos_preparacion": [
+      [
+        "npm",
+        "install"
+      ]
+    ],
+    "nombre": "Runtime declarado",
+    "origen": "auditor-package.json",
+    "base_url": "http://127.0.0.1:3000",
+    "alternativas": []
+  },
+  "chequeos_pilar1": [
+    {
+      "tipo": "bola",
+      "id_control": "P1-AUTO-BOLA-001",
+      "nombre": "Control de propiedad sobre GET /api/profile/{id}",
+      "descripcion": "El acceso al objeto debe respetar propietario o rol privilegiado.",
+      "metodo": "GET",
+      "ruta": "/api/profile/{id}",
+      "id_prueba": "1",
+      "propietario_esperado": "admin",
+      "cuerpo_prueba": null,
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "src/routes/userRoutes.js"
+      ],
+      "pistas_codigo": [
+        "propietario",
+        "owner",
+        "autorización por objeto"
+      ],
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/routes/userRoutes.js",
+        "src/db.js"
+      ]
+    },
+    {
+      "tipo": "acceso",
+      "id_control": "P1-AUTO-ACCESS-001",
+      "nombre": "La operación privilegiada debe rechazar GET /api/admin para analyst",
+      "cuenta": "analyst",
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ],
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ]
+    },
+    {
+      "tipo": "acceso",
+      "id_control": "P1-AUTO-ACCESS-002",
+      "nombre": "La operación privilegiada debe rechazar GET /api/admin para user",
+      "cuenta": "user",
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ],
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "metodo": "GET",
+      "ruta": "/api/profile/{id}",
+      "id_prueba": "1",
+      "propietario_esperado": "admin",
+      "cuerpo_prueba": null,
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "id_control": "P1-AUTO-BOLA-001",
+      "descripcion": "El acceso al objeto debe respetar propietario o rol privilegiado.",
+      "archivos_fuente": [
+        "src/routes/userRoutes.js"
+      ],
+      "pistas_codigo": [
+        "propietario",
+        "owner",
+        "autorización por objeto"
+      ]
+    }
+  ],
+  "endpoints_detectados": [
+    {
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "archivo": "public/index.html",
+      "framework": "documentation-reference",
+      "archivos": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "frameworks": [
+        "documentation-reference",
+        "javascript-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "POST",
+      "ruta": "/api/calculate",
+      "archivo": "public/index.html",
+      "framework": "client-fetch-reference",
+      "archivos": [
+        "public/index.html",
+        "src/routes/systemRoutes.js"
+      ],
+      "frameworks": [
+        "client-fetch-reference",
+        "javascript-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/diagnostic",
+      "archivo": "public/index.html",
+      "framework": "client-form-reference",
+      "archivos": [
+        "public/index.html",
+        "src/routes/systemRoutes.js"
+      ],
+      "frameworks": [
+        "client-form-reference",
+        "javascript-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/download",
+      "archivo": "src/routes/fileRoutes.js",
+      "framework": "javascript-router",
+      "archivos": [
+        "src/routes/fileRoutes.js"
+      ],
+      "frameworks": [
+        "javascript-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/fetch",
+      "archivo": "public/index.html",
+      "framework": "client-form-reference",
+      "archivos": [
+        "public/index.html",
+        "src/routes/networkRoutes.js"
+      ],
+      "frameworks": [
+        "client-form-reference",
+        "javascript-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/go",
+      "archivo": "src/routes/redirectRoutes.js",
+      "framework": "javascript-router",
+      "archivos": [
+        "src/routes/redirectRoutes.js"
+      ],
+      "frameworks": [
+        "javascript-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "POST",
+      "ruta": "/api/login",
+      "archivo": "public/index.html",
+      "framework": "client-fetch-reference",
+      "archivos": [
+        "public/index.html",
+        "src/routes/authRoutes.js"
+      ],
+      "frameworks": [
+        "client-fetch-reference",
+        "javascript-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/profile/:id",
+      "archivo": "src/routes/userRoutes.js",
+      "framework": "javascript-router",
+      "archivos": [
+        "src/routes/userRoutes.js"
+      ],
+      "frameworks": [
+        "javascript-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "PUT",
+      "ruta": "/api/profile/:id",
+      "archivo": "public/index.html",
+      "framework": "documentation-reference",
+      "archivos": [
+        "public/index.html",
+        "src/routes/userRoutes.js"
+      ],
+      "frameworks": [
+        "documentation-reference",
+        "javascript-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/search",
+      "archivo": "public/index.html",
+      "framework": "client-form-reference",
+      "archivos": [
+        "public/index.html",
+        "src/routes/productRoutes.js"
+      ],
+      "frameworks": [
+        "client-form-reference",
+        "javascript-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "POST",
+      "ruta": "/api/upload",
+      "archivo": "public/index.html",
+      "framework": "client-form-reference",
+      "archivos": [
+        "public/index.html",
+        "src/routes/fileRoutes.js"
+      ],
+      "frameworks": [
+        "client-form-reference",
+        "javascript-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    }
+  ],
+  "probar_todos_endpoints_con_todos_usuarios": true,
+  "candidatos_pilar1": [
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/admin",
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "POST",
+      "ruta_detectada": "/api/calculate",
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/systemRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/diagnostic",
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/systemRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/fetch",
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/networkRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/go",
+      "archivos_fuente": [
+        "src/routes/redirectRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "POST",
+      "ruta_detectada": "/api/login",
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/authRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/api/profile/:id",
+      "archivos_fuente": [
+        "src/routes/userRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado"
+      ],
+      "motivo": "Endpoint orientado a objeto con identificador en la ruta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/profile/:id",
+      "archivos_fuente": [
+        "src/routes/userRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "PUT",
+      "ruta_detectada": "/api/profile/:id",
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/userRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado"
+      ],
+      "motivo": "Endpoint orientado a objeto con identificador en la ruta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "PUT",
+      "ruta_detectada": "/api/profile/:id",
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/userRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/search",
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/productRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "POST",
+      "ruta_detectada": "/api/upload",
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/fileRoutes.js"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    }
+  ],
+  "chequeos_agente": [],
+  "chequeos_acceso": [
+    {
+      "id_control": "P1-AUTO-ACCESS-001",
+      "nombre": "La operación privilegiada debe rechazar GET /api/admin para analyst",
+      "cuenta": "analyst",
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ]
+    },
+    {
+      "id_control": "P1-AUTO-ACCESS-002",
+      "nombre": "La operación privilegiada debe rechazar GET /api/admin para user",
+      "cuenta": "user",
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ]
+    }
+  ],
+  "chequeos_pilar2": [
+    {
+      "id_control": "P2-AUTO-CORS-001",
+      "tipo": "cors_reflection",
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "no_destructivo": true,
+      "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado",
+      "nombre": "CORS no debe autorizar origenes externos con credenciales",
+      "familia": "CORS",
+      "componente": "src/app.js",
+      "confianza_inicial": "media",
+      "origen": "auto",
+      "archivos_fuente": [
+        "src/app.js"
+      ],
+      "pistas_codigo": [
+        "configuracion CORS",
+        "prueba Origin externo",
+        "preflight OPTIONS"
+      ]
+    },
+    {
+      "id_control": "P2-AUTO-CORS-002",
+      "tipo": "cors_reflection",
+      "metodo": "GET",
+      "ruta": "/api/diagnostic",
+      "no_destructivo": true,
+      "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado",
+      "nombre": "CORS no debe autorizar origenes externos con credenciales",
+      "familia": "CORS",
+      "componente": "src/app.js",
+      "confianza_inicial": "media",
+      "origen": "auto",
+      "archivos_fuente": [
+        "src/app.js"
+      ],
+      "pistas_codigo": [
+        "configuracion CORS",
+        "prueba Origin externo",
+        "preflight OPTIONS"
+      ]
+    },
+    {
+      "id_control": "P2-AUTO-CORS-003",
+      "tipo": "cors_reflection",
+      "metodo": "GET",
+      "ruta": "/api/download",
+      "no_destructivo": true,
+      "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado",
+      "nombre": "CORS no debe autorizar origenes externos con credenciales",
+      "familia": "CORS",
+      "componente": "src/app.js",
+      "confianza_inicial": "media",
+      "origen": "auto",
+      "archivos_fuente": [
+        "src/app.js"
+      ],
+      "pistas_codigo": [
+        "configuracion CORS",
+        "prueba Origin externo",
+        "preflight OPTIONS"
+      ]
+    }
+  ],
+  "candidatos_pilar2": [
+    {
+      "familia": "CORS",
+      "causa_raiz": "politica_cors",
+      "componente": "src/app.js",
+      "confianza": "media",
+      "hipotesis": "La aplicacion configura CORS; comprobar dinamicamente si acepta origenes no confiables, credenciales o preflight permisivo.",
+      "estado": "candidato",
+      "evidencia": [
+        {
+          "family": "CORS",
+          "source": "LAB_MANIFEST.md",
+          "kind": "documentacion",
+          "line": 24,
+          "confidence": "baja",
+          "facts": {
+            "concepto_cors": true
+          }
+        },
+        {
+          "family": "CORS",
+          "source": "src/app.js",
+          "kind": "codigo_configuracion",
+          "line": 21,
+          "confidence": "media",
+          "facts": {
+            "concepto_cors": true
+          }
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/api/admin",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        },
+        {
+          "id_control": "P2-AUTO-CORS-002",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/api/diagnostic",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        },
+        {
+          "id_control": "P2-AUTO-CORS-003",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/api/download",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        }
+      ],
+      "estrategia_correccion": {
+        "problema": "politica CORS acepta origenes no confiables",
+        "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+        "restricciones": [
+          "adaptar al framework detectado",
+          "no fijar rutas ni nombres de archivo"
+        ],
+        "verificacion": [
+          "repetir Origin externo",
+          "repetir preflight",
+          "smoke test de origen permitido"
+        ]
+      }
+    }
+  ],
+  "estrategias_correccion_pilar2": [
+    {
+      "familia": "CORS",
+      "problema": "politica CORS acepta origenes no confiables",
+      "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+      "restricciones": [
+        "adaptar al framework detectado",
+        "no fijar rutas ni nombres de archivo"
+      ],
+      "verificacion": [
+        "repetir Origin externo",
+        "repetir preflight",
+        "smoke test de origen permitido"
+      ]
+    },
+    {
+      "familia": "SECRET",
+      "problema": "secreto desplegable puede caer en fallback inseguro",
+      "estrategia": "obtener el secreto desde fuente externa; en produccion fallar el arranque si falta o coincide con un default inseguro",
+      "restricciones": [
+        "preservar fallback local solo si la politica lo permite",
+        "no almacenar el valor del secreto en la receta"
+      ],
+      "verificacion": [
+        "produccion sin secreto debe fallar",
+        "produccion con secreto seguro debe iniciar",
+        "repetir control"
+      ]
+    },
+    {
+      "familia": "LIMIT_BYPASS",
+      "problema": "una excepcion puede alterar una politica sin autorizacion suficiente",
+      "estrategia": "autorizar explicitamente la capacidad privilegiada antes de modificar/omitir la politica y auditar su uso",
+      "restricciones": [
+        "no asumir que el nombre del parametro implica vulnerabilidad"
+      ],
+      "verificacion": [
+        "usuario normal sin excepcion",
+        "usuario normal con excepcion",
+        "usuario autorizado con excepcion"
+      ]
+    },
+    {
+      "familia": "CONTAINER",
+      "problema": "runtime de contenedor con privilegios excesivos",
+      "estrategia": "resolver usuario y privilegios efectivos; usar identidad no privilegiada y permisos/capabilities/mounts minimos",
+      "restricciones": [
+        "no insertar USER a ciegas",
+        "considerar Dockerfile, Compose y orquestador"
+      ],
+      "verificacion": [
+        "construir imagen",
+        "iniciar runtime",
+        "comprobar usuario efectivo",
+        "smoke tests"
+      ]
+    }
+  ],
+  "correcciones": [],
+  "metadata_detectada": {
+    "nombre_proyecto": "VulnCommerce Node",
+    "version_detectada": "1.0.0",
+    "version_fuente": "package.json",
+    "version_confianza": "alta",
+    "version_candidatas": [
+      {
+        "version": "1.0.0",
+        "archivo": "package.json",
+        "tipo_fuente": "configuracion",
+        "detector": "npm",
+        "confianza": "alta",
+        "prioridad": 110
+      }
+    ],
+    "lenguajes": [
+      "javascript"
+    ],
+    "frameworks": [
+      "express",
+      "nodejs"
+    ],
+    "manifiestos": [
+      "package-lock.json",
+      "package.json"
+    ],
+    "raices_codigo": [
+      "src",
+      "public"
+    ],
+    "endpoints_candidatos": [
+      {
+        "metodo": "GET",
+        "ruta": "/api/admin",
+        "archivo": "public/index.html",
+        "framework": "documentation-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/admin",
+        "archivo": "src/routes/adminRoutes.js",
+        "framework": "javascript-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/calculate",
+        "archivo": "public/index.html",
+        "framework": "client-fetch-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/calculate",
+        "archivo": "src/routes/systemRoutes.js",
+        "framework": "javascript-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/diagnostic",
+        "archivo": "public/index.html",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/diagnostic",
+        "archivo": "src/routes/systemRoutes.js",
+        "framework": "javascript-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/download",
+        "archivo": "src/routes/fileRoutes.js",
+        "framework": "javascript-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/fetch",
+        "archivo": "public/index.html",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/fetch",
+        "archivo": "src/routes/networkRoutes.js",
+        "framework": "javascript-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/go",
+        "archivo": "src/routes/redirectRoutes.js",
+        "framework": "javascript-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/login",
+        "archivo": "public/index.html",
+        "framework": "client-fetch-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/login",
+        "archivo": "src/routes/authRoutes.js",
+        "framework": "javascript-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/profile/:id",
+        "archivo": "src/routes/userRoutes.js",
+        "framework": "javascript-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "PUT",
+        "ruta": "/api/profile/:id",
+        "archivo": "public/index.html",
+        "framework": "documentation-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "PUT",
+        "ruta": "/api/profile/:id",
+        "archivo": "src/routes/userRoutes.js",
+        "framework": "javascript-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/search",
+        "archivo": "public/index.html",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/search",
+        "archivo": "src/routes/productRoutes.js",
+        "framework": "javascript-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/upload",
+        "archivo": "public/index.html",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/upload",
+        "archivo": "src/routes/fileRoutes.js",
+        "framework": "javascript-router",
+        "tipo_fuente": "codigo"
+      }
+    ],
+    "total_endpoints_detectados": 11,
+    "matriz_endpoint_usuario": {
+      "habilitada": true,
+      "combinaciones_previstas": 33,
+      "politica_mutaciones": "GET/HEAD/OPTIONS directos; POST/PUT/PATCH con cuerpo vacio; DELETE omitido para evitar perdida de datos"
+    },
+    "total_coincidencias_endpoint": 19,
+    "cuentas_candidatas": [
+      {
+        "username": "admin",
+        "role": "ADMIN",
+        "archivo": "src/db.js",
+        "tipo_fuente": "codigo",
+        "confianza": "alta",
+        "password_literal": true,
+        "identity_aliases": [
+          "1"
+        ]
+      },
+      {
+        "username": "analyst",
+        "role": "ANALYST",
+        "archivo": "src/db.js",
+        "tipo_fuente": "codigo",
+        "confianza": "alta",
+        "password_literal": true,
+        "identity_aliases": [
+          "2"
+        ]
+      },
+      {
+        "username": "user",
+        "role": "USER",
+        "archivo": "src/db.js",
+        "tipo_fuente": "codigo",
+        "confianza": "alta",
+        "password_literal": true,
+        "identity_aliases": [
+          "3"
+        ]
+      }
+    ],
+    "archivos_cuentas_escaneados": true,
+    "perfil_generado_automaticamente": true,
+    "motor_evidencia": {
+      "version": 4,
+      "modo": "evidencia-correlacionada-iterativa",
+      "fuentes": [
+        "codigo",
+        "configuracion",
+        "documentacion",
+        "tests",
+        "fixtures",
+        "seeds",
+        "runtime-vivo-solo-lectura"
+      ],
+      "capacidades_pilar1": [
+        "BOLA/IDOR por propiedad",
+        "RBAC/ABAC desde contratos de seguridad",
+        "alcance de agente desde API directa vs agente"
+      ],
+      "capacidades_pilar2": [
+        "CORS estatico + GET/OPTIONS dinamico",
+        "secretos/fallbacks con contexto de entorno",
+        "bypass de limites como candidato diferencial",
+        "contenedor multi-stage + overrides runtime",
+        "debug y sesion extensibles por familia",
+        "deduplicacion hallazgo != caso de prueba"
+      ],
+      "politica_confianza": "solo activar controles cuando la evidencia es ejecutable; lo ambiguo permanece como candidato",
+      "separa_hallazgo_evidencia_caso": true,
+      "deduplicacion_semantica": true,
+      "ids_hallazgo_dinamicos": true,
+      "arquitectura_familias_extensible": true,
+      "estados": [
+        "bloqueado",
+        "candidato",
+        "confirmado",
+        "correccion_fallida",
+        "correccion_pendiente",
+        "corregido",
+        "descartado",
+        "ejecutable",
+        "ejecutado",
+        "error",
+        "evidencia_insuficiente",
+        "no_aplicable",
+        "no_ejecutable",
+        "por_confirmar",
+        "prueba_preparada",
+        "seguro",
+        "vulnerable"
+      ],
+      "ciclo": [
+        "descubrir",
+        "construir_modelo",
+        "formular_hipotesis",
+        "generar_pruebas",
+        "obtener_evidencia",
+        "actualizar_modelo",
+        "generar_pruebas_adicionales",
+        "consolidar",
+        "proponer_correccion_contextual",
+        "reprobar",
+        "regresion",
+        "aprender_receta_abstracta"
+      ]
+    },
+    "candidatos_pilar1": [
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/admin",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/adminRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "POST",
+        "ruta_detectada": "/api/calculate",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/systemRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/diagnostic",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/systemRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/fetch",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/networkRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/go",
+        "archivos_fuente": [
+          "src/routes/redirectRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "POST",
+        "ruta_detectada": "/api/login",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/authRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/api/profile/:id",
+        "archivos_fuente": [
+          "src/routes/userRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado"
+        ],
+        "motivo": "Endpoint orientado a objeto con identificador en la ruta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/profile/:id",
+        "archivos_fuente": [
+          "src/routes/userRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "PUT",
+        "ruta_detectada": "/api/profile/:id",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/userRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado"
+        ],
+        "motivo": "Endpoint orientado a objeto con identificador en la ruta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "PUT",
+        "ruta_detectada": "/api/profile/:id",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/userRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/search",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/productRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "POST",
+        "ruta_detectada": "/api/upload",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/fileRoutes.js"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      }
+    ],
+    "total_candidatos_pilar1": 12,
+    "controles_pilar1_inferidos_automaticamente": [
+      {
+        "id_control": "P1-AUTO-BOLA-001",
+        "nombre": "Control de propiedad sobre GET /api/profile/{id}",
+        "tipo": "bola",
+        "confianza": "alta",
+        "fuentes_evidencia": [
+          "src/routes/userRoutes.js",
+          "src/db.js"
+        ]
+      },
+      {
+        "id_control": "P1-AUTO-ACCESS-001",
+        "nombre": "La operación privilegiada debe rechazar GET /api/admin para analyst",
+        "tipo": "acceso",
+        "confianza": "media-alta",
+        "fuentes_evidencia": [
+          "public/index.html",
+          "src/routes/adminRoutes.js"
+        ]
+      },
+      {
+        "id_control": "P1-AUTO-ACCESS-002",
+        "nombre": "La operación privilegiada debe rechazar GET /api/admin para user",
+        "tipo": "acceso",
+        "confianza": "media-alta",
+        "fuentes_evidencia": [
+          "public/index.html",
+          "src/routes/adminRoutes.js"
+        ]
+      }
+    ],
+    "total_controles_pilar1_activos": 3,
+    "controles_inferidos_automaticamente": [
+      {
+        "id_control": "P2-AUTO-CORS-001",
+        "nombre": "CORS no debe autorizar origenes externos con credenciales",
+        "tipo": "cors_reflection"
+      },
+      {
+        "id_control": "P2-AUTO-CORS-002",
+        "nombre": "CORS no debe autorizar origenes externos con credenciales",
+        "tipo": "cors_reflection"
+      },
+      {
+        "id_control": "P2-AUTO-CORS-003",
+        "nombre": "CORS no debe autorizar origenes externos con credenciales",
+        "tipo": "cors_reflection"
+      }
+    ],
+    "candidatos_pilar2": [
+      {
+        "familia": "CORS",
+        "causa_raiz": "politica_cors",
+        "componente": "src/app.js",
+        "confianza": "media",
+        "hipotesis": "La aplicacion configura CORS; comprobar dinamicamente si acepta origenes no confiables, credenciales o preflight permisivo.",
+        "estado": "candidato",
+        "evidencia": [
+          {
+            "family": "CORS",
+            "source": "LAB_MANIFEST.md",
+            "kind": "documentacion",
+            "line": 24,
+            "confidence": "baja",
+            "facts": {
+              "concepto_cors": true
+            }
+          },
+          {
+            "family": "CORS",
+            "source": "src/app.js",
+            "kind": "codigo_configuracion",
+            "line": 21,
+            "confidence": "media",
+            "facts": {
+              "concepto_cors": true
+            }
+          }
+        ],
+        "casos_prueba": [
+          {
+            "id_control": "P2-AUTO-CORS-001",
+            "tipo": "cors_reflection",
+            "metodo": "GET",
+            "ruta": "/api/admin",
+            "no_destructivo": true,
+            "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+          },
+          {
+            "id_control": "P2-AUTO-CORS-002",
+            "tipo": "cors_reflection",
+            "metodo": "GET",
+            "ruta": "/api/diagnostic",
+            "no_destructivo": true,
+            "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+          },
+          {
+            "id_control": "P2-AUTO-CORS-003",
+            "tipo": "cors_reflection",
+            "metodo": "GET",
+            "ruta": "/api/download",
+            "no_destructivo": true,
+            "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+          }
+        ],
+        "estrategia_correccion": {
+          "problema": "politica CORS acepta origenes no confiables",
+          "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+          "restricciones": [
+            "adaptar al framework detectado",
+            "no fijar rutas ni nombres de archivo"
+          ],
+          "verificacion": [
+            "repetir Origin externo",
+            "repetir preflight",
+            "smoke test de origen permitido"
+          ]
+        }
+      }
+    ],
+    "total_candidatos_pilar2": 1,
+    "descubrimiento_pilar2": {
+      "archivos_analizados": 20,
+      "candidatos": 1,
+      "controles_ejecutables": 3,
+      "familias": [
+        "CORS"
+      ]
+    },
+    "estrategias_correccion_pilar2": [
+      {
+        "familia": "CORS",
+        "problema": "politica CORS acepta origenes no confiables",
+        "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+        "restricciones": [
+          "adaptar al framework detectado",
+          "no fijar rutas ni nombres de archivo"
+        ],
+        "verificacion": [
+          "repetir Origin externo",
+          "repetir preflight",
+          "smoke test de origen permitido"
+        ]
+      },
+      {
+        "familia": "SECRET",
+        "problema": "secreto desplegable puede caer en fallback inseguro",
+        "estrategia": "obtener el secreto desde fuente externa; en produccion fallar el arranque si falta o coincide con un default inseguro",
+        "restricciones": [
+          "preservar fallback local solo si la politica lo permite",
+          "no almacenar el valor del secreto en la receta"
+        ],
+        "verificacion": [
+          "produccion sin secreto debe fallar",
+          "produccion con secreto seguro debe iniciar",
+          "repetir control"
+        ]
+      },
+      {
+        "familia": "LIMIT_BYPASS",
+        "problema": "una excepcion puede alterar una politica sin autorizacion suficiente",
+        "estrategia": "autorizar explicitamente la capacidad privilegiada antes de modificar/omitir la politica y auditar su uso",
+        "restricciones": [
+          "no asumir que el nombre del parametro implica vulnerabilidad"
+        ],
+        "verificacion": [
+          "usuario normal sin excepcion",
+          "usuario normal con excepcion",
+          "usuario autorizado con excepcion"
+        ]
+      },
+      {
+        "familia": "CONTAINER",
+        "problema": "runtime de contenedor con privilegios excesivos",
+        "estrategia": "resolver usuario y privilegios efectivos; usar identidad no privilegiada y permisos/capabilities/mounts minimos",
+        "restricciones": [
+          "no insertar USER a ciegas",
+          "considerar Dockerfile, Compose y orquestador"
+        ],
+        "verificacion": [
+          "construir imagen",
+          "iniciar runtime",
+          "comprobar usuario efectivo",
+          "smoke tests"
+        ]
+      }
+    ],
+    "total_controles_pilar2_activos": 3,
+    "total_controles_activos": 6,
+    "entorno_ejecucion": {
+      "docker_instalado": false,
+      "runtime_principal": "Runtime declarado",
+      "runtime_modo": "process",
+      "runtime_origen": "auditor-package.json",
+      "preferencia_arranque": null,
+      "comando_inicio": [
+        "npm",
+        "start"
+      ],
+      "comando_inicio_por_so": null,
+      "base_url": "http://127.0.0.1:3000"
+    },
+    "plan_ejecucion": {
+      "preferencia": "auto",
+      "fallback_local": true,
+      "principal": {
+        "nombre": "Runtime declarado",
+        "modo": "process",
+        "origen": "auditor-package.json",
+        "comando_inicio": [
+          "npm",
+          "start"
+        ],
+        "comando_inicio_por_so": null,
+        "directorio_trabajo": ".",
+        "base_url": "http://127.0.0.1:3000"
+      },
+      "alternativas": []
+    },
+    "modelo_seguridad_construido": true,
+    "total_controles_explicados": 19,
+    "total_familias_hallazgo_modeladas": 13
+  },
+  "modelo_seguridad": {
+    "version_modelo": 1,
+    "identidades": [
+      {
+        "identidad": "admin",
+        "rol": "ADMIN",
+        "tipo_autenticacion": "login_bearer",
+        "credencial_disponible": true
+      },
+      {
+        "identidad": "analyst",
+        "rol": "ANALYST",
+        "tipo_autenticacion": "login_bearer",
+        "credencial_disponible": true
+      },
+      {
+        "identidad": "user",
+        "rol": "USER",
+        "tipo_autenticacion": "login_bearer",
+        "credencial_disponible": true
+      }
+    ],
+    "roles": [
+      {
+        "rol": "ADMIN",
+        "privilegiado": true,
+        "identidades": [
+          "admin"
+        ]
+      },
+      {
+        "rol": "ANALYST",
+        "privilegiado": false,
+        "identidades": [
+          "analyst"
+        ]
+      },
+      {
+        "rol": "USER",
+        "privilegiado": false,
+        "identidades": [
+          "user"
+        ]
+      }
+    ],
+    "recursos": [
+      {
+        "recurso": "admin",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/admin"
+          }
+        ]
+      },
+      {
+        "recurso": "calculate",
+        "endpoints": [
+          {
+            "metodo": "POST",
+            "ruta": "/api/calculate"
+          }
+        ]
+      },
+      {
+        "recurso": "diagnostic",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/diagnostic"
+          }
+        ]
+      },
+      {
+        "recurso": "download",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/download"
+          }
+        ]
+      },
+      {
+        "recurso": "fetch",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/fetch"
+          }
+        ]
+      },
+      {
+        "recurso": "go",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/go"
+          }
+        ]
+      },
+      {
+        "recurso": "login",
+        "endpoints": [
+          {
+            "metodo": "POST",
+            "ruta": "/api/login"
+          }
+        ]
+      },
+      {
+        "recurso": "profile",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/profile/:id"
+          },
+          {
+            "metodo": "PUT",
+            "ruta": "/api/profile/:id"
+          }
+        ]
+      },
+      {
+        "recurso": "search",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/search"
+          }
+        ]
+      },
+      {
+        "recurso": "upload",
+        "endpoints": [
+          {
+            "metodo": "POST",
+            "ruta": "/api/upload"
+          }
+        ]
+      }
+    ],
+    "endpoints": [
+      {
+        "metodo": "GET",
+        "ruta": "/api/admin",
+        "ruta_normalizada": "/api/admin",
+        "recurso": "admin",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/adminRoutes.js"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "documentation-reference",
+          "javascript-router"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/calculate",
+        "ruta_normalizada": "/api/calculate",
+        "recurso": "calculate",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/systemRoutes.js"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "client-fetch-reference",
+          "javascript-router"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/diagnostic",
+        "ruta_normalizada": "/api/diagnostic",
+        "recurso": "diagnostic",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/systemRoutes.js"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "client-form-reference",
+          "javascript-router"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/download",
+        "ruta_normalizada": "/api/download",
+        "recurso": "download",
+        "archivos_fuente": [
+          "src/routes/fileRoutes.js"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "javascript-router"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/fetch",
+        "ruta_normalizada": "/api/fetch",
+        "recurso": "fetch",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/networkRoutes.js"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "client-form-reference",
+          "javascript-router"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/go",
+        "ruta_normalizada": "/api/go",
+        "recurso": "go",
+        "archivos_fuente": [
+          "src/routes/redirectRoutes.js"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "javascript-router"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/login",
+        "ruta_normalizada": "/api/login",
+        "recurso": "login",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/authRoutes.js"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "client-fetch-reference",
+          "javascript-router"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/profile/:id",
+        "ruta_normalizada": "/api/profile/{id}",
+        "recurso": "profile",
+        "archivos_fuente": [
+          "src/routes/userRoutes.js"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "javascript-router"
+        ]
+      },
+      {
+        "metodo": "PUT",
+        "ruta": "/api/profile/:id",
+        "ruta_normalizada": "/api/profile/{id}",
+        "recurso": "profile",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/userRoutes.js"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "documentation-reference",
+          "javascript-router"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/search",
+        "ruta_normalizada": "/api/search",
+        "recurso": "search",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/productRoutes.js"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "client-form-reference",
+          "javascript-router"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/upload",
+        "ruta_normalizada": "/api/upload",
+        "recurso": "upload",
+        "archivos_fuente": [
+          "public/index.html",
+          "src/routes/fileRoutes.js"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "client-form-reference",
+          "javascript-router"
+        ]
+      }
+    ],
+    "relaciones": [
+      {
+        "tipo": "identidad_rol",
+        "origen": "admin",
+        "destino": "ADMIN"
+      },
+      {
+        "tipo": "identidad_rol",
+        "origen": "analyst",
+        "destino": "ANALYST"
+      },
+      {
+        "tipo": "identidad_rol",
+        "origen": "user",
+        "destino": "USER"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/admin",
+        "destino": "admin"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "POST /api/calculate",
+        "destino": "calculate"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/diagnostic",
+        "destino": "diagnostic"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/download",
+        "destino": "download"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/fetch",
+        "destino": "fetch"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/go",
+        "destino": "go"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "POST /api/login",
+        "destino": "login"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/profile/:id",
+        "destino": "profile"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "PUT /api/profile/:id",
+        "destino": "profile"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/search",
+        "destino": "search"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "POST /api/upload",
+        "destino": "upload"
+      }
+    ],
+    "contrato_conceptual": "Identidad -> Rol/Atributos -> Endpoint -> Accion -> Recurso -> Propiedad, inferido por evidencia y no por nombres fijos"
+  },
+  "familias_controles": {
+    "AGENT_SCOPE": {
+      "code": "AGENT_SCOPE",
+      "pillar": "P1",
+      "name": "Propagación de identidad a agentes y herramientas",
+      "evidence_requirements": [
+        "identidad",
+        "api_directa",
+        "agente",
+        "herramienta"
+      ],
+      "confirmation_strategy": "Comparar el alcance de la API directa con la misma operación a través del agente para la misma identidad.",
+      "false_positive_guards": [
+        "comparar la misma identidad y operación",
+        "no inferir escalamiento por diferencia de formato"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "recurso",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "agente",
+        "herramienta",
+        "contexto_identidad",
+        "autorizacion"
+      ]
+    },
+    "BOLA": {
+      "code": "BOLA",
+      "pillar": "P1",
+      "name": "Autorización a nivel de objeto",
+      "evidence_requirements": [
+        "endpoint_objeto",
+        "identidad",
+        "recurso",
+        "propiedad"
+      ],
+      "confirmation_strategy": "Comparar el mismo objeto con su propietario y otra identidad; confirmar solo cuando la política de propiedad esté sustentada.",
+      "false_positive_guards": [
+        "no inferir propiedad solo por un nombre de ruta",
+        "no tratar HTTP 200 aislado como vulnerabilidad"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "metodo",
+        "recurso",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "punto_autorizacion",
+        "campo_propiedad",
+        "rol_privilegiado"
+      ]
+    },
+    "CONTAINER": {
+      "code": "CONTAINER",
+      "pillar": "P2",
+      "name": "Privilegios de contenedor",
+      "evidence_requirements": [
+        "dockerfile_o_manifiesto",
+        "usuario_efectivo"
+      ],
+      "confirmation_strategy": "Resolver usuario efectivo y privilegios de ejecución.",
+      "false_positive_guards": [
+        "no asumir root solo porque falte USER sin considerar imagen/contexto"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "imagen",
+        "usuario",
+        "capabilities",
+        "mounts"
+      ]
+    },
+    "CORS": {
+      "code": "CORS",
+      "pillar": "P2",
+      "name": "Política CORS",
+      "evidence_requirements": [
+        "configuracion_o_headers",
+        "origin_de_prueba"
+      ],
+      "confirmation_strategy": "Enviar Origin no autorizado y validar combinación de ACAO y credenciales; consolidar configuración global equivalente.",
+      "false_positive_guards": [
+        "no confirmar solo por presencia de la palabra CORS"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "middleware_cors",
+        "allowlist",
+        "credenciales"
+      ]
+    },
+    "DEBUG": {
+      "code": "DEBUG",
+      "pillar": "P2",
+      "name": "Modo debug",
+      "evidence_requirements": [
+        "configuracion",
+        "valor_efectivo"
+      ],
+      "confirmation_strategy": "Confirmar que el modo de depuración es efectivo en el contexto analizado.",
+      "false_positive_guards": [
+        "distinguir ejemplo/test de configuración desplegable"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "configuracion_debug",
+        "entorno"
+      ]
+    },
+    "LIMIT_BYPASS": {
+      "code": "LIMIT_BYPASS",
+      "pillar": "P2",
+      "name": "Bypass de límites u opciones excepcionales",
+      "evidence_requirements": [
+        "parametro_o_rama",
+        "limite",
+        "identidad",
+        "autorizacion"
+      ],
+      "confirmation_strategy": "Comparar operación normal, opción especial con bajo privilegio y opción especial con identidad autorizada.",
+      "false_positive_guards": [
+        "una coincidencia textual solo crea candidato",
+        "exigir relación con un límite o validación"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "metodo",
+        "parametro",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "parametro",
+        "guardia_autorizacion",
+        "limite_afectado"
+      ]
+    },
+    "RBAC_ABAC": {
+      "code": "RBAC_ABAC",
+      "pillar": "P1",
+      "name": "Separación de privilegios RBAC/ABAC",
+      "evidence_requirements": [
+        "identidades",
+        "roles_o_atributos",
+        "operacion",
+        "politica"
+      ],
+      "confirmation_strategy": "Comparar identidades con diferente privilegio sobre la misma operación y contrastar el resultado con una política inferible.",
+      "false_positive_guards": [
+        "una palabra como admin solo crea candidato",
+        "no asumir acceso esperado sin política o evidencia correlacionada"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "metodo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "punto_autorizacion",
+        "roles",
+        "atributos",
+        "politica"
+      ]
+    },
+    "SECRET": {
+      "code": "SECRET",
+      "pillar": "P2",
+      "name": "Gestión insegura de secretos",
+      "evidence_requirements": [
+        "valor",
+        "fuente",
+        "contexto_uso"
+      ],
+      "confirmation_strategy": "Distinguir placeholder/test de secreto realmente utilizado o fallback desplegable.",
+      "false_positive_guards": [
+        "no marcar cualquier cadena parecida a token"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "origen_secreto",
+        "mecanismo_configuracion"
+      ]
+    },
+    "SESSION": {
+      "code": "SESSION",
+      "pillar": "P2",
+      "name": "Cookies y sesión",
+      "evidence_requirements": [
+        "configuracion_sesion"
+      ],
+      "confirmation_strategy": "Evaluar Secure, HttpOnly, SameSite, transporte, duración y secretos.",
+      "false_positive_guards": [
+        "no confundir ejemplo documental con configuración efectiva"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "configuracion_cookie",
+        "sesion",
+        "transporte"
+      ]
+    }
+  },
+  "controles_explicados": [
+    {
+      "familia": "BOLA",
+      "id_control": "P1-AUTO-BOLA-001",
+      "id_control_semantico": "P1-BOLA-902175",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/routes/userRoutes.js",
+        "src/db.js"
+      ],
+      "archivos_fuente": [
+        "src/routes/userRoutes.js"
+      ],
+      "endpoint": "/api/profile/{id}",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": "admin",
+      "hipotesis": "El acceso al objeto debe respetar propietario o rol privilegiado.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/userRoutes.js"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/db.js"
+        },
+        {
+          "tipo": "pista",
+          "valor": "propietario"
+        },
+        {
+          "tipo": "pista",
+          "valor": "owner"
+        },
+        {
+          "tipo": "pista",
+          "valor": "autorización por objeto"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-BOLA-001",
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/profile/{id}",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": "admin",
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/routes/userRoutes.js",
+            "src/db.js"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": "P1-AUTO-ACCESS-001",
+      "id_control_semantico": "P1-RBAC-353865",
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "cuenta": "analyst",
+      "rol": "ANALYST",
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "La operación privilegiada debe rechazar GET /api/admin para analyst",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/adminRoutes.js"
+        },
+        {
+          "tipo": "pista",
+          "valor": "ruta con semántica privilegiada"
+        },
+        {
+          "tipo": "pista",
+          "valor": "separación de roles detectada"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-ACCESS-001",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": "analyst",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/adminRoutes.js"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": "P1-AUTO-ACCESS-002",
+      "id_control_semantico": "P1-RBAC-353865",
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "cuenta": "user",
+      "rol": "USER",
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "La operación privilegiada debe rechazar GET /api/admin para user",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/adminRoutes.js"
+        },
+        {
+          "tipo": "pista",
+          "valor": "ruta con semántica privilegiada"
+        },
+        {
+          "tipo": "pista",
+          "valor": "separación de roles detectada"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-ACCESS-002",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": "user",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/adminRoutes.js"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": "P2-AUTO-CORS-001",
+      "id_control_semantico": "P2-CORS-120189",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/app.js"
+      ],
+      "archivos_fuente": [
+        "src/app.js"
+      ],
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/app.js"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/app.js"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": "P2-AUTO-CORS-002",
+      "id_control_semantico": "P2-CORS-023448",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/app.js"
+      ],
+      "archivos_fuente": [
+        "src/app.js"
+      ],
+      "endpoint": "/api/diagnostic",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "diagnostic",
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/app.js"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-002",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/app.js"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": "P2-AUTO-CORS-003",
+      "id_control_semantico": "P2-CORS-876251",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/app.js"
+      ],
+      "archivos_fuente": [
+        "src/app.js"
+      ],
+      "endpoint": "/api/download",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "download",
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/app.js"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-003",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/download",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "download",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/app.js"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-353865",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/adminRoutes.js"
+      ],
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/adminRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/adminRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-744528",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/systemRoutes.js"
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/systemRoutes.js"
+      ],
+      "endpoint": "/api/calculate",
+      "metodo": "POST",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "calculate",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/systemRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/calculate",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "calculate",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/systemRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-812392",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/systemRoutes.js"
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/systemRoutes.js"
+      ],
+      "endpoint": "/api/diagnostic",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "diagnostic",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/systemRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/systemRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-322954",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/networkRoutes.js"
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/networkRoutes.js"
+      ],
+      "endpoint": "/api/fetch",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "fetch",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/networkRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/fetch",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "fetch",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/networkRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-588500",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/routes/redirectRoutes.js"
+      ],
+      "archivos_fuente": [
+        "src/routes/redirectRoutes.js"
+      ],
+      "endpoint": "/api/go",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "go",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/redirectRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/go",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "go",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/routes/redirectRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-289748",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/authRoutes.js"
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/authRoutes.js"
+      ],
+      "endpoint": "/api/login",
+      "metodo": "POST",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "login",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/authRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/login",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "login",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/authRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-902175",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/routes/userRoutes.js"
+      ],
+      "archivos_fuente": [
+        "src/routes/userRoutes.js"
+      ],
+      "endpoint": "/api/profile/:id",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Endpoint orientado a objeto con identificador en la ruta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/userRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Endpoint orientado a objeto con identificador en la ruta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/routes/userRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-625942",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/routes/userRoutes.js"
+      ],
+      "archivos_fuente": [
+        "src/routes/userRoutes.js"
+      ],
+      "endpoint": "/api/profile/:id",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/userRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/routes/userRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-128727",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/userRoutes.js"
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/userRoutes.js"
+      ],
+      "endpoint": "/api/profile/:id",
+      "metodo": "PUT",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Endpoint orientado a objeto con identificador en la ruta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/userRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Endpoint orientado a objeto con identificador en la ruta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/userRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-737711",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/userRoutes.js"
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/userRoutes.js"
+      ],
+      "endpoint": "/api/profile/:id",
+      "metodo": "PUT",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/userRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/userRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-612425",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/productRoutes.js"
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/productRoutes.js"
+      ],
+      "endpoint": "/api/search",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "search",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/productRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/search",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "search",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/productRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-234788",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "public/index.html",
+        "src/routes/fileRoutes.js"
+      ],
+      "archivos_fuente": [
+        "public/index.html",
+        "src/routes/fileRoutes.js"
+      ],
+      "endpoint": "/api/upload",
+      "metodo": "POST",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "upload",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/fileRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/upload",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "upload",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/fileRoutes.js"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": null,
+      "id_control_semantico": "P2-CORS-209886",
+      "autogenerado": true,
+      "confianza": "media",
+      "fuentes_evidencia": [],
+      "archivos_fuente": [],
+      "endpoint": null,
+      "metodo": null,
+      "cuenta": null,
+      "rol": null,
+      "recurso": null,
+      "propietario": null,
+      "hipotesis": "Evaluar política cors",
+      "evidencia": [
+        {
+          "family": "CORS",
+          "source": "LAB_MANIFEST.md",
+          "kind": "documentacion",
+          "line": 24,
+          "confidence": "baja",
+          "facts": {
+            "concepto_cors": true
+          }
+        },
+        {
+          "family": "CORS",
+          "source": "src/app.js",
+          "kind": "codigo_configuracion",
+          "line": 21,
+          "confidence": "media",
+          "facts": {
+            "concepto_cors": true
+          }
+        }
+      ],
+      "estado": "candidato",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": null,
+          "familia": "CORS",
+          "estado": "candidato",
+          "endpoint": null,
+          "metodo": null,
+          "cuenta": null,
+          "recurso": null,
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": []
+        }
+      ],
+      "componente": "src/app.js",
+      "estrategia_correccion": {
+        "problema": "politica CORS acepta origenes no confiables",
+        "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+        "restricciones": [
+          "adaptar al framework detectado",
+          "no fijar rutas ni nombres de archivo"
+        ],
+        "verificacion": [
+          "repetir Origin externo",
+          "repetir preflight",
+          "smoke test de origen permitido"
+        ]
+      }
+    }
+  ],
+  "hallazgos_modelados": [
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-128727",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/profile/:id",
+      "metodo": "PUT",
+      "componente": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Endpoint orientado a objeto con identificador en la ruta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/userRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Endpoint orientado a objeto con identificador en la ruta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/userRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-902175",
+      "estado": "prueba_preparada",
+      "confianza": "alta",
+      "endpoint": "/api/profile/{id}",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "profile",
+      "propietario": "admin",
+      "hipotesis": "El acceso al objeto debe respetar propietario o rol privilegiado.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/userRoutes.js"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/db.js"
+        },
+        {
+          "tipo": "pista",
+          "valor": "propietario"
+        },
+        {
+          "tipo": "pista",
+          "valor": "owner"
+        },
+        {
+          "tipo": "pista",
+          "valor": "autorización por objeto"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Endpoint orientado a objeto con identificador en la ruta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-BOLA-001",
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/profile/{id}",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": "admin",
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/routes/userRoutes.js",
+            "src/db.js"
+          ]
+        },
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/routes/userRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": [
+        "P1-AUTO-BOLA-001"
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_hallazgo": "P2-CORS-531106",
+      "estado": "prueba_preparada",
+      "confianza": "alta",
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "componente": "src/app.js",
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "causa_raiz": "politica_cors",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/app.js"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        },
+        {
+          "family": "CORS",
+          "source": "LAB_MANIFEST.md",
+          "kind": "documentacion",
+          "line": 24,
+          "confidence": "baja",
+          "facts": {
+            "concepto_cors": true
+          }
+        },
+        {
+          "family": "CORS",
+          "source": "src/app.js",
+          "kind": "codigo_configuracion",
+          "line": 21,
+          "confidence": "media",
+          "facts": {
+            "concepto_cors": true
+          }
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/app.js"
+          ]
+        },
+        {
+          "id_control": "P2-AUTO-CORS-002",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/app.js"
+          ]
+        },
+        {
+          "id_control": "P2-AUTO-CORS-003",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/download",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "download",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/app.js"
+          ]
+        },
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/api/admin",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        }
+      ],
+      "relacionado_con": [
+        "P2-AUTO-CORS-001",
+        "P2-AUTO-CORS-002",
+        "P2-AUTO-CORS-003"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-234788",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/upload",
+      "metodo": "POST",
+      "componente": null,
+      "recurso": "upload",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/fileRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/upload",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "upload",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/fileRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-289748",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/login",
+      "metodo": "POST",
+      "componente": null,
+      "recurso": "login",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/authRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/login",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "login",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/authRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-322954",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/fetch",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "fetch",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/networkRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/fetch",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "fetch",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/networkRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-353865",
+      "estado": "prueba_preparada",
+      "confianza": "media-alta",
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "La operación privilegiada debe rechazar GET /api/admin para analyst",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/adminRoutes.js"
+        },
+        {
+          "tipo": "pista",
+          "valor": "ruta con semántica privilegiada"
+        },
+        {
+          "tipo": "pista",
+          "valor": "separación de roles detectada"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-ACCESS-001",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": "analyst",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/adminRoutes.js"
+          ]
+        },
+        {
+          "id_control": "P1-AUTO-ACCESS-002",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": "user",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/adminRoutes.js"
+          ]
+        },
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/adminRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": [
+        "P1-AUTO-ACCESS-001",
+        "P1-AUTO-ACCESS-002"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-588500",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/go",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "go",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/redirectRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/go",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "go",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/routes/redirectRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-612425",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/search",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "search",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/productRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/search",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "search",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/productRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-625942",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/profile/:id",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/userRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/routes/userRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-737711",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/profile/:id",
+      "metodo": "PUT",
+      "componente": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/userRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/userRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-744528",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/calculate",
+      "metodo": "POST",
+      "componente": null,
+      "recurso": "calculate",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/systemRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/calculate",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "calculate",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/systemRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-812392",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/diagnostic",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "diagnostic",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "public/index.html"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/routes/systemRoutes.js"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "public/index.html",
+            "src/routes/systemRoutes.js"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    }
+  ]
+}

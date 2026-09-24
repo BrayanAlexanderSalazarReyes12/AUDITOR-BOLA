@@ -208,6 +208,7 @@ def _cors(
         chequeo.metodo,
         cfg.base_url + chequeo.ruta,
         cuenta=cuenta,
+        base_url=cfg.base_url,
         headers=headers,
         cuerpo=_preparar_cuerpo(chequeo),
         timeout=10,
@@ -236,6 +237,7 @@ def _cors(
             "OPTIONS",
             cfg.base_url + chequeo.ruta,
             cuenta=cuenta,
+            base_url=cfg.base_url,
             headers=pre_headers,
             timeout=10,
         )
@@ -340,6 +342,7 @@ def _http_status_policy(
         chequeo.metodo,
         cfg.base_url + chequeo.ruta,
         cuenta=cuenta,
+        base_url=cfg.base_url,
         headers=chequeo.headers,
         cuerpo=_preparar_cuerpo(chequeo),
         timeout=15,

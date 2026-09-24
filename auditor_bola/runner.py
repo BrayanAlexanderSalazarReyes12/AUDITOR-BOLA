@@ -203,7 +203,10 @@ def diagnosticar(
                 item.estado in {"NO_EJECUTABLE", "BLOQUEADO"}
                 for item in pilar2
             ),
-            "errores": sum(item.estado == "ERROR" for item in pilar2),
+            "errores": (sum(item.estado == "ERROR" for item in pilar2)
+                        + sum(bool(item.error) for item in bola)
+                        + sum(bool(item.error) for item in acceso)
+                        + sum(item.clasificacion == "ERROR" for item in matriz_acceso)),
         },
     }
     resultado = attach_runtime_consolidation(resultado)
@@ -230,6 +233,8 @@ def filas_gui(resultado: dict) -> list[dict]:
 
     for item in resultado["pilar1"]["bola"]:
         estado = "HALLAZGO" if item["confirmado_bola"] else "SIN_HALLAZGO"
+        if item.get("error"):
+            estado = "ERROR"
         filas.append(
             {
                 "pilar": "P1",
@@ -237,7 +242,7 @@ def filas_gui(resultado: dict) -> list[dict]:
                 "control": item.get("descripcion") or f"BOLA {item['metodo']} {item['endpoint']}",
                 "cuenta": item["cuenta"],
                 "estado": estado,
-                "detalle": f"HTTP {item['http_status']} · esperado={item['acceso_esperado']} real={item['acceso_real']}",
+                "detalle": item.get("error") or f"HTTP {item['http_status']} · esperado={item['acceso_esperado']} real={item['acceso_real']}",
                 "tipo_control": "bola",
                 "metodo": item["metodo"],
                 "ruta": item["endpoint"],
@@ -251,8 +256,8 @@ def filas_gui(resultado: dict) -> list[dict]:
                 "id": item["id_control"],
                 "control": item["nombre"],
                 "cuenta": item["cuenta"],
-                "estado": "HALLAZGO" if item["vulnerable"] else "SIN_HALLAZGO",
-                "detalle": f"HTTP {item['http_status']} · esperado={item['acceso_esperado']} real={item['acceso_real']}",
+                "estado": "ERROR" if item.get("error") else ("HALLAZGO" if item["vulnerable"] else "SIN_HALLAZGO"),
+                "detalle": item.get("error") or f"HTTP {item['http_status']} · esperado={item['acceso_esperado']} real={item['acceso_real']}",
                 "tipo_control": "acceso",
                 "metodo": item["metodo"],
                 "ruta": item["endpoint"],

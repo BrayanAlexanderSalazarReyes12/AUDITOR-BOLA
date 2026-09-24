@@ -201,6 +201,7 @@ def resolve_live_bola_candidates(
                     "GET",
                     url,
                     cuenta=account,
+                    base_url=cfg.base_url,
                     timeout=timeout,
                 )
             except Exception:

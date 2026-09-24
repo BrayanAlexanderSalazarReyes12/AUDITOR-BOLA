@@ -14,6 +14,10 @@ Los dos pilares cubiertos son:
 1. **Identidad y Control de Acceso**.
 2. **Arquitectura y Configuración**.
 
+La [guía de compatibilidad](docs/COMPATIBILIDAD_APLICACIONES.md) incluye perfiles
+y comandos para VulnDesk Python, VulnCommerce Node, VulnPort Java y Tramitia,
+con autenticación por sesión, token de login o HTTP Basic según el objetivo.
+
 La integridad de la evidencia es transversal y no se presenta como un tercer pilar.
 
 

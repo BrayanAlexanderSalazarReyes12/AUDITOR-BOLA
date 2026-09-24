@@ -359,8 +359,9 @@ def test_posix_detiene_grupo_de_procesos(tmp_path):
     with patch("auditor_bola.process_manager._is_windows", return_value=False), patch(
         "auditor_bola.process_manager.os.getpgid",
         return_value=9876,
+        create=True,
     ), patch(
-        "auditor_bola.process_manager.os.killpg"
+        "auditor_bola.process_manager.os.killpg", create=True
     ) as killpg:
         manager._terminate_process_tree()
 

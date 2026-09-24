@@ -1,0 +1,4118 @@
+{
+  "sistema": "vulnport-java",
+  "version_objetivo": "1.0.0",
+  "base_url": "http://127.0.0.1:8080/vulnport-java",
+  "cuentas": [
+    {
+      "username": "admin",
+      "password": "admin123",
+      "role": "ADMIN",
+      "auth_type": "session",
+      "token": null,
+      "headers": {},
+      "login": {
+        "ruta": "/login",
+        "campo_usuario": "username",
+        "campo_password": "password",
+        "formato": "form",
+        "codigos_exito": [
+          302,
+          303
+        ]
+      }
+    },
+    {
+      "username": "analyst",
+      "password": "analyst123",
+      "role": "ANALYST",
+      "auth_type": "session",
+      "token": null,
+      "headers": {},
+      "login": {
+        "ruta": "/login",
+        "campo_usuario": "username",
+        "campo_password": "password",
+        "formato": "form",
+        "codigos_exito": [
+          302,
+          303
+        ]
+      }
+    },
+    {
+      "username": "user",
+      "password": "user123",
+      "role": "USER",
+      "auth_type": "session",
+      "token": null,
+      "headers": {},
+      "login": {
+        "ruta": "/login",
+        "campo_usuario": "username",
+        "campo_password": "password",
+        "formato": "form",
+        "codigos_exito": [
+          302,
+          303
+        ]
+      }
+    }
+  ],
+  "roles_privilegiados": [
+    "ADMIN"
+  ],
+  "runtime": {
+    "modo": "external",
+    "nombre": "Servlet WAR (Tomcat)",
+    "origen": "java-project",
+    "preferencia_arranque": "auto",
+    "permitir_fallback_local": true,
+    "descripcion_ejecucion": "Compile con Maven y despliegue el WAR en un contenedor Servlet compatible; indique su URL con contexto.",
+    "comando_inicio": [],
+    "comando_detener": [],
+    "comando_reinicio": [],
+    "preparar_automaticamente": false,
+    "comandos_preparacion": [],
+    "directorio_trabajo": ".",
+    "espera_inicio": 2.0,
+    "variables": {},
+    "base_url": "http://127.0.0.1:8080/vulnport-java",
+    "alternativas": []
+  },
+  "chequeos_pilar1": [
+    {
+      "tipo": "bola",
+      "id_control": "P1-AUTO-BOLA-001",
+      "nombre": "Control de propiedad sobre GET /profile?id={id}",
+      "descripcion": "El acceso al objeto identificado por parámetro debe respetar propietario o rol privilegiado.",
+      "metodo": "GET",
+      "ruta": "/profile?id={id}",
+      "id_prueba": "1",
+      "propietario_esperado": "admin",
+      "cuerpo_prueba": null,
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+      ],
+      "pistas_codigo": [
+        "parámetro de objeto: id",
+        "propietario",
+        "owner",
+        "autorización por objeto"
+      ],
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java",
+        "src/main/java/com/auditorlab/vulnport/Database.java"
+      ]
+    },
+    {
+      "tipo": "acceso",
+      "id_control": "P1-AUTO-ACCESS-001",
+      "nombre": "La operación privilegiada debe rechazar GET /admin para analyst",
+      "cuenta": "analyst",
+      "metodo": "GET",
+      "ruta": "/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ],
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ]
+    },
+    {
+      "tipo": "acceso",
+      "id_control": "P1-AUTO-ACCESS-002",
+      "nombre": "La operación privilegiada debe rechazar GET /admin para user",
+      "cuenta": "user",
+      "metodo": "GET",
+      "ruta": "/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ],
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "metodo": "GET",
+      "ruta": "/profile?id={id}",
+      "id_prueba": "1",
+      "propietario_esperado": "admin",
+      "cuerpo_prueba": null,
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "id_control": "P1-AUTO-BOLA-001",
+      "descripcion": "El acceso al objeto identificado por parámetro debe respetar propietario o rol privilegiado.",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+      ],
+      "pistas_codigo": [
+        "parámetro de objeto: id",
+        "propietario",
+        "owner",
+        "autorización por objeto"
+      ]
+    }
+  ],
+  "endpoints_detectados": [
+    {
+      "metodo": "GET",
+      "ruta": "/admin",
+      "archivo": "src/main/java/com/auditorlab/vulnport/AdminServlet.java",
+      "framework": "servlet",
+      "archivos": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "frameworks": [
+        "servlet"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/debug",
+      "archivo": "src/main/java/com/auditorlab/vulnport/DebugServlet.java",
+      "framework": "servlet",
+      "archivos": [
+        "src/main/java/com/auditorlab/vulnport/DebugServlet.java"
+      ],
+      "frameworks": [
+        "servlet"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/diagnostic",
+      "archivo": "src/main/java/com/auditorlab/vulnport/CommandServlet.java",
+      "framework": "servlet",
+      "archivos": [
+        "src/main/java/com/auditorlab/vulnport/CommandServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "frameworks": [
+        "servlet",
+        "client-form-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/download",
+      "archivo": "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java",
+      "framework": "servlet",
+      "archivos": [
+        "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java"
+      ],
+      "frameworks": [
+        "servlet"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/fetch",
+      "archivo": "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+      "framework": "servlet",
+      "archivos": [
+        "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "frameworks": [
+        "servlet",
+        "client-form-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/go",
+      "archivo": "src/main/java/com/auditorlab/vulnport/RedirectServlet.java",
+      "framework": "servlet",
+      "archivos": [
+        "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+      ],
+      "frameworks": [
+        "servlet"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "POST",
+      "ruta": "/login",
+      "archivo": "src/main/java/com/auditorlab/vulnport/LoginServlet.java",
+      "framework": "servlet",
+      "archivos": [
+        "src/main/java/com/auditorlab/vulnport/LoginServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "frameworks": [
+        "servlet",
+        "client-form-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/profile",
+      "archivo": "src/main/java/com/auditorlab/vulnport/ProfileServlet.java",
+      "framework": "servlet",
+      "archivos": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+      ],
+      "frameworks": [
+        "servlet"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/search",
+      "archivo": "src/main/java/com/auditorlab/vulnport/SearchServlet.java",
+      "framework": "servlet",
+      "archivos": [
+        "src/main/java/com/auditorlab/vulnport/SearchServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "frameworks": [
+        "servlet",
+        "client-form-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "POST",
+      "ruta": "/upload",
+      "archivo": "src/main/java/com/auditorlab/vulnport/UploadServlet.java",
+      "framework": "servlet",
+      "archivos": [
+        "src/main/java/com/auditorlab/vulnport/UploadServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "frameworks": [
+        "servlet",
+        "client-form-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "POST",
+      "ruta": "/xml-import",
+      "archivo": "src/main/java/com/auditorlab/vulnport/XmlImportServlet.java",
+      "framework": "servlet",
+      "archivos": [
+        "src/main/java/com/auditorlab/vulnport/XmlImportServlet.java"
+      ],
+      "frameworks": [
+        "servlet"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    }
+  ],
+  "probar_todos_endpoints_con_todos_usuarios": true,
+  "candidatos_pilar1": [
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/admin",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/debug",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/DebugServlet.java"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/diagnostic",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/CommandServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/download",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/fetch",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/fetch",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/go",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/go",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "POST",
+      "ruta_detectada": "/login",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/LoginServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/profile",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/profile",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/search",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/SearchServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "POST",
+      "ruta_detectada": "/upload",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/UploadServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    }
+  ],
+  "chequeos_agente": [],
+  "chequeos_acceso": [
+    {
+      "id_control": "P1-AUTO-ACCESS-001",
+      "nombre": "La operación privilegiada debe rechazar GET /admin para analyst",
+      "cuenta": "analyst",
+      "metodo": "GET",
+      "ruta": "/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ]
+    },
+    {
+      "id_control": "P1-AUTO-ACCESS-002",
+      "nombre": "La operación privilegiada debe rechazar GET /admin para user",
+      "cuenta": "user",
+      "metodo": "GET",
+      "ruta": "/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ]
+    }
+  ],
+  "chequeos_pilar2": [
+    {
+      "id_control": "P2-AUTO-CORS-001",
+      "tipo": "cors_reflection",
+      "metodo": "GET",
+      "ruta": "/admin",
+      "no_destructivo": true,
+      "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado",
+      "nombre": "CORS no debe autorizar origenes externos con credenciales",
+      "familia": "CORS",
+      "componente": "src/main/java/com/auditorlab/vulnport/CorsFilter.java",
+      "confianza_inicial": "media",
+      "origen": "auto",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+      ],
+      "pistas_codigo": [
+        "configuracion CORS",
+        "prueba Origin externo",
+        "preflight OPTIONS"
+      ]
+    },
+    {
+      "id_control": "P2-AUTO-CORS-002",
+      "tipo": "cors_reflection",
+      "metodo": "GET",
+      "ruta": "/debug",
+      "no_destructivo": true,
+      "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado",
+      "nombre": "CORS no debe autorizar origenes externos con credenciales",
+      "familia": "CORS",
+      "componente": "src/main/java/com/auditorlab/vulnport/CorsFilter.java",
+      "confianza_inicial": "media",
+      "origen": "auto",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+      ],
+      "pistas_codigo": [
+        "configuracion CORS",
+        "prueba Origin externo",
+        "preflight OPTIONS"
+      ]
+    },
+    {
+      "id_control": "P2-AUTO-CORS-003",
+      "tipo": "cors_reflection",
+      "metodo": "GET",
+      "ruta": "/diagnostic",
+      "no_destructivo": true,
+      "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado",
+      "nombre": "CORS no debe autorizar origenes externos con credenciales",
+      "familia": "CORS",
+      "componente": "src/main/java/com/auditorlab/vulnport/CorsFilter.java",
+      "confianza_inicial": "media",
+      "origen": "auto",
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+      ],
+      "pistas_codigo": [
+        "configuracion CORS",
+        "prueba Origin externo",
+        "preflight OPTIONS"
+      ]
+    }
+  ],
+  "candidatos_pilar2": [
+    {
+      "familia": "CORS",
+      "causa_raiz": "politica_cors",
+      "componente": "src/main/java/com/auditorlab/vulnport/CorsFilter.java",
+      "confianza": "media",
+      "hipotesis": "La aplicacion configura CORS; comprobar dinamicamente si acepta origenes no confiables, credenciales o preflight permisivo.",
+      "estado": "candidato",
+      "evidencia": [
+        {
+          "family": "CORS",
+          "source": "LAB_MANIFEST.md",
+          "kind": "documentacion",
+          "line": 24,
+          "confidence": "baja",
+          "facts": {
+            "concepto_cors": true
+          }
+        },
+        {
+          "family": "CORS",
+          "source": "src/main/java/com/auditorlab/vulnport/CorsFilter.java",
+          "kind": "codigo_configuracion",
+          "line": 21,
+          "confidence": "media",
+          "facts": {
+            "concepto_cors": true
+          }
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/admin",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        },
+        {
+          "id_control": "P2-AUTO-CORS-002",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/debug",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        },
+        {
+          "id_control": "P2-AUTO-CORS-003",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/diagnostic",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        }
+      ],
+      "estrategia_correccion": {
+        "problema": "politica CORS acepta origenes no confiables",
+        "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+        "restricciones": [
+          "adaptar al framework detectado",
+          "no fijar rutas ni nombres de archivo"
+        ],
+        "verificacion": [
+          "repetir Origin externo",
+          "repetir preflight",
+          "smoke test de origen permitido"
+        ]
+      }
+    }
+  ],
+  "estrategias_correccion_pilar2": [
+    {
+      "familia": "CORS",
+      "problema": "politica CORS acepta origenes no confiables",
+      "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+      "restricciones": [
+        "adaptar al framework detectado",
+        "no fijar rutas ni nombres de archivo"
+      ],
+      "verificacion": [
+        "repetir Origin externo",
+        "repetir preflight",
+        "smoke test de origen permitido"
+      ]
+    },
+    {
+      "familia": "SECRET",
+      "problema": "secreto desplegable puede caer en fallback inseguro",
+      "estrategia": "obtener el secreto desde fuente externa; en produccion fallar el arranque si falta o coincide con un default inseguro",
+      "restricciones": [
+        "preservar fallback local solo si la politica lo permite",
+        "no almacenar el valor del secreto en la receta"
+      ],
+      "verificacion": [
+        "produccion sin secreto debe fallar",
+        "produccion con secreto seguro debe iniciar",
+        "repetir control"
+      ]
+    },
+    {
+      "familia": "LIMIT_BYPASS",
+      "problema": "una excepcion puede alterar una politica sin autorizacion suficiente",
+      "estrategia": "autorizar explicitamente la capacidad privilegiada antes de modificar/omitir la politica y auditar su uso",
+      "restricciones": [
+        "no asumir que el nombre del parametro implica vulnerabilidad"
+      ],
+      "verificacion": [
+        "usuario normal sin excepcion",
+        "usuario normal con excepcion",
+        "usuario autorizado con excepcion"
+      ]
+    },
+    {
+      "familia": "CONTAINER",
+      "problema": "runtime de contenedor con privilegios excesivos",
+      "estrategia": "resolver usuario y privilegios efectivos; usar identidad no privilegiada y permisos/capabilities/mounts minimos",
+      "restricciones": [
+        "no insertar USER a ciegas",
+        "considerar Dockerfile, Compose y orquestador"
+      ],
+      "verificacion": [
+        "construir imagen",
+        "iniciar runtime",
+        "comprobar usuario efectivo",
+        "smoke tests"
+      ]
+    }
+  ],
+  "correcciones": [],
+  "metadata_detectada": {
+    "nombre_proyecto": "vulnport-java",
+    "version_detectada": "1.0.0",
+    "version_fuente": "pom.xml",
+    "version_confianza": "alta",
+    "version_candidatas": [
+      {
+        "version": "1.0.0",
+        "archivo": "pom.xml",
+        "tipo_fuente": "configuracion",
+        "detector": "maven-project-version",
+        "confianza": "alta",
+        "prioridad": 112
+      }
+    ],
+    "lenguajes": [
+      "java"
+    ],
+    "frameworks": [
+      "servlet"
+    ],
+    "manifiestos": [
+      "pom.xml"
+    ],
+    "raices_codigo": [
+      "src",
+      "src/main/java",
+      "src/main/webapp"
+    ],
+    "endpoints_candidatos": [
+      {
+        "metodo": "GET",
+        "ruta": "/admin",
+        "archivo": "src/main/java/com/auditorlab/vulnport/AdminServlet.java",
+        "framework": "servlet",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/debug",
+        "archivo": "src/main/java/com/auditorlab/vulnport/DebugServlet.java",
+        "framework": "servlet",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/diagnostic",
+        "archivo": "src/main/java/com/auditorlab/vulnport/CommandServlet.java",
+        "framework": "servlet",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/diagnostic",
+        "archivo": "src/main/webapp/index.jsp",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/download",
+        "archivo": "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java",
+        "framework": "servlet",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/fetch",
+        "archivo": "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+        "framework": "servlet",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/fetch",
+        "archivo": "src/main/webapp/index.jsp",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/go",
+        "archivo": "src/main/java/com/auditorlab/vulnport/RedirectServlet.java",
+        "framework": "servlet",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/login",
+        "archivo": "src/main/java/com/auditorlab/vulnport/LoginServlet.java",
+        "framework": "servlet",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/login",
+        "archivo": "src/main/webapp/index.jsp",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/profile",
+        "archivo": "src/main/java/com/auditorlab/vulnport/ProfileServlet.java",
+        "framework": "servlet",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/search",
+        "archivo": "src/main/java/com/auditorlab/vulnport/SearchServlet.java",
+        "framework": "servlet",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/search",
+        "archivo": "src/main/webapp/index.jsp",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/upload",
+        "archivo": "src/main/java/com/auditorlab/vulnport/UploadServlet.java",
+        "framework": "servlet",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/upload",
+        "archivo": "src/main/webapp/index.jsp",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/xml-import",
+        "archivo": "src/main/java/com/auditorlab/vulnport/XmlImportServlet.java",
+        "framework": "servlet",
+        "tipo_fuente": "codigo"
+      }
+    ],
+    "total_endpoints_detectados": 11,
+    "matriz_endpoint_usuario": {
+      "habilitada": true,
+      "combinaciones_previstas": 33,
+      "politica_mutaciones": "GET/HEAD/OPTIONS directos; POST/PUT/PATCH con cuerpo vacio; DELETE omitido para evitar perdida de datos"
+    },
+    "total_coincidencias_endpoint": 16,
+    "cuentas_candidatas": [
+      {
+        "username": "admin",
+        "role": "ADMIN",
+        "archivo": "src/main/java/com/auditorlab/vulnport/Database.java",
+        "tipo_fuente": "codigo",
+        "confianza": "alta",
+        "password_literal": true,
+        "identity_aliases": [
+          "1"
+        ]
+      },
+      {
+        "username": "analyst",
+        "role": "ANALYST",
+        "archivo": "src/main/java/com/auditorlab/vulnport/Database.java",
+        "tipo_fuente": "codigo",
+        "confianza": "alta",
+        "password_literal": true,
+        "identity_aliases": [
+          "2"
+        ]
+      },
+      {
+        "username": "user",
+        "role": "USER",
+        "archivo": "src/main/java/com/auditorlab/vulnport/Database.java",
+        "tipo_fuente": "codigo",
+        "confianza": "alta",
+        "password_literal": true,
+        "identity_aliases": [
+          "3"
+        ]
+      }
+    ],
+    "archivos_cuentas_escaneados": true,
+    "perfil_generado_automaticamente": true,
+    "motor_evidencia": {
+      "version": 4,
+      "modo": "evidencia-correlacionada-iterativa",
+      "fuentes": [
+        "codigo",
+        "configuracion",
+        "documentacion",
+        "tests",
+        "fixtures",
+        "seeds",
+        "runtime-vivo-solo-lectura"
+      ],
+      "capacidades_pilar1": [
+        "BOLA/IDOR por propiedad",
+        "RBAC/ABAC desde contratos de seguridad",
+        "alcance de agente desde API directa vs agente"
+      ],
+      "capacidades_pilar2": [
+        "CORS estatico + GET/OPTIONS dinamico",
+        "secretos/fallbacks con contexto de entorno",
+        "bypass de limites como candidato diferencial",
+        "contenedor multi-stage + overrides runtime",
+        "debug y sesion extensibles por familia",
+        "deduplicacion hallazgo != caso de prueba"
+      ],
+      "politica_confianza": "solo activar controles cuando la evidencia es ejecutable; lo ambiguo permanece como candidato",
+      "separa_hallazgo_evidencia_caso": true,
+      "deduplicacion_semantica": true,
+      "ids_hallazgo_dinamicos": true,
+      "arquitectura_familias_extensible": true,
+      "estados": [
+        "bloqueado",
+        "candidato",
+        "confirmado",
+        "correccion_fallida",
+        "correccion_pendiente",
+        "corregido",
+        "descartado",
+        "ejecutable",
+        "ejecutado",
+        "error",
+        "evidencia_insuficiente",
+        "no_aplicable",
+        "no_ejecutable",
+        "por_confirmar",
+        "prueba_preparada",
+        "seguro",
+        "vulnerable"
+      ],
+      "ciclo": [
+        "descubrir",
+        "construir_modelo",
+        "formular_hipotesis",
+        "generar_pruebas",
+        "obtener_evidencia",
+        "actualizar_modelo",
+        "generar_pruebas_adicionales",
+        "consolidar",
+        "proponer_correccion_contextual",
+        "reprobar",
+        "regresion",
+        "aprender_receta_abstracta"
+      ]
+    },
+    "candidatos_pilar1": [
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/admin",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/debug",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/DebugServlet.java"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/diagnostic",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/CommandServlet.java",
+          "src/main/webapp/index.jsp"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/download",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/fetch",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+          "src/main/webapp/index.jsp"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/fetch",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+          "src/main/webapp/index.jsp"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/go",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/go",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "POST",
+        "ruta_detectada": "/login",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/LoginServlet.java",
+          "src/main/webapp/index.jsp"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/profile",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/profile",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/search",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/SearchServlet.java",
+          "src/main/webapp/index.jsp"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "POST",
+        "ruta_detectada": "/upload",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/UploadServlet.java",
+          "src/main/webapp/index.jsp"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      }
+    ],
+    "total_candidatos_pilar1": 13,
+    "controles_pilar1_inferidos_automaticamente": [
+      {
+        "id_control": "P1-AUTO-BOLA-001",
+        "nombre": "Control de propiedad sobre GET /profile?id={id}",
+        "tipo": "bola",
+        "confianza": "alta",
+        "fuentes_evidencia": [
+          "src/main/java/com/auditorlab/vulnport/ProfileServlet.java",
+          "src/main/java/com/auditorlab/vulnport/Database.java"
+        ]
+      },
+      {
+        "id_control": "P1-AUTO-ACCESS-001",
+        "nombre": "La operación privilegiada debe rechazar GET /admin para analyst",
+        "tipo": "acceso",
+        "confianza": "media-alta",
+        "fuentes_evidencia": [
+          "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+        ]
+      },
+      {
+        "id_control": "P1-AUTO-ACCESS-002",
+        "nombre": "La operación privilegiada debe rechazar GET /admin para user",
+        "tipo": "acceso",
+        "confianza": "media-alta",
+        "fuentes_evidencia": [
+          "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+        ]
+      }
+    ],
+    "total_controles_pilar1_activos": 3,
+    "controles_inferidos_automaticamente": [
+      {
+        "id_control": "P2-AUTO-CORS-001",
+        "nombre": "CORS no debe autorizar origenes externos con credenciales",
+        "tipo": "cors_reflection"
+      },
+      {
+        "id_control": "P2-AUTO-CORS-002",
+        "nombre": "CORS no debe autorizar origenes externos con credenciales",
+        "tipo": "cors_reflection"
+      },
+      {
+        "id_control": "P2-AUTO-CORS-003",
+        "nombre": "CORS no debe autorizar origenes externos con credenciales",
+        "tipo": "cors_reflection"
+      }
+    ],
+    "candidatos_pilar2": [
+      {
+        "familia": "CORS",
+        "causa_raiz": "politica_cors",
+        "componente": "src/main/java/com/auditorlab/vulnport/CorsFilter.java",
+        "confianza": "media",
+        "hipotesis": "La aplicacion configura CORS; comprobar dinamicamente si acepta origenes no confiables, credenciales o preflight permisivo.",
+        "estado": "candidato",
+        "evidencia": [
+          {
+            "family": "CORS",
+            "source": "LAB_MANIFEST.md",
+            "kind": "documentacion",
+            "line": 24,
+            "confidence": "baja",
+            "facts": {
+              "concepto_cors": true
+            }
+          },
+          {
+            "family": "CORS",
+            "source": "src/main/java/com/auditorlab/vulnport/CorsFilter.java",
+            "kind": "codigo_configuracion",
+            "line": 21,
+            "confidence": "media",
+            "facts": {
+              "concepto_cors": true
+            }
+          }
+        ],
+        "casos_prueba": [
+          {
+            "id_control": "P2-AUTO-CORS-001",
+            "tipo": "cors_reflection",
+            "metodo": "GET",
+            "ruta": "/admin",
+            "no_destructivo": true,
+            "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+          },
+          {
+            "id_control": "P2-AUTO-CORS-002",
+            "tipo": "cors_reflection",
+            "metodo": "GET",
+            "ruta": "/debug",
+            "no_destructivo": true,
+            "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+          },
+          {
+            "id_control": "P2-AUTO-CORS-003",
+            "tipo": "cors_reflection",
+            "metodo": "GET",
+            "ruta": "/diagnostic",
+            "no_destructivo": true,
+            "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+          }
+        ],
+        "estrategia_correccion": {
+          "problema": "politica CORS acepta origenes no confiables",
+          "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+          "restricciones": [
+            "adaptar al framework detectado",
+            "no fijar rutas ni nombres de archivo"
+          ],
+          "verificacion": [
+            "repetir Origin externo",
+            "repetir preflight",
+            "smoke test de origen permitido"
+          ]
+        }
+      }
+    ],
+    "total_candidatos_pilar2": 1,
+    "descubrimiento_pilar2": {
+      "archivos_analizados": 20,
+      "candidatos": 1,
+      "controles_ejecutables": 3,
+      "familias": [
+        "CORS"
+      ]
+    },
+    "estrategias_correccion_pilar2": [
+      {
+        "familia": "CORS",
+        "problema": "politica CORS acepta origenes no confiables",
+        "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+        "restricciones": [
+          "adaptar al framework detectado",
+          "no fijar rutas ni nombres de archivo"
+        ],
+        "verificacion": [
+          "repetir Origin externo",
+          "repetir preflight",
+          "smoke test de origen permitido"
+        ]
+      },
+      {
+        "familia": "SECRET",
+        "problema": "secreto desplegable puede caer en fallback inseguro",
+        "estrategia": "obtener el secreto desde fuente externa; en produccion fallar el arranque si falta o coincide con un default inseguro",
+        "restricciones": [
+          "preservar fallback local solo si la politica lo permite",
+          "no almacenar el valor del secreto en la receta"
+        ],
+        "verificacion": [
+          "produccion sin secreto debe fallar",
+          "produccion con secreto seguro debe iniciar",
+          "repetir control"
+        ]
+      },
+      {
+        "familia": "LIMIT_BYPASS",
+        "problema": "una excepcion puede alterar una politica sin autorizacion suficiente",
+        "estrategia": "autorizar explicitamente la capacidad privilegiada antes de modificar/omitir la politica y auditar su uso",
+        "restricciones": [
+          "no asumir que el nombre del parametro implica vulnerabilidad"
+        ],
+        "verificacion": [
+          "usuario normal sin excepcion",
+          "usuario normal con excepcion",
+          "usuario autorizado con excepcion"
+        ]
+      },
+      {
+        "familia": "CONTAINER",
+        "problema": "runtime de contenedor con privilegios excesivos",
+        "estrategia": "resolver usuario y privilegios efectivos; usar identidad no privilegiada y permisos/capabilities/mounts minimos",
+        "restricciones": [
+          "no insertar USER a ciegas",
+          "considerar Dockerfile, Compose y orquestador"
+        ],
+        "verificacion": [
+          "construir imagen",
+          "iniciar runtime",
+          "comprobar usuario efectivo",
+          "smoke tests"
+        ]
+      }
+    ],
+    "total_controles_pilar2_activos": 3,
+    "total_controles_activos": 6,
+    "entorno_ejecucion": {
+      "docker_instalado": false,
+      "runtime_principal": "Servlet WAR (Tomcat)",
+      "runtime_modo": "external",
+      "runtime_origen": "java-project",
+      "preferencia_arranque": "auto",
+      "comando_inicio": [],
+      "comando_inicio_por_so": null,
+      "base_url": "http://127.0.0.1:8080/vulnport-java"
+    },
+    "plan_ejecucion": {
+      "preferencia": "auto",
+      "fallback_local": true,
+      "principal": {
+        "nombre": "Servlet WAR (Tomcat)",
+        "modo": "external",
+        "origen": "java-project",
+        "comando_inicio": [],
+        "comando_inicio_por_so": null,
+        "directorio_trabajo": ".",
+        "base_url": "http://127.0.0.1:8080/vulnport-java"
+      },
+      "alternativas": []
+    },
+    "modelo_seguridad_construido": true,
+    "total_controles_explicados": 20,
+    "total_familias_hallazgo_modeladas": 15
+  },
+  "modelo_seguridad": {
+    "version_modelo": 1,
+    "identidades": [
+      {
+        "identidad": "admin",
+        "rol": "ADMIN",
+        "tipo_autenticacion": "session",
+        "credencial_disponible": true
+      },
+      {
+        "identidad": "analyst",
+        "rol": "ANALYST",
+        "tipo_autenticacion": "session",
+        "credencial_disponible": true
+      },
+      {
+        "identidad": "user",
+        "rol": "USER",
+        "tipo_autenticacion": "session",
+        "credencial_disponible": true
+      }
+    ],
+    "roles": [
+      {
+        "rol": "ADMIN",
+        "privilegiado": true,
+        "identidades": [
+          "admin"
+        ]
+      },
+      {
+        "rol": "ANALYST",
+        "privilegiado": false,
+        "identidades": [
+          "analyst"
+        ]
+      },
+      {
+        "rol": "USER",
+        "privilegiado": false,
+        "identidades": [
+          "user"
+        ]
+      }
+    ],
+    "recursos": [
+      {
+        "recurso": "admin",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/admin"
+          }
+        ]
+      },
+      {
+        "recurso": "debug",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/debug"
+          }
+        ]
+      },
+      {
+        "recurso": "diagnostic",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/diagnostic"
+          }
+        ]
+      },
+      {
+        "recurso": "download",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/download"
+          }
+        ]
+      },
+      {
+        "recurso": "fetch",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/fetch"
+          }
+        ]
+      },
+      {
+        "recurso": "go",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/go"
+          }
+        ]
+      },
+      {
+        "recurso": "login",
+        "endpoints": [
+          {
+            "metodo": "POST",
+            "ruta": "/login"
+          }
+        ]
+      },
+      {
+        "recurso": "profile",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/profile"
+          }
+        ]
+      },
+      {
+        "recurso": "search",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/search"
+          }
+        ]
+      },
+      {
+        "recurso": "upload",
+        "endpoints": [
+          {
+            "metodo": "POST",
+            "ruta": "/upload"
+          }
+        ]
+      },
+      {
+        "recurso": "xml-import",
+        "endpoints": [
+          {
+            "metodo": "POST",
+            "ruta": "/xml-import"
+          }
+        ]
+      }
+    ],
+    "endpoints": [
+      {
+        "metodo": "GET",
+        "ruta": "/admin",
+        "ruta_normalizada": "/admin",
+        "recurso": "admin",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "servlet"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/debug",
+        "ruta_normalizada": "/debug",
+        "recurso": "debug",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/DebugServlet.java"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "servlet"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/diagnostic",
+        "ruta_normalizada": "/diagnostic",
+        "recurso": "diagnostic",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/CommandServlet.java",
+          "src/main/webapp/index.jsp"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "servlet",
+          "client-form-reference"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/download",
+        "ruta_normalizada": "/download",
+        "recurso": "download",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "servlet"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/fetch",
+        "ruta_normalizada": "/fetch",
+        "recurso": "fetch",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+          "src/main/webapp/index.jsp"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "servlet",
+          "client-form-reference"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/go",
+        "ruta_normalizada": "/go",
+        "recurso": "go",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "servlet"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/login",
+        "ruta_normalizada": "/login",
+        "recurso": "login",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/LoginServlet.java",
+          "src/main/webapp/index.jsp"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "servlet",
+          "client-form-reference"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/profile",
+        "ruta_normalizada": "/profile",
+        "recurso": "profile",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "servlet"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/search",
+        "ruta_normalizada": "/search",
+        "recurso": "search",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/SearchServlet.java",
+          "src/main/webapp/index.jsp"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "servlet",
+          "client-form-reference"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/upload",
+        "ruta_normalizada": "/upload",
+        "recurso": "upload",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/UploadServlet.java",
+          "src/main/webapp/index.jsp"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "servlet",
+          "client-form-reference"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/xml-import",
+        "ruta_normalizada": "/xml-import",
+        "recurso": "xml-import",
+        "archivos_fuente": [
+          "src/main/java/com/auditorlab/vulnport/XmlImportServlet.java"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "servlet"
+        ]
+      }
+    ],
+    "relaciones": [
+      {
+        "tipo": "identidad_rol",
+        "origen": "admin",
+        "destino": "ADMIN"
+      },
+      {
+        "tipo": "identidad_rol",
+        "origen": "analyst",
+        "destino": "ANALYST"
+      },
+      {
+        "tipo": "identidad_rol",
+        "origen": "user",
+        "destino": "USER"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /admin",
+        "destino": "admin"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /debug",
+        "destino": "debug"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /diagnostic",
+        "destino": "diagnostic"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /download",
+        "destino": "download"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /fetch",
+        "destino": "fetch"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /go",
+        "destino": "go"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "POST /login",
+        "destino": "login"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /profile",
+        "destino": "profile"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /search",
+        "destino": "search"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "POST /upload",
+        "destino": "upload"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "POST /xml-import",
+        "destino": "xml-import"
+      }
+    ],
+    "contrato_conceptual": "Identidad -> Rol/Atributos -> Endpoint -> Accion -> Recurso -> Propiedad, inferido por evidencia y no por nombres fijos"
+  },
+  "familias_controles": {
+    "AGENT_SCOPE": {
+      "code": "AGENT_SCOPE",
+      "pillar": "P1",
+      "name": "Propagación de identidad a agentes y herramientas",
+      "evidence_requirements": [
+        "identidad",
+        "api_directa",
+        "agente",
+        "herramienta"
+      ],
+      "confirmation_strategy": "Comparar el alcance de la API directa con la misma operación a través del agente para la misma identidad.",
+      "false_positive_guards": [
+        "comparar la misma identidad y operación",
+        "no inferir escalamiento por diferencia de formato"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "recurso",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "agente",
+        "herramienta",
+        "contexto_identidad",
+        "autorizacion"
+      ]
+    },
+    "BOLA": {
+      "code": "BOLA",
+      "pillar": "P1",
+      "name": "Autorización a nivel de objeto",
+      "evidence_requirements": [
+        "endpoint_objeto",
+        "identidad",
+        "recurso",
+        "propiedad"
+      ],
+      "confirmation_strategy": "Comparar el mismo objeto con su propietario y otra identidad; confirmar solo cuando la política de propiedad esté sustentada.",
+      "false_positive_guards": [
+        "no inferir propiedad solo por un nombre de ruta",
+        "no tratar HTTP 200 aislado como vulnerabilidad"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "metodo",
+        "recurso",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "punto_autorizacion",
+        "campo_propiedad",
+        "rol_privilegiado"
+      ]
+    },
+    "CONTAINER": {
+      "code": "CONTAINER",
+      "pillar": "P2",
+      "name": "Privilegios de contenedor",
+      "evidence_requirements": [
+        "dockerfile_o_manifiesto",
+        "usuario_efectivo"
+      ],
+      "confirmation_strategy": "Resolver usuario efectivo y privilegios de ejecución.",
+      "false_positive_guards": [
+        "no asumir root solo porque falte USER sin considerar imagen/contexto"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "imagen",
+        "usuario",
+        "capabilities",
+        "mounts"
+      ]
+    },
+    "CORS": {
+      "code": "CORS",
+      "pillar": "P2",
+      "name": "Política CORS",
+      "evidence_requirements": [
+        "configuracion_o_headers",
+        "origin_de_prueba"
+      ],
+      "confirmation_strategy": "Enviar Origin no autorizado y validar combinación de ACAO y credenciales; consolidar configuración global equivalente.",
+      "false_positive_guards": [
+        "no confirmar solo por presencia de la palabra CORS"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "middleware_cors",
+        "allowlist",
+        "credenciales"
+      ]
+    },
+    "DEBUG": {
+      "code": "DEBUG",
+      "pillar": "P2",
+      "name": "Modo debug",
+      "evidence_requirements": [
+        "configuracion",
+        "valor_efectivo"
+      ],
+      "confirmation_strategy": "Confirmar que el modo de depuración es efectivo en el contexto analizado.",
+      "false_positive_guards": [
+        "distinguir ejemplo/test de configuración desplegable"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "configuracion_debug",
+        "entorno"
+      ]
+    },
+    "LIMIT_BYPASS": {
+      "code": "LIMIT_BYPASS",
+      "pillar": "P2",
+      "name": "Bypass de límites u opciones excepcionales",
+      "evidence_requirements": [
+        "parametro_o_rama",
+        "limite",
+        "identidad",
+        "autorizacion"
+      ],
+      "confirmation_strategy": "Comparar operación normal, opción especial con bajo privilegio y opción especial con identidad autorizada.",
+      "false_positive_guards": [
+        "una coincidencia textual solo crea candidato",
+        "exigir relación con un límite o validación"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "metodo",
+        "parametro",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "parametro",
+        "guardia_autorizacion",
+        "limite_afectado"
+      ]
+    },
+    "RBAC_ABAC": {
+      "code": "RBAC_ABAC",
+      "pillar": "P1",
+      "name": "Separación de privilegios RBAC/ABAC",
+      "evidence_requirements": [
+        "identidades",
+        "roles_o_atributos",
+        "operacion",
+        "politica"
+      ],
+      "confirmation_strategy": "Comparar identidades con diferente privilegio sobre la misma operación y contrastar el resultado con una política inferible.",
+      "false_positive_guards": [
+        "una palabra como admin solo crea candidato",
+        "no asumir acceso esperado sin política o evidencia correlacionada"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "metodo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "punto_autorizacion",
+        "roles",
+        "atributos",
+        "politica"
+      ]
+    },
+    "SECRET": {
+      "code": "SECRET",
+      "pillar": "P2",
+      "name": "Gestión insegura de secretos",
+      "evidence_requirements": [
+        "valor",
+        "fuente",
+        "contexto_uso"
+      ],
+      "confirmation_strategy": "Distinguir placeholder/test de secreto realmente utilizado o fallback desplegable.",
+      "false_positive_guards": [
+        "no marcar cualquier cadena parecida a token"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "origen_secreto",
+        "mecanismo_configuracion"
+      ]
+    },
+    "SESSION": {
+      "code": "SESSION",
+      "pillar": "P2",
+      "name": "Cookies y sesión",
+      "evidence_requirements": [
+        "configuracion_sesion"
+      ],
+      "confirmation_strategy": "Evaluar Secure, HttpOnly, SameSite, transporte, duración y secretos.",
+      "false_positive_guards": [
+        "no confundir ejemplo documental con configuración efectiva"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "configuracion_cookie",
+        "sesion",
+        "transporte"
+      ]
+    }
+  },
+  "controles_explicados": [
+    {
+      "familia": "BOLA",
+      "id_control": "P1-AUTO-BOLA-001",
+      "id_control_semantico": "P1-BOLA-026266",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java",
+        "src/main/java/com/auditorlab/vulnport/Database.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+      ],
+      "endpoint": "/profile?id={id}",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile?id={id}",
+      "propietario": "admin",
+      "hipotesis": "El acceso al objeto identificado por parámetro debe respetar propietario o rol privilegiado.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/Database.java"
+        },
+        {
+          "tipo": "pista",
+          "valor": "parámetro de objeto: id"
+        },
+        {
+          "tipo": "pista",
+          "valor": "propietario"
+        },
+        {
+          "tipo": "pista",
+          "valor": "owner"
+        },
+        {
+          "tipo": "pista",
+          "valor": "autorización por objeto"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-BOLA-001",
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "prueba_preparada",
+          "endpoint": "/profile?id={id}",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile?id={id}",
+          "propietario": "admin",
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/ProfileServlet.java",
+            "src/main/java/com/auditorlab/vulnport/Database.java"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": "P1-AUTO-ACCESS-001",
+      "id_control_semantico": "P1-RBAC-570074",
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "endpoint": "/admin",
+      "metodo": "GET",
+      "cuenta": "analyst",
+      "rol": "ANALYST",
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "La operación privilegiada debe rechazar GET /admin para analyst",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+        },
+        {
+          "tipo": "pista",
+          "valor": "ruta con semántica privilegiada"
+        },
+        {
+          "tipo": "pista",
+          "valor": "separación de roles detectada"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-ACCESS-001",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/admin",
+          "metodo": "GET",
+          "cuenta": "analyst",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": "P1-AUTO-ACCESS-002",
+      "id_control_semantico": "P1-RBAC-570074",
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "endpoint": "/admin",
+      "metodo": "GET",
+      "cuenta": "user",
+      "rol": "USER",
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "La operación privilegiada debe rechazar GET /admin para user",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+        },
+        {
+          "tipo": "pista",
+          "valor": "ruta con semántica privilegiada"
+        },
+        {
+          "tipo": "pista",
+          "valor": "separación de roles detectada"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-ACCESS-002",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/admin",
+          "metodo": "GET",
+          "cuenta": "user",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": "P2-AUTO-CORS-001",
+      "id_control_semantico": "P2-CORS-241392",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+      ],
+      "endpoint": "/admin",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": "P2-AUTO-CORS-002",
+      "id_control_semantico": "P2-CORS-628213",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+      ],
+      "endpoint": "/debug",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "debug",
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-002",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/debug",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "debug",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": "P2-AUTO-CORS-003",
+      "id_control_semantico": "P2-CORS-526563",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+      ],
+      "endpoint": "/diagnostic",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "diagnostic",
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-003",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-570074",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+      ],
+      "endpoint": "/admin",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-370487",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/DebugServlet.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/DebugServlet.java"
+      ],
+      "endpoint": "/debug",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "debug",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/DebugServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/debug",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "debug",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/DebugServlet.java"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-307692",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/CommandServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/CommandServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "endpoint": "/diagnostic",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "diagnostic",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/CommandServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/CommandServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-094339",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java"
+      ],
+      "endpoint": "/download",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "download",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/download",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "download",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-620610",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "endpoint": "/fetch",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "fetch",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/fetch",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "fetch",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-336670",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "endpoint": "/fetch",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "fetch",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/fetch",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "fetch",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-543288",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+      ],
+      "endpoint": "/go",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "go",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/go",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "go",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-433095",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+      ],
+      "endpoint": "/go",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "go",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/go",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "go",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-458192",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/LoginServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/LoginServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "endpoint": "/login",
+      "metodo": "POST",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "login",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/LoginServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/login",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "login",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/LoginServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-531216",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+      ],
+      "endpoint": "/profile",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/profile",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-070160",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+      ],
+      "endpoint": "/profile",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/profile",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-446127",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/SearchServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/SearchServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "endpoint": "/search",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "search",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/SearchServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/search",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "search",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/SearchServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-363755",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "src/main/java/com/auditorlab/vulnport/UploadServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "archivos_fuente": [
+        "src/main/java/com/auditorlab/vulnport/UploadServlet.java",
+        "src/main/webapp/index.jsp"
+      ],
+      "endpoint": "/upload",
+      "metodo": "POST",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "upload",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/UploadServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/upload",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "upload",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/UploadServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": null,
+      "id_control_semantico": "P2-CORS-209886",
+      "autogenerado": true,
+      "confianza": "media",
+      "fuentes_evidencia": [],
+      "archivos_fuente": [],
+      "endpoint": null,
+      "metodo": null,
+      "cuenta": null,
+      "rol": null,
+      "recurso": null,
+      "propietario": null,
+      "hipotesis": "Evaluar política cors",
+      "evidencia": [
+        {
+          "family": "CORS",
+          "source": "LAB_MANIFEST.md",
+          "kind": "documentacion",
+          "line": 24,
+          "confidence": "baja",
+          "facts": {
+            "concepto_cors": true
+          }
+        },
+        {
+          "family": "CORS",
+          "source": "src/main/java/com/auditorlab/vulnport/CorsFilter.java",
+          "kind": "codigo_configuracion",
+          "line": 21,
+          "confidence": "media",
+          "facts": {
+            "concepto_cors": true
+          }
+        }
+      ],
+      "estado": "candidato",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": null,
+          "familia": "CORS",
+          "estado": "candidato",
+          "endpoint": null,
+          "metodo": null,
+          "cuenta": null,
+          "recurso": null,
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": []
+        }
+      ],
+      "componente": "src/main/java/com/auditorlab/vulnport/CorsFilter.java",
+      "estrategia_correccion": {
+        "problema": "politica CORS acepta origenes no confiables",
+        "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+        "restricciones": [
+          "adaptar al framework detectado",
+          "no fijar rutas ni nombres de archivo"
+        ],
+        "verificacion": [
+          "repetir Origin externo",
+          "repetir preflight",
+          "smoke test de origen permitido"
+        ]
+      }
+    }
+  ],
+  "hallazgos_modelados": [
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-026266",
+      "estado": "prueba_preparada",
+      "confianza": "alta",
+      "endpoint": "/profile?id={id}",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "profile?id={id}",
+      "propietario": "admin",
+      "hipotesis": "El acceso al objeto identificado por parámetro debe respetar propietario o rol privilegiado.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/Database.java"
+        },
+        {
+          "tipo": "pista",
+          "valor": "parámetro de objeto: id"
+        },
+        {
+          "tipo": "pista",
+          "valor": "propietario"
+        },
+        {
+          "tipo": "pista",
+          "valor": "owner"
+        },
+        {
+          "tipo": "pista",
+          "valor": "autorización por objeto"
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-BOLA-001",
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "prueba_preparada",
+          "endpoint": "/profile?id={id}",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile?id={id}",
+          "propietario": "admin",
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/ProfileServlet.java",
+            "src/main/java/com/auditorlab/vulnport/Database.java"
+          ]
+        }
+      ],
+      "relacionado_con": [
+        "P1-AUTO-BOLA-001"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-094339",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/download",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "download",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/download",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "download",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/FileDownloadServlet.java"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-307692",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/diagnostic",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "diagnostic",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/CommandServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/CommandServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-370487",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/debug",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "debug",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/DebugServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/debug",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "debug",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/DebugServlet.java"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-446127",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/search",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "search",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/SearchServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/search",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "search",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/SearchServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-531216",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/profile",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/profile",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-543288",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/go",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "go",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/go",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "go",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-620610",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/fetch",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "fetch",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/fetch",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "fetch",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "CORS",
+      "id_hallazgo": "P2-CORS-436276",
+      "estado": "prueba_preparada",
+      "confianza": "alta",
+      "endpoint": "/admin",
+      "metodo": "GET",
+      "componente": "src/main/java/com/auditorlab/vulnport/CorsFilter.java",
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "causa_raiz": "politica_cors",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        },
+        {
+          "family": "CORS",
+          "source": "LAB_MANIFEST.md",
+          "kind": "documentacion",
+          "line": 24,
+          "confidence": "baja",
+          "facts": {
+            "concepto_cors": true
+          }
+        },
+        {
+          "family": "CORS",
+          "source": "src/main/java/com/auditorlab/vulnport/CorsFilter.java",
+          "kind": "codigo_configuracion",
+          "line": 21,
+          "confidence": "media",
+          "facts": {
+            "concepto_cors": true
+          }
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+          ]
+        },
+        {
+          "id_control": "P2-AUTO-CORS-002",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/debug",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "debug",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+          ]
+        },
+        {
+          "id_control": "P2-AUTO-CORS-003",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/CorsFilter.java"
+          ]
+        },
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/admin",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        }
+      ],
+      "relacionado_con": [
+        "P2-AUTO-CORS-001",
+        "P2-AUTO-CORS-002",
+        "P2-AUTO-CORS-003"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-070160",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/profile",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/profile",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/ProfileServlet.java"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-336670",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/fetch",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "fetch",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/fetch",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "fetch",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/FetchUrlServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-363755",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/upload",
+      "metodo": "POST",
+      "componente": null,
+      "recurso": "upload",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/UploadServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/upload",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "upload",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/UploadServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-433095",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/go",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "go",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/go",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "go",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/RedirectServlet.java"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-458192",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/login",
+      "metodo": "POST",
+      "componente": null,
+      "recurso": "login",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/LoginServlet.java"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/webapp/index.jsp"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/login",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "login",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/LoginServlet.java",
+            "src/main/webapp/index.jsp"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-570074",
+      "estado": "prueba_preparada",
+      "confianza": "media-alta",
+      "endpoint": "/admin",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "La operación privilegiada debe rechazar GET /admin para analyst",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+        },
+        {
+          "tipo": "pista",
+          "valor": "ruta con semántica privilegiada"
+        },
+        {
+          "tipo": "pista",
+          "valor": "separación de roles detectada"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-ACCESS-001",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/admin",
+          "metodo": "GET",
+          "cuenta": "analyst",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+          ]
+        },
+        {
+          "id_control": "P1-AUTO-ACCESS-002",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/admin",
+          "metodo": "GET",
+          "cuenta": "user",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+          ]
+        },
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "src/main/java/com/auditorlab/vulnport/AdminServlet.java"
+          ]
+        }
+      ],
+      "relacionado_con": [
+        "P1-AUTO-ACCESS-001",
+        "P1-AUTO-ACCESS-002"
+      ]
+    }
+  ]
+}

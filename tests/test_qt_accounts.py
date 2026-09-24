@@ -66,3 +66,14 @@ def test_fullscreen_topbar_has_explicit_exit_button():
     assert called == [True]
 
     topbar.close()
+
+
+def test_editing_accounts_preserves_login_token_and_headers():
+    _app()
+    original = {"username": "user", "password": "pw", "role": "USER",
+                "auth_type": "session", "login": {"ruta": "/api/login"},
+                "token": "existing-token", "headers": {"X-Tenant": "tenant"}}
+    dialog = AccountManagerDialog([original], [])
+    accounts, _ = dialog.data()
+    assert accounts == [original]
+    dialog.close()

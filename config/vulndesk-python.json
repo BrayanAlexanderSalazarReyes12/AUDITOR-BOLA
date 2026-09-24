@@ -1,0 +1,5178 @@
+{
+  "sistema": "vulndesk-python",
+  "version_objetivo": "desconocida",
+  "base_url": "http://127.0.0.1:5000",
+  "cuentas": [
+    {
+      "username": "admin",
+      "password": "admin123",
+      "role": "ADMIN",
+      "auth_type": "session",
+      "token": null,
+      "headers": {},
+      "login": {
+        "ruta": "/api/login",
+        "campo_usuario": "username",
+        "campo_password": "password",
+        "formato": "form",
+        "codigos_exito": [
+          200,
+          201,
+          204
+        ]
+      }
+    },
+    {
+      "username": "analyst",
+      "password": "analyst123",
+      "role": "ANALYST",
+      "auth_type": "session",
+      "token": null,
+      "headers": {},
+      "login": {
+        "ruta": "/api/login",
+        "campo_usuario": "username",
+        "campo_password": "password",
+        "formato": "form",
+        "codigos_exito": [
+          200,
+          201,
+          204
+        ]
+      }
+    },
+    {
+      "username": "user",
+      "password": "user123",
+      "role": "USER",
+      "auth_type": "session",
+      "token": null,
+      "headers": {},
+      "login": {
+        "ruta": "/api/login",
+        "campo_usuario": "username",
+        "campo_password": "password",
+        "formato": "form",
+        "codigos_exito": [
+          200,
+          201,
+          204
+        ]
+      }
+    }
+  ],
+  "roles_privilegiados": [
+    "ADMIN"
+  ],
+  "runtime": {
+    "modo": "process",
+    "nombre": "Python",
+    "origen": "python-project",
+    "preferencia_arranque": "auto",
+    "permitir_fallback_local": true,
+    "descripcion_ejecucion": "Ejecución local con Python; Aegis prioriza .venv/venv/env del proyecto y luego Python del sistema.",
+    "comando_inicio": [
+      "python",
+      "run.py"
+    ],
+    "comando_detener": [],
+    "comando_reinicio": [],
+    "preparar_automaticamente": true,
+    "comandos_preparacion": [
+      [
+        "python",
+        "-m",
+        "pip",
+        "install",
+        "-r",
+        "requirements.txt"
+      ]
+    ],
+    "directorio_trabajo": ".",
+    "espera_inicio": 2.0,
+    "variables": {},
+    "base_url": "http://127.0.0.1:5000",
+    "alternativas": []
+  },
+  "chequeos_pilar1": [
+    {
+      "tipo": "bola",
+      "id_control": "P1-AUTO-BOLA-001",
+      "nombre": "Control de propiedad sobre GET /api/profile/{id}",
+      "descripcion": "El acceso al objeto debe respetar propietario o rol privilegiado.",
+      "metodo": "GET",
+      "ruta": "/api/profile/{id}",
+      "id_prueba": "1",
+      "propietario_esperado": "admin",
+      "cuerpo_prueba": null,
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "pistas_codigo": [
+        "propietario",
+        "owner",
+        "autorización por objeto"
+      ],
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/user_routes.py",
+        "vulndesk/db.py"
+      ]
+    },
+    {
+      "tipo": "acceso",
+      "id_control": "P1-AUTO-ACCESS-001",
+      "nombre": "La operación privilegiada debe rechazar GET /api/admin para analyst",
+      "cuenta": "analyst",
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ],
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/admin_routes.py"
+      ]
+    },
+    {
+      "tipo": "acceso",
+      "id_control": "P1-AUTO-ACCESS-002",
+      "nombre": "La operación privilegiada debe rechazar GET /api/admin para user",
+      "cuenta": "user",
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ],
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/admin_routes.py"
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "metodo": "GET",
+      "ruta": "/api/profile/{id}",
+      "id_prueba": "1",
+      "propietario_esperado": "admin",
+      "cuerpo_prueba": null,
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "id_control": "P1-AUTO-BOLA-001",
+      "descripcion": "El acceso al objeto debe respetar propietario o rol privilegiado.",
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "pistas_codigo": [
+        "propietario",
+        "owner",
+        "autorización por objeto"
+      ]
+    }
+  ],
+  "endpoints_detectados": [
+    {
+      "metodo": "GET",
+      "ruta": "/",
+      "archivo": "vulndesk/app.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/app.py"
+      ],
+      "frameworks": [
+        "python-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "archivo": "vulndesk/routes/admin_routes.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "frameworks": [
+        "python-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/diagnostic",
+      "archivo": "vulndesk/routes/system_routes.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/routes/system_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "frameworks": [
+        "python-router",
+        "client-form-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/download",
+      "archivo": "vulndesk/routes/file_routes.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/routes/file_routes.py"
+      ],
+      "frameworks": [
+        "python-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/fetch",
+      "archivo": "vulndesk/routes/network_routes.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/routes/network_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "frameworks": [
+        "python-router",
+        "client-form-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/go",
+      "archivo": "vulndesk/routes/admin_routes.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "frameworks": [
+        "python-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "POST",
+      "ruta": "/api/login",
+      "archivo": "vulndesk/routes/auth_routes.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/routes/auth_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "frameworks": [
+        "python-router",
+        "client-form-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "POST",
+      "ruta": "/api/preview-template",
+      "archivo": "vulndesk/routes/template_routes.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/routes/template_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "frameworks": [
+        "python-router",
+        "client-form-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "PUT",
+      "ruta": "/api/profile/:id",
+      "archivo": "vulndesk/templates/index.html",
+      "framework": "documentation-reference",
+      "archivos": [
+        "vulndesk/templates/index.html"
+      ],
+      "frameworks": [
+        "documentation-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/profile/<int:user_id>",
+      "archivo": "vulndesk/routes/user_routes.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "frameworks": [
+        "python-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "PUT",
+      "ruta": "/api/profile/<int:user_id>",
+      "archivo": "vulndesk/routes/user_routes.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "frameworks": [
+        "python-router"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "GET",
+      "ruta": "/api/search",
+      "archivo": "vulndesk/routes/ticket_routes.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/routes/ticket_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "frameworks": [
+        "python-router",
+        "client-form-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    },
+    {
+      "metodo": "POST",
+      "ruta": "/api/upload",
+      "archivo": "vulndesk/routes/file_routes.py",
+      "framework": "python-router",
+      "archivos": [
+        "vulndesk/routes/file_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "frameworks": [
+        "python-router",
+        "client-form-reference"
+      ],
+      "tipos_fuente": [
+        "codigo"
+      ]
+    }
+  ],
+  "probar_todos_endpoints_con_todos_usuarios": true,
+  "candidatos_pilar1": [
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/",
+      "archivos_fuente": [
+        "vulndesk/app.py"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/api/admin",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/admin",
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/api/diagnostic",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "vulndesk/routes/system_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/diagnostic",
+      "archivos_fuente": [
+        "vulndesk/routes/system_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/api/download",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "vulndesk/routes/file_routes.py"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/api/fetch",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "vulndesk/routes/network_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/fetch",
+      "archivos_fuente": [
+        "vulndesk/routes/network_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/api/go",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/go",
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "POST",
+      "ruta_detectada": "/api/login",
+      "archivos_fuente": [
+        "vulndesk/routes/auth_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "POST",
+      "ruta_detectada": "/api/preview-template",
+      "archivos_fuente": [
+        "vulndesk/routes/template_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "PUT",
+      "ruta_detectada": "/api/profile/:id",
+      "archivos_fuente": [
+        "vulndesk/templates/index.html"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado"
+      ],
+      "motivo": "Endpoint orientado a objeto con identificador en la ruta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "PUT",
+      "ruta_detectada": "/api/profile/:id",
+      "archivos_fuente": [
+        "vulndesk/templates/index.html"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/api/profile/<int:user_id>",
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado"
+      ],
+      "motivo": "Endpoint orientado a objeto con identificador en la ruta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/profile/<int:user_id>",
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "PUT",
+      "ruta_detectada": "/api/profile/<int:user_id>",
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado"
+      ],
+      "motivo": "Endpoint orientado a objeto con identificador en la ruta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "PUT",
+      "ruta_detectada": "/api/profile/<int:user_id>",
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "BOLA",
+      "tipo_control": "bola",
+      "metodo": "GET",
+      "ruta_detectada": "/api/search",
+      "parametro_objeto": "id",
+      "archivos_fuente": [
+        "vulndesk/routes/ticket_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "requiere_confirmacion": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ],
+      "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "GET",
+      "ruta_detectada": "/api/search",
+      "archivos_fuente": [
+        "vulndesk/routes/ticket_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "tipo_control": "acceso",
+      "metodo": "POST",
+      "ruta_detectada": "/api/upload",
+      "archivos_fuente": [
+        "vulndesk/routes/file_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "requiere_confirmacion": [
+        "cuenta",
+        "acceso_esperado"
+      ],
+      "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+    }
+  ],
+  "chequeos_agente": [],
+  "chequeos_acceso": [
+    {
+      "id_control": "P1-AUTO-ACCESS-001",
+      "nombre": "La operación privilegiada debe rechazar GET /api/admin para analyst",
+      "cuenta": "analyst",
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ]
+    },
+    {
+      "id_control": "P1-AUTO-ACCESS-002",
+      "nombre": "La operación privilegiada debe rechazar GET /api/admin para user",
+      "cuenta": "user",
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "acceso_esperado": false,
+      "cuerpo": {},
+      "codigos_permitidos": [
+        200,
+        201,
+        204
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "pistas_codigo": [
+        "ruta con semántica privilegiada",
+        "separación de roles detectada"
+      ]
+    }
+  ],
+  "chequeos_pilar2": [
+    {
+      "id_control": "P2-AUTO-CORS-001",
+      "tipo": "cors_reflection",
+      "metodo": "GET",
+      "ruta": "/",
+      "no_destructivo": true,
+      "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado",
+      "nombre": "CORS no debe autorizar origenes externos con credenciales",
+      "familia": "CORS",
+      "componente": "vulndesk/app.py",
+      "confianza_inicial": "media",
+      "origen": "auto",
+      "archivos_fuente": [
+        "vulndesk/app.py"
+      ],
+      "pistas_codigo": [
+        "configuracion CORS",
+        "prueba Origin externo",
+        "preflight OPTIONS"
+      ]
+    },
+    {
+      "id_control": "P2-AUTO-CORS-002",
+      "tipo": "cors_reflection",
+      "metodo": "GET",
+      "ruta": "/api/admin",
+      "no_destructivo": true,
+      "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado",
+      "nombre": "CORS no debe autorizar origenes externos con credenciales",
+      "familia": "CORS",
+      "componente": "vulndesk/app.py",
+      "confianza_inicial": "media",
+      "origen": "auto",
+      "archivos_fuente": [
+        "vulndesk/app.py"
+      ],
+      "pistas_codigo": [
+        "configuracion CORS",
+        "prueba Origin externo",
+        "preflight OPTIONS"
+      ]
+    },
+    {
+      "id_control": "P2-AUTO-CORS-003",
+      "tipo": "cors_reflection",
+      "metodo": "GET",
+      "ruta": "/api/diagnostic",
+      "no_destructivo": true,
+      "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado",
+      "nombre": "CORS no debe autorizar origenes externos con credenciales",
+      "familia": "CORS",
+      "componente": "vulndesk/app.py",
+      "confianza_inicial": "media",
+      "origen": "auto",
+      "archivos_fuente": [
+        "vulndesk/app.py"
+      ],
+      "pistas_codigo": [
+        "configuracion CORS",
+        "prueba Origin externo",
+        "preflight OPTIONS"
+      ]
+    }
+  ],
+  "candidatos_pilar2": [
+    {
+      "familia": "CORS",
+      "causa_raiz": "politica_cors",
+      "componente": "vulndesk/app.py",
+      "confianza": "media",
+      "hipotesis": "La aplicacion configura CORS; comprobar dinamicamente si acepta origenes no confiables, credenciales o preflight permisivo.",
+      "estado": "candidato",
+      "evidencia": [
+        {
+          "family": "CORS",
+          "source": "LAB_MANIFEST.md",
+          "kind": "documentacion",
+          "line": 24,
+          "confidence": "baja",
+          "facts": {
+            "concepto_cors": true
+          }
+        },
+        {
+          "family": "CORS",
+          "source": "vulndesk/app.py",
+          "kind": "codigo_configuracion",
+          "line": 37,
+          "confidence": "media",
+          "facts": {
+            "concepto_cors": true
+          }
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        },
+        {
+          "id_control": "P2-AUTO-CORS-002",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/api/admin",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        },
+        {
+          "id_control": "P2-AUTO-CORS-003",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/api/diagnostic",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        }
+      ],
+      "estrategia_correccion": {
+        "problema": "politica CORS acepta origenes no confiables",
+        "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+        "restricciones": [
+          "adaptar al framework detectado",
+          "no fijar rutas ni nombres de archivo"
+        ],
+        "verificacion": [
+          "repetir Origin externo",
+          "repetir preflight",
+          "smoke test de origen permitido"
+        ]
+      }
+    }
+  ],
+  "estrategias_correccion_pilar2": [
+    {
+      "familia": "CORS",
+      "problema": "politica CORS acepta origenes no confiables",
+      "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+      "restricciones": [
+        "adaptar al framework detectado",
+        "no fijar rutas ni nombres de archivo"
+      ],
+      "verificacion": [
+        "repetir Origin externo",
+        "repetir preflight",
+        "smoke test de origen permitido"
+      ]
+    },
+    {
+      "familia": "SECRET",
+      "problema": "secreto desplegable puede caer en fallback inseguro",
+      "estrategia": "obtener el secreto desde fuente externa; en produccion fallar el arranque si falta o coincide con un default inseguro",
+      "restricciones": [
+        "preservar fallback local solo si la politica lo permite",
+        "no almacenar el valor del secreto en la receta"
+      ],
+      "verificacion": [
+        "produccion sin secreto debe fallar",
+        "produccion con secreto seguro debe iniciar",
+        "repetir control"
+      ]
+    },
+    {
+      "familia": "LIMIT_BYPASS",
+      "problema": "una excepcion puede alterar una politica sin autorizacion suficiente",
+      "estrategia": "autorizar explicitamente la capacidad privilegiada antes de modificar/omitir la politica y auditar su uso",
+      "restricciones": [
+        "no asumir que el nombre del parametro implica vulnerabilidad"
+      ],
+      "verificacion": [
+        "usuario normal sin excepcion",
+        "usuario normal con excepcion",
+        "usuario autorizado con excepcion"
+      ]
+    },
+    {
+      "familia": "CONTAINER",
+      "problema": "runtime de contenedor con privilegios excesivos",
+      "estrategia": "resolver usuario y privilegios efectivos; usar identidad no privilegiada y permisos/capabilities/mounts minimos",
+      "restricciones": [
+        "no insertar USER a ciegas",
+        "considerar Dockerfile, Compose y orquestador"
+      ],
+      "verificacion": [
+        "construir imagen",
+        "iniciar runtime",
+        "comprobar usuario efectivo",
+        "smoke tests"
+      ]
+    }
+  ],
+  "correcciones": [],
+  "metadata_detectada": {
+    "nombre_proyecto": "vulndesk-python",
+    "version_detectada": null,
+    "version_fuente": null,
+    "version_confianza": null,
+    "version_candidatas": [],
+    "lenguajes": [
+      "python"
+    ],
+    "frameworks": [
+      "flask"
+    ],
+    "manifiestos": [
+      "requirements.txt"
+    ],
+    "raices_codigo": [
+      "vulndesk"
+    ],
+    "endpoints_candidatos": [
+      {
+        "metodo": "GET",
+        "ruta": "/",
+        "archivo": "vulndesk/app.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/admin",
+        "archivo": "vulndesk/routes/admin_routes.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/diagnostic",
+        "archivo": "vulndesk/routes/system_routes.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/diagnostic",
+        "archivo": "vulndesk/templates/index.html",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/download",
+        "archivo": "vulndesk/routes/file_routes.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/fetch",
+        "archivo": "vulndesk/routes/network_routes.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/fetch",
+        "archivo": "vulndesk/templates/index.html",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/go",
+        "archivo": "vulndesk/routes/admin_routes.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/login",
+        "archivo": "vulndesk/routes/auth_routes.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/login",
+        "archivo": "vulndesk/templates/index.html",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/preview-template",
+        "archivo": "vulndesk/routes/template_routes.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/preview-template",
+        "archivo": "vulndesk/templates/index.html",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "PUT",
+        "ruta": "/api/profile/:id",
+        "archivo": "vulndesk/templates/index.html",
+        "framework": "documentation-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/profile/<int:user_id>",
+        "archivo": "vulndesk/routes/user_routes.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "PUT",
+        "ruta": "/api/profile/<int:user_id>",
+        "archivo": "vulndesk/routes/user_routes.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/search",
+        "archivo": "vulndesk/routes/ticket_routes.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/search",
+        "archivo": "vulndesk/templates/index.html",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/upload",
+        "archivo": "vulndesk/routes/file_routes.py",
+        "framework": "python-router",
+        "tipo_fuente": "codigo"
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/upload",
+        "archivo": "vulndesk/templates/index.html",
+        "framework": "client-form-reference",
+        "tipo_fuente": "codigo"
+      }
+    ],
+    "total_endpoints_detectados": 13,
+    "matriz_endpoint_usuario": {
+      "habilitada": true,
+      "combinaciones_previstas": 39,
+      "politica_mutaciones": "GET/HEAD/OPTIONS directos; POST/PUT/PATCH con cuerpo vacio; DELETE omitido para evitar perdida de datos"
+    },
+    "total_coincidencias_endpoint": 19,
+    "cuentas_candidatas": [
+      {
+        "username": "admin",
+        "role": "ADMIN",
+        "archivo": "vulndesk/db.py",
+        "tipo_fuente": "codigo",
+        "confianza": "alta",
+        "password_literal": true,
+        "identity_aliases": [
+          "1"
+        ]
+      },
+      {
+        "username": "analyst",
+        "role": "ANALYST",
+        "archivo": "vulndesk/db.py",
+        "tipo_fuente": "codigo",
+        "confianza": "alta",
+        "password_literal": true,
+        "identity_aliases": [
+          "2"
+        ]
+      },
+      {
+        "username": "user",
+        "role": "USER",
+        "archivo": "vulndesk/db.py",
+        "tipo_fuente": "codigo",
+        "confianza": "alta",
+        "password_literal": true,
+        "identity_aliases": [
+          "3"
+        ]
+      }
+    ],
+    "archivos_cuentas_escaneados": true,
+    "perfil_generado_automaticamente": true,
+    "motor_evidencia": {
+      "version": 4,
+      "modo": "evidencia-correlacionada-iterativa",
+      "fuentes": [
+        "codigo",
+        "configuracion",
+        "documentacion",
+        "tests",
+        "fixtures",
+        "seeds",
+        "runtime-vivo-solo-lectura"
+      ],
+      "capacidades_pilar1": [
+        "BOLA/IDOR por propiedad",
+        "RBAC/ABAC desde contratos de seguridad",
+        "alcance de agente desde API directa vs agente"
+      ],
+      "capacidades_pilar2": [
+        "CORS estatico + GET/OPTIONS dinamico",
+        "secretos/fallbacks con contexto de entorno",
+        "bypass de limites como candidato diferencial",
+        "contenedor multi-stage + overrides runtime",
+        "debug y sesion extensibles por familia",
+        "deduplicacion hallazgo != caso de prueba"
+      ],
+      "politica_confianza": "solo activar controles cuando la evidencia es ejecutable; lo ambiguo permanece como candidato",
+      "separa_hallazgo_evidencia_caso": true,
+      "deduplicacion_semantica": true,
+      "ids_hallazgo_dinamicos": true,
+      "arquitectura_familias_extensible": true,
+      "estados": [
+        "bloqueado",
+        "candidato",
+        "confirmado",
+        "correccion_fallida",
+        "correccion_pendiente",
+        "corregido",
+        "descartado",
+        "ejecutable",
+        "ejecutado",
+        "error",
+        "evidencia_insuficiente",
+        "no_aplicable",
+        "no_ejecutable",
+        "por_confirmar",
+        "prueba_preparada",
+        "seguro",
+        "vulnerable"
+      ],
+      "ciclo": [
+        "descubrir",
+        "construir_modelo",
+        "formular_hipotesis",
+        "generar_pruebas",
+        "obtener_evidencia",
+        "actualizar_modelo",
+        "generar_pruebas_adicionales",
+        "consolidar",
+        "proponer_correccion_contextual",
+        "reprobar",
+        "regresion",
+        "aprender_receta_abstracta"
+      ]
+    },
+    "candidatos_pilar1": [
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/",
+        "archivos_fuente": [
+          "vulndesk/app.py"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/api/admin",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "vulndesk/routes/admin_routes.py"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/admin",
+        "archivos_fuente": [
+          "vulndesk/routes/admin_routes.py"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/api/diagnostic",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "vulndesk/routes/system_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/diagnostic",
+        "archivos_fuente": [
+          "vulndesk/routes/system_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/api/download",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "vulndesk/routes/file_routes.py"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/api/fetch",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "vulndesk/routes/network_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/fetch",
+        "archivos_fuente": [
+          "vulndesk/routes/network_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/api/go",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "vulndesk/routes/admin_routes.py"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/go",
+        "archivos_fuente": [
+          "vulndesk/routes/admin_routes.py"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "POST",
+        "ruta_detectada": "/api/login",
+        "archivos_fuente": [
+          "vulndesk/routes/auth_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "POST",
+        "ruta_detectada": "/api/preview-template",
+        "archivos_fuente": [
+          "vulndesk/routes/template_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "PUT",
+        "ruta_detectada": "/api/profile/:id",
+        "archivos_fuente": [
+          "vulndesk/templates/index.html"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado"
+        ],
+        "motivo": "Endpoint orientado a objeto con identificador en la ruta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "PUT",
+        "ruta_detectada": "/api/profile/:id",
+        "archivos_fuente": [
+          "vulndesk/templates/index.html"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/api/profile/<int:user_id>",
+        "archivos_fuente": [
+          "vulndesk/routes/user_routes.py"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado"
+        ],
+        "motivo": "Endpoint orientado a objeto con identificador en la ruta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/profile/<int:user_id>",
+        "archivos_fuente": [
+          "vulndesk/routes/user_routes.py"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "PUT",
+        "ruta_detectada": "/api/profile/<int:user_id>",
+        "archivos_fuente": [
+          "vulndesk/routes/user_routes.py"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado"
+        ],
+        "motivo": "Endpoint orientado a objeto con identificador en la ruta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "PUT",
+        "ruta_detectada": "/api/profile/<int:user_id>",
+        "archivos_fuente": [
+          "vulndesk/routes/user_routes.py"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "BOLA",
+        "tipo_control": "bola",
+        "metodo": "GET",
+        "ruta_detectada": "/api/search",
+        "parametro_objeto": "id",
+        "archivos_fuente": [
+          "vulndesk/routes/ticket_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "requiere_confirmacion": [
+          "ruta_ejecutable",
+          "id_prueba",
+          "propietario_esperado",
+          "parametro_objeto"
+        ],
+        "motivo": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "GET",
+        "ruta_detectada": "/api/search",
+        "archivos_fuente": [
+          "vulndesk/routes/ticket_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      },
+      {
+        "familia": "RBAC_ABAC",
+        "tipo_control": "acceso",
+        "metodo": "POST",
+        "ruta_detectada": "/api/upload",
+        "archivos_fuente": [
+          "vulndesk/routes/file_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "requiere_confirmacion": [
+          "cuenta",
+          "acceso_esperado"
+        ],
+        "motivo": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+      }
+    ],
+    "total_candidatos_pilar1": 21,
+    "controles_pilar1_inferidos_automaticamente": [
+      {
+        "id_control": "P1-AUTO-BOLA-001",
+        "nombre": "Control de propiedad sobre GET /api/profile/{id}",
+        "tipo": "bola",
+        "confianza": "alta",
+        "fuentes_evidencia": [
+          "vulndesk/routes/user_routes.py",
+          "vulndesk/db.py"
+        ]
+      },
+      {
+        "id_control": "P1-AUTO-ACCESS-001",
+        "nombre": "La operación privilegiada debe rechazar GET /api/admin para analyst",
+        "tipo": "acceso",
+        "confianza": "media-alta",
+        "fuentes_evidencia": [
+          "vulndesk/routes/admin_routes.py"
+        ]
+      },
+      {
+        "id_control": "P1-AUTO-ACCESS-002",
+        "nombre": "La operación privilegiada debe rechazar GET /api/admin para user",
+        "tipo": "acceso",
+        "confianza": "media-alta",
+        "fuentes_evidencia": [
+          "vulndesk/routes/admin_routes.py"
+        ]
+      }
+    ],
+    "total_controles_pilar1_activos": 3,
+    "controles_inferidos_automaticamente": [
+      {
+        "id_control": "P2-AUTO-CORS-001",
+        "nombre": "CORS no debe autorizar origenes externos con credenciales",
+        "tipo": "cors_reflection"
+      },
+      {
+        "id_control": "P2-AUTO-CORS-002",
+        "nombre": "CORS no debe autorizar origenes externos con credenciales",
+        "tipo": "cors_reflection"
+      },
+      {
+        "id_control": "P2-AUTO-CORS-003",
+        "nombre": "CORS no debe autorizar origenes externos con credenciales",
+        "tipo": "cors_reflection"
+      }
+    ],
+    "candidatos_pilar2": [
+      {
+        "familia": "CORS",
+        "causa_raiz": "politica_cors",
+        "componente": "vulndesk/app.py",
+        "confianza": "media",
+        "hipotesis": "La aplicacion configura CORS; comprobar dinamicamente si acepta origenes no confiables, credenciales o preflight permisivo.",
+        "estado": "candidato",
+        "evidencia": [
+          {
+            "family": "CORS",
+            "source": "LAB_MANIFEST.md",
+            "kind": "documentacion",
+            "line": 24,
+            "confidence": "baja",
+            "facts": {
+              "concepto_cors": true
+            }
+          },
+          {
+            "family": "CORS",
+            "source": "vulndesk/app.py",
+            "kind": "codigo_configuracion",
+            "line": 37,
+            "confidence": "media",
+            "facts": {
+              "concepto_cors": true
+            }
+          }
+        ],
+        "casos_prueba": [
+          {
+            "id_control": "P2-AUTO-CORS-001",
+            "tipo": "cors_reflection",
+            "metodo": "GET",
+            "ruta": "/",
+            "no_destructivo": true,
+            "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+          },
+          {
+            "id_control": "P2-AUTO-CORS-002",
+            "tipo": "cors_reflection",
+            "metodo": "GET",
+            "ruta": "/api/admin",
+            "no_destructivo": true,
+            "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+          },
+          {
+            "id_control": "P2-AUTO-CORS-003",
+            "tipo": "cors_reflection",
+            "metodo": "GET",
+            "ruta": "/api/diagnostic",
+            "no_destructivo": true,
+            "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+          }
+        ],
+        "estrategia_correccion": {
+          "problema": "politica CORS acepta origenes no confiables",
+          "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+          "restricciones": [
+            "adaptar al framework detectado",
+            "no fijar rutas ni nombres de archivo"
+          ],
+          "verificacion": [
+            "repetir Origin externo",
+            "repetir preflight",
+            "smoke test de origen permitido"
+          ]
+        }
+      }
+    ],
+    "total_candidatos_pilar2": 1,
+    "descubrimiento_pilar2": {
+      "archivos_analizados": 19,
+      "candidatos": 1,
+      "controles_ejecutables": 3,
+      "familias": [
+        "CORS"
+      ]
+    },
+    "estrategias_correccion_pilar2": [
+      {
+        "familia": "CORS",
+        "problema": "politica CORS acepta origenes no confiables",
+        "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+        "restricciones": [
+          "adaptar al framework detectado",
+          "no fijar rutas ni nombres de archivo"
+        ],
+        "verificacion": [
+          "repetir Origin externo",
+          "repetir preflight",
+          "smoke test de origen permitido"
+        ]
+      },
+      {
+        "familia": "SECRET",
+        "problema": "secreto desplegable puede caer en fallback inseguro",
+        "estrategia": "obtener el secreto desde fuente externa; en produccion fallar el arranque si falta o coincide con un default inseguro",
+        "restricciones": [
+          "preservar fallback local solo si la politica lo permite",
+          "no almacenar el valor del secreto en la receta"
+        ],
+        "verificacion": [
+          "produccion sin secreto debe fallar",
+          "produccion con secreto seguro debe iniciar",
+          "repetir control"
+        ]
+      },
+      {
+        "familia": "LIMIT_BYPASS",
+        "problema": "una excepcion puede alterar una politica sin autorizacion suficiente",
+        "estrategia": "autorizar explicitamente la capacidad privilegiada antes de modificar/omitir la politica y auditar su uso",
+        "restricciones": [
+          "no asumir que el nombre del parametro implica vulnerabilidad"
+        ],
+        "verificacion": [
+          "usuario normal sin excepcion",
+          "usuario normal con excepcion",
+          "usuario autorizado con excepcion"
+        ]
+      },
+      {
+        "familia": "CONTAINER",
+        "problema": "runtime de contenedor con privilegios excesivos",
+        "estrategia": "resolver usuario y privilegios efectivos; usar identidad no privilegiada y permisos/capabilities/mounts minimos",
+        "restricciones": [
+          "no insertar USER a ciegas",
+          "considerar Dockerfile, Compose y orquestador"
+        ],
+        "verificacion": [
+          "construir imagen",
+          "iniciar runtime",
+          "comprobar usuario efectivo",
+          "smoke tests"
+        ]
+      }
+    ],
+    "total_controles_pilar2_activos": 3,
+    "total_controles_activos": 6,
+    "entorno_ejecucion": {
+      "docker_instalado": false,
+      "runtime_principal": "Python",
+      "runtime_modo": "process",
+      "runtime_origen": "python-project",
+      "preferencia_arranque": "auto",
+      "comando_inicio": [
+        "python",
+        "run.py"
+      ],
+      "comando_inicio_por_so": null,
+      "base_url": "http://127.0.0.1:5000"
+    },
+    "plan_ejecucion": {
+      "preferencia": "auto",
+      "fallback_local": true,
+      "principal": {
+        "nombre": "Python",
+        "modo": "process",
+        "origen": "python-project",
+        "comando_inicio": [
+          "python",
+          "run.py"
+        ],
+        "comando_inicio_por_so": null,
+        "directorio_trabajo": ".",
+        "base_url": "http://127.0.0.1:5000"
+      },
+      "alternativas": []
+    },
+    "modelo_seguridad_construido": true,
+    "total_controles_explicados": 28,
+    "total_familias_hallazgo_modeladas": 20
+  },
+  "modelo_seguridad": {
+    "version_modelo": 1,
+    "identidades": [
+      {
+        "identidad": "admin",
+        "rol": "ADMIN",
+        "tipo_autenticacion": "session",
+        "credencial_disponible": true
+      },
+      {
+        "identidad": "analyst",
+        "rol": "ANALYST",
+        "tipo_autenticacion": "session",
+        "credencial_disponible": true
+      },
+      {
+        "identidad": "user",
+        "rol": "USER",
+        "tipo_autenticacion": "session",
+        "credencial_disponible": true
+      }
+    ],
+    "roles": [
+      {
+        "rol": "ADMIN",
+        "privilegiado": true,
+        "identidades": [
+          "admin"
+        ]
+      },
+      {
+        "rol": "ANALYST",
+        "privilegiado": false,
+        "identidades": [
+          "analyst"
+        ]
+      },
+      {
+        "rol": "USER",
+        "privilegiado": false,
+        "identidades": [
+          "user"
+        ]
+      }
+    ],
+    "recursos": [
+      {
+        "recurso": "admin",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/admin"
+          }
+        ]
+      },
+      {
+        "recurso": "diagnostic",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/diagnostic"
+          }
+        ]
+      },
+      {
+        "recurso": "download",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/download"
+          }
+        ]
+      },
+      {
+        "recurso": "fetch",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/fetch"
+          }
+        ]
+      },
+      {
+        "recurso": "go",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/go"
+          }
+        ]
+      },
+      {
+        "recurso": "login",
+        "endpoints": [
+          {
+            "metodo": "POST",
+            "ruta": "/api/login"
+          }
+        ]
+      },
+      {
+        "recurso": "preview-template",
+        "endpoints": [
+          {
+            "metodo": "POST",
+            "ruta": "/api/preview-template"
+          }
+        ]
+      },
+      {
+        "recurso": "profile",
+        "endpoints": [
+          {
+            "metodo": "PUT",
+            "ruta": "/api/profile/:id"
+          },
+          {
+            "metodo": "GET",
+            "ruta": "/api/profile/<int:user_id>"
+          },
+          {
+            "metodo": "PUT",
+            "ruta": "/api/profile/<int:user_id>"
+          }
+        ]
+      },
+      {
+        "recurso": "search",
+        "endpoints": [
+          {
+            "metodo": "GET",
+            "ruta": "/api/search"
+          }
+        ]
+      },
+      {
+        "recurso": "upload",
+        "endpoints": [
+          {
+            "metodo": "POST",
+            "ruta": "/api/upload"
+          }
+        ]
+      }
+    ],
+    "endpoints": [
+      {
+        "metodo": "GET",
+        "ruta": "/",
+        "ruta_normalizada": "/",
+        "recurso": null,
+        "archivos_fuente": [
+          "vulndesk/app.py"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/admin",
+        "ruta_normalizada": "/api/admin",
+        "recurso": "admin",
+        "archivos_fuente": [
+          "vulndesk/routes/admin_routes.py"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/diagnostic",
+        "ruta_normalizada": "/api/diagnostic",
+        "recurso": "diagnostic",
+        "archivos_fuente": [
+          "vulndesk/routes/system_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router",
+          "client-form-reference"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/download",
+        "ruta_normalizada": "/api/download",
+        "recurso": "download",
+        "archivos_fuente": [
+          "vulndesk/routes/file_routes.py"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/fetch",
+        "ruta_normalizada": "/api/fetch",
+        "recurso": "fetch",
+        "archivos_fuente": [
+          "vulndesk/routes/network_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router",
+          "client-form-reference"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/go",
+        "ruta_normalizada": "/api/go",
+        "recurso": "go",
+        "archivos_fuente": [
+          "vulndesk/routes/admin_routes.py"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/login",
+        "ruta_normalizada": "/api/login",
+        "recurso": "login",
+        "archivos_fuente": [
+          "vulndesk/routes/auth_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router",
+          "client-form-reference"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/preview-template",
+        "ruta_normalizada": "/api/preview-template",
+        "recurso": "preview-template",
+        "archivos_fuente": [
+          "vulndesk/routes/template_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router",
+          "client-form-reference"
+        ]
+      },
+      {
+        "metodo": "PUT",
+        "ruta": "/api/profile/:id",
+        "ruta_normalizada": "/api/profile/{id}",
+        "recurso": "profile",
+        "archivos_fuente": [
+          "vulndesk/templates/index.html"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "documentation-reference"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/profile/<int:user_id>",
+        "ruta_normalizada": "/api/profile/{id}",
+        "recurso": "profile",
+        "archivos_fuente": [
+          "vulndesk/routes/user_routes.py"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router"
+        ]
+      },
+      {
+        "metodo": "PUT",
+        "ruta": "/api/profile/<int:user_id>",
+        "ruta_normalizada": "/api/profile/{id}",
+        "recurso": "profile",
+        "archivos_fuente": [
+          "vulndesk/routes/user_routes.py"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "ruta": "/api/search",
+        "ruta_normalizada": "/api/search",
+        "recurso": "search",
+        "archivos_fuente": [
+          "vulndesk/routes/ticket_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router",
+          "client-form-reference"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "ruta": "/api/upload",
+        "ruta_normalizada": "/api/upload",
+        "recurso": "upload",
+        "archivos_fuente": [
+          "vulndesk/routes/file_routes.py",
+          "vulndesk/templates/index.html"
+        ],
+        "tipos_fuente": [
+          "codigo"
+        ],
+        "frameworks": [
+          "python-router",
+          "client-form-reference"
+        ]
+      }
+    ],
+    "relaciones": [
+      {
+        "tipo": "identidad_rol",
+        "origen": "admin",
+        "destino": "ADMIN"
+      },
+      {
+        "tipo": "identidad_rol",
+        "origen": "analyst",
+        "destino": "ANALYST"
+      },
+      {
+        "tipo": "identidad_rol",
+        "origen": "user",
+        "destino": "USER"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/admin",
+        "destino": "admin"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/diagnostic",
+        "destino": "diagnostic"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/download",
+        "destino": "download"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/fetch",
+        "destino": "fetch"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/go",
+        "destino": "go"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "POST /api/login",
+        "destino": "login"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "POST /api/preview-template",
+        "destino": "preview-template"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "PUT /api/profile/:id",
+        "destino": "profile"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/profile/<int:user_id>",
+        "destino": "profile"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "PUT /api/profile/<int:user_id>",
+        "destino": "profile"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "GET /api/search",
+        "destino": "search"
+      },
+      {
+        "tipo": "endpoint_recurso",
+        "origen": "POST /api/upload",
+        "destino": "upload"
+      }
+    ],
+    "contrato_conceptual": "Identidad -> Rol/Atributos -> Endpoint -> Accion -> Recurso -> Propiedad, inferido por evidencia y no por nombres fijos"
+  },
+  "familias_controles": {
+    "AGENT_SCOPE": {
+      "code": "AGENT_SCOPE",
+      "pillar": "P1",
+      "name": "Propagación de identidad a agentes y herramientas",
+      "evidence_requirements": [
+        "identidad",
+        "api_directa",
+        "agente",
+        "herramienta"
+      ],
+      "confirmation_strategy": "Comparar el alcance de la API directa con la misma operación a través del agente para la misma identidad.",
+      "false_positive_guards": [
+        "comparar la misma identidad y operación",
+        "no inferir escalamiento por diferencia de formato"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "recurso",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "agente",
+        "herramienta",
+        "contexto_identidad",
+        "autorizacion"
+      ]
+    },
+    "BOLA": {
+      "code": "BOLA",
+      "pillar": "P1",
+      "name": "Autorización a nivel de objeto",
+      "evidence_requirements": [
+        "endpoint_objeto",
+        "identidad",
+        "recurso",
+        "propiedad"
+      ],
+      "confirmation_strategy": "Comparar el mismo objeto con su propietario y otra identidad; confirmar solo cuando la política de propiedad esté sustentada.",
+      "false_positive_guards": [
+        "no inferir propiedad solo por un nombre de ruta",
+        "no tratar HTTP 200 aislado como vulnerabilidad"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "metodo",
+        "recurso",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "punto_autorizacion",
+        "campo_propiedad",
+        "rol_privilegiado"
+      ]
+    },
+    "CONTAINER": {
+      "code": "CONTAINER",
+      "pillar": "P2",
+      "name": "Privilegios de contenedor",
+      "evidence_requirements": [
+        "dockerfile_o_manifiesto",
+        "usuario_efectivo"
+      ],
+      "confirmation_strategy": "Resolver usuario efectivo y privilegios de ejecución.",
+      "false_positive_guards": [
+        "no asumir root solo porque falte USER sin considerar imagen/contexto"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "imagen",
+        "usuario",
+        "capabilities",
+        "mounts"
+      ]
+    },
+    "CORS": {
+      "code": "CORS",
+      "pillar": "P2",
+      "name": "Política CORS",
+      "evidence_requirements": [
+        "configuracion_o_headers",
+        "origin_de_prueba"
+      ],
+      "confirmation_strategy": "Enviar Origin no autorizado y validar combinación de ACAO y credenciales; consolidar configuración global equivalente.",
+      "false_positive_guards": [
+        "no confirmar solo por presencia de la palabra CORS"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "middleware_cors",
+        "allowlist",
+        "credenciales"
+      ]
+    },
+    "DEBUG": {
+      "code": "DEBUG",
+      "pillar": "P2",
+      "name": "Modo debug",
+      "evidence_requirements": [
+        "configuracion",
+        "valor_efectivo"
+      ],
+      "confirmation_strategy": "Confirmar que el modo de depuración es efectivo en el contexto analizado.",
+      "false_positive_guards": [
+        "distinguir ejemplo/test de configuración desplegable"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "configuracion_debug",
+        "entorno"
+      ]
+    },
+    "LIMIT_BYPASS": {
+      "code": "LIMIT_BYPASS",
+      "pillar": "P2",
+      "name": "Bypass de límites u opciones excepcionales",
+      "evidence_requirements": [
+        "parametro_o_rama",
+        "limite",
+        "identidad",
+        "autorizacion"
+      ],
+      "confirmation_strategy": "Comparar operación normal, opción especial con bajo privilegio y opción especial con identidad autorizada.",
+      "false_positive_guards": [
+        "una coincidencia textual solo crea candidato",
+        "exigir relación con un límite o validación"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "metodo",
+        "parametro",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "parametro",
+        "guardia_autorizacion",
+        "limite_afectado"
+      ]
+    },
+    "RBAC_ABAC": {
+      "code": "RBAC_ABAC",
+      "pillar": "P1",
+      "name": "Separación de privilegios RBAC/ABAC",
+      "evidence_requirements": [
+        "identidades",
+        "roles_o_atributos",
+        "operacion",
+        "politica"
+      ],
+      "confirmation_strategy": "Comparar identidades con diferente privilegio sobre la misma operación y contrastar el resultado con una política inferible.",
+      "false_positive_guards": [
+        "una palabra como admin solo crea candidato",
+        "no asumir acceso esperado sin política o evidencia correlacionada"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "endpoint",
+        "metodo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "punto_autorizacion",
+        "roles",
+        "atributos",
+        "politica"
+      ]
+    },
+    "SECRET": {
+      "code": "SECRET",
+      "pillar": "P2",
+      "name": "Gestión insegura de secretos",
+      "evidence_requirements": [
+        "valor",
+        "fuente",
+        "contexto_uso"
+      ],
+      "confirmation_strategy": "Distinguir placeholder/test de secreto realmente utilizado o fallback desplegable.",
+      "false_positive_guards": [
+        "no marcar cualquier cadena parecida a token"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "origen_secreto",
+        "mecanismo_configuracion"
+      ]
+    },
+    "SESSION": {
+      "code": "SESSION",
+      "pillar": "P2",
+      "name": "Cookies y sesión",
+      "evidence_requirements": [
+        "configuracion_sesion"
+      ],
+      "confirmation_strategy": "Evaluar Secure, HttpOnly, SameSite, transporte, duración y secretos.",
+      "false_positive_guards": [
+        "no confundir ejemplo documental con configuración efectiva"
+      ],
+      "dedup_dimensions": [
+        "familia",
+        "componente",
+        "archivo",
+        "causa_raiz"
+      ],
+      "remediation_context": [
+        "configuracion_cookie",
+        "sesion",
+        "transporte"
+      ]
+    }
+  },
+  "controles_explicados": [
+    {
+      "familia": "BOLA",
+      "id_control": "P1-AUTO-BOLA-001",
+      "id_control_semantico": "P1-BOLA-902175",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/user_routes.py",
+        "vulndesk/db.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "endpoint": "/api/profile/{id}",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": "admin",
+      "hipotesis": "El acceso al objeto debe respetar propietario o rol privilegiado.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/user_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/db.py"
+        },
+        {
+          "tipo": "pista",
+          "valor": "propietario"
+        },
+        {
+          "tipo": "pista",
+          "valor": "owner"
+        },
+        {
+          "tipo": "pista",
+          "valor": "autorización por objeto"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-BOLA-001",
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/profile/{id}",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": "admin",
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/user_routes.py",
+            "vulndesk/db.py"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": "P1-AUTO-ACCESS-001",
+      "id_control_semantico": "P1-RBAC-353865",
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "cuenta": "analyst",
+      "rol": "ANALYST",
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "La operación privilegiada debe rechazar GET /api/admin para analyst",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/admin_routes.py"
+        },
+        {
+          "tipo": "pista",
+          "valor": "ruta con semántica privilegiada"
+        },
+        {
+          "tipo": "pista",
+          "valor": "separación de roles detectada"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-ACCESS-001",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": "analyst",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": "P1-AUTO-ACCESS-002",
+      "id_control_semantico": "P1-RBAC-353865",
+      "autogenerado": true,
+      "confianza": "media-alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "cuenta": "user",
+      "rol": "USER",
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "La operación privilegiada debe rechazar GET /api/admin para user",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/admin_routes.py"
+        },
+        {
+          "tipo": "pista",
+          "valor": "ruta con semántica privilegiada"
+        },
+        {
+          "tipo": "pista",
+          "valor": "separación de roles detectada"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-ACCESS-002",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": "user",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": "P2-AUTO-CORS-001",
+      "id_control_semantico": "P2-CORS-199545",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/app.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/app.py"
+      ],
+      "endpoint": "/",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": null,
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/app.py"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": null,
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/app.py"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": "P2-AUTO-CORS-002",
+      "id_control_semantico": "P2-CORS-120189",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/app.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/app.py"
+      ],
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/app.py"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-002",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/app.py"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": "P2-AUTO-CORS-003",
+      "id_control_semantico": "P2-CORS-023448",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/app.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/app.py"
+      ],
+      "endpoint": "/api/diagnostic",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "diagnostic",
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/app.py"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        }
+      ],
+      "estado": "prueba_preparada",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-003",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/app.py"
+          ]
+        }
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-846710",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/app.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/app.py"
+      ],
+      "endpoint": "/",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": null,
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/app.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": null,
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/app.py"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-726763",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/admin_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-353865",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/admin_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-010860",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/system_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/system_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "endpoint": "/api/diagnostic",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "diagnostic",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/system_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/system_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-812392",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/system_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/system_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "endpoint": "/api/diagnostic",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "diagnostic",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/system_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/system_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-430805",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/file_routes.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/file_routes.py"
+      ],
+      "endpoint": "/api/download",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "download",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/file_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/download",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "download",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/file_routes.py"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-214562",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/network_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/network_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "endpoint": "/api/fetch",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "fetch",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/network_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/fetch",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "fetch",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/network_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-322954",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/network_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/network_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "endpoint": "/api/fetch",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "fetch",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/network_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/fetch",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "fetch",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/network_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-619918",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "endpoint": "/api/go",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "go",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/admin_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/go",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "go",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-588500",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/admin_routes.py"
+      ],
+      "endpoint": "/api/go",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "go",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/admin_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/go",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "go",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-289748",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/auth_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/auth_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "endpoint": "/api/login",
+      "metodo": "POST",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "login",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/auth_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/login",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "login",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/auth_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-713707",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/template_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/template_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "endpoint": "/api/preview-template",
+      "metodo": "POST",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "preview-template",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/template_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/preview-template",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "preview-template",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/template_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-128727",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/templates/index.html"
+      ],
+      "archivos_fuente": [
+        "vulndesk/templates/index.html"
+      ],
+      "endpoint": "/api/profile/:id",
+      "metodo": "PUT",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Endpoint orientado a objeto con identificador en la ruta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Endpoint orientado a objeto con identificador en la ruta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-737711",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/templates/index.html"
+      ],
+      "archivos_fuente": [
+        "vulndesk/templates/index.html"
+      ],
+      "endpoint": "/api/profile/:id",
+      "metodo": "PUT",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-902175",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "endpoint": "/api/profile/<int:user_id>",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Endpoint orientado a objeto con identificador en la ruta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/user_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Endpoint orientado a objeto con identificador en la ruta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/<int:user_id>",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/user_routes.py"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-625942",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "endpoint": "/api/profile/<int:user_id>",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/user_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/<int:user_id>",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/user_routes.py"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-128727",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "endpoint": "/api/profile/<int:user_id>",
+      "metodo": "PUT",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Endpoint orientado a objeto con identificador en la ruta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/user_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Endpoint orientado a objeto con identificador en la ruta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/<int:user_id>",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/user_routes.py"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-737711",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/user_routes.py"
+      ],
+      "endpoint": "/api/profile/<int:user_id>",
+      "metodo": "PUT",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/user_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/<int:user_id>",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/user_routes.py"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_control": null,
+      "id_control_semantico": "P1-BOLA-916246",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/ticket_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/ticket_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "endpoint": "/api/search",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "search",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/ticket_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "autorizacion_objeto",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/search",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "search",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/ticket_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "ruta_ejecutable",
+        "id_prueba",
+        "propietario_esperado",
+        "parametro_objeto"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-612425",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/ticket_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/ticket_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "endpoint": "/api/search",
+      "metodo": "GET",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "search",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/ticket_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/search",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "search",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/ticket_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_control": null,
+      "id_control_semantico": "P1-RBAC-234788",
+      "autogenerado": true,
+      "confianza": "alta",
+      "fuentes_evidencia": [
+        "vulndesk/routes/file_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "archivos_fuente": [
+        "vulndesk/routes/file_routes.py",
+        "vulndesk/templates/index.html"
+      ],
+      "endpoint": "/api/upload",
+      "metodo": "POST",
+      "cuenta": null,
+      "rol": null,
+      "recurso": "upload",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "evidencia": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/file_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "estado": "evidencia_insuficiente",
+      "causa_raiz": "separacion_privilegios",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/upload",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "upload",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/file_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "campos_pendientes": [
+        "cuenta",
+        "acceso_esperado"
+      ]
+    },
+    {
+      "familia": "CORS",
+      "id_control": null,
+      "id_control_semantico": "P2-CORS-209886",
+      "autogenerado": true,
+      "confianza": "media",
+      "fuentes_evidencia": [],
+      "archivos_fuente": [],
+      "endpoint": null,
+      "metodo": null,
+      "cuenta": null,
+      "rol": null,
+      "recurso": null,
+      "propietario": null,
+      "hipotesis": "Evaluar política cors",
+      "evidencia": [
+        {
+          "family": "CORS",
+          "source": "LAB_MANIFEST.md",
+          "kind": "documentacion",
+          "line": 24,
+          "confidence": "baja",
+          "facts": {
+            "concepto_cors": true
+          }
+        },
+        {
+          "family": "CORS",
+          "source": "vulndesk/app.py",
+          "kind": "codigo_configuracion",
+          "line": 37,
+          "confidence": "media",
+          "facts": {
+            "concepto_cors": true
+          }
+        }
+      ],
+      "estado": "candidato",
+      "causa_raiz": "politica_cors",
+      "relacionado_con": [],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": null,
+          "familia": "CORS",
+          "estado": "candidato",
+          "endpoint": null,
+          "metodo": null,
+          "cuenta": null,
+          "recurso": null,
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": []
+        }
+      ],
+      "componente": "vulndesk/app.py",
+      "estrategia_correccion": {
+        "problema": "politica CORS acepta origenes no confiables",
+        "estrategia": "localizar el componente CORS y reemplazar reflexion/permisividad por allowlist explicita; credenciales solo para origenes autorizados; Vary: Origin cuando aplique",
+        "restricciones": [
+          "adaptar al framework detectado",
+          "no fijar rutas ni nombres de archivo"
+        ],
+        "verificacion": [
+          "repetir Origin externo",
+          "repetir preflight",
+          "smoke test de origen permitido"
+        ]
+      }
+    }
+  ],
+  "hallazgos_modelados": [
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-010860",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/diagnostic",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "diagnostic",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/system_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/system_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-128727",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/profile/:id",
+      "metodo": "PUT",
+      "componente": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Endpoint orientado a objeto con identificador en la ruta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Endpoint orientado a objeto con identificador en la ruta."
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/user_routes.py"
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/templates/index.html"
+          ]
+        },
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/<int:user_id>",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/user_routes.py"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-214562",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/fetch",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "fetch",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/network_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/fetch",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "fetch",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/network_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-430805",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/download",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "download",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/file_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/download",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "download",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/file_routes.py"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-619918",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/go",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "go",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/admin_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/go",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "go",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-726763",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/admin_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-902175",
+      "estado": "prueba_preparada",
+      "confianza": "alta",
+      "endpoint": "/api/profile/{id}",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "profile",
+      "propietario": "admin",
+      "hipotesis": "El acceso al objeto debe respetar propietario o rol privilegiado.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/user_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/db.py"
+        },
+        {
+          "tipo": "pista",
+          "valor": "propietario"
+        },
+        {
+          "tipo": "pista",
+          "valor": "owner"
+        },
+        {
+          "tipo": "pista",
+          "valor": "autorización por objeto"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Endpoint orientado a objeto con identificador en la ruta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-BOLA-001",
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/profile/{id}",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": "admin",
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/user_routes.py",
+            "vulndesk/db.py"
+          ]
+        },
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/<int:user_id>",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/user_routes.py"
+          ]
+        }
+      ],
+      "relacionado_con": [
+        "P1-AUTO-BOLA-001"
+      ]
+    },
+    {
+      "familia": "BOLA",
+      "id_hallazgo": "P1-BOLA-916246",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/search",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "search",
+      "propietario": null,
+      "hipotesis": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta.",
+      "causa_raiz": "autorizacion_objeto",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/ticket_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "El endpoint obtiene un identificador de objeto desde un parámetro de consulta."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "bola",
+          "familia": "BOLA",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/search",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "search",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/ticket_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "CORS",
+      "id_hallazgo": "P2-CORS-007637",
+      "estado": "prueba_preparada",
+      "confianza": "alta",
+      "endpoint": "/",
+      "metodo": "GET",
+      "componente": "vulndesk/app.py",
+      "recurso": null,
+      "propietario": null,
+      "hipotesis": "CORS no debe autorizar origenes externos con credenciales",
+      "causa_raiz": "politica_cors",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/app.py"
+        },
+        {
+          "tipo": "pista",
+          "valor": "configuracion CORS"
+        },
+        {
+          "tipo": "pista",
+          "valor": "prueba Origin externo"
+        },
+        {
+          "tipo": "pista",
+          "valor": "preflight OPTIONS"
+        },
+        {
+          "family": "CORS",
+          "source": "LAB_MANIFEST.md",
+          "kind": "documentacion",
+          "line": 24,
+          "confidence": "baja",
+          "facts": {
+            "concepto_cors": true
+          }
+        },
+        {
+          "family": "CORS",
+          "source": "vulndesk/app.py",
+          "kind": "codigo_configuracion",
+          "line": 37,
+          "confidence": "media",
+          "facts": {
+            "concepto_cors": true
+          }
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": null,
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/app.py"
+          ]
+        },
+        {
+          "id_control": "P2-AUTO-CORS-002",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/app.py"
+          ]
+        },
+        {
+          "id_control": "P2-AUTO-CORS-003",
+          "tipo": "cors_reflection",
+          "familia": "CORS",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/app.py"
+          ]
+        },
+        {
+          "id_control": "P2-AUTO-CORS-001",
+          "tipo": "cors_reflection",
+          "metodo": "GET",
+          "ruta": "/",
+          "no_destructivo": true,
+          "objetivo": "comparar respuesta simple y OPTIONS con Origin externo controlado"
+        }
+      ],
+      "relacionado_con": [
+        "P2-AUTO-CORS-001",
+        "P2-AUTO-CORS-002",
+        "P2-AUTO-CORS-003"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-234788",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/upload",
+      "metodo": "POST",
+      "componente": null,
+      "recurso": "upload",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/file_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/upload",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "upload",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/file_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-289748",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/login",
+      "metodo": "POST",
+      "componente": null,
+      "recurso": "login",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/auth_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/login",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "login",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/auth_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-322954",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/fetch",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "fetch",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/network_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/fetch",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "fetch",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/network_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-353865",
+      "estado": "prueba_preparada",
+      "confianza": "media-alta",
+      "endpoint": "/api/admin",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "admin",
+      "propietario": null,
+      "hipotesis": "La operación privilegiada debe rechazar GET /api/admin para analyst",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/admin_routes.py"
+        },
+        {
+          "tipo": "pista",
+          "valor": "ruta con semántica privilegiada"
+        },
+        {
+          "tipo": "pista",
+          "valor": "separación de roles detectada"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": "P1-AUTO-ACCESS-001",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": "analyst",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        },
+        {
+          "id_control": "P1-AUTO-ACCESS-002",
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "prueba_preparada",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": "user",
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        },
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/admin",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "admin",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        }
+      ],
+      "relacionado_con": [
+        "P1-AUTO-ACCESS-001",
+        "P1-AUTO-ACCESS-002"
+      ]
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-588500",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/go",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "go",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/admin_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/go",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "go",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/admin_routes.py"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-612425",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/search",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "search",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/ticket_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/search",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "search",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/ticket_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-625942",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/profile/<int:user_id>",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/user_routes.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/<int:user_id>",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/user_routes.py"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-713707",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/preview-template",
+      "metodo": "POST",
+      "componente": null,
+      "recurso": "preview-template",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/template_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/preview-template",
+          "metodo": "POST",
+          "cuenta": null,
+          "recurso": "preview-template",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/template_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-737711",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/profile/:id",
+      "metodo": "PUT",
+      "componente": null,
+      "recurso": "profile",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/user_routes.py"
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/:id",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/templates/index.html"
+          ]
+        },
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/profile/<int:user_id>",
+          "metodo": "PUT",
+          "cuenta": null,
+          "recurso": "profile",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/user_routes.py"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-812392",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/api/diagnostic",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": "diagnostic",
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/routes/system_routes.py"
+        },
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/templates/index.html"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/api/diagnostic",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": "diagnostic",
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/routes/system_routes.py",
+            "vulndesk/templates/index.html"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    },
+    {
+      "familia": "RBAC_ABAC",
+      "id_hallazgo": "P1-RBAC-846710",
+      "estado": "evidencia_insuficiente",
+      "confianza": "alta",
+      "endpoint": "/",
+      "metodo": "GET",
+      "componente": null,
+      "recurso": null,
+      "propietario": null,
+      "hipotesis": "Ruta con semántica administrativa, de auditoría o de operación privilegiada.",
+      "causa_raiz": "separacion_privilegios",
+      "severidad": null,
+      "recomendacion": null,
+      "evidencias": [
+        {
+          "tipo": "fuente_estatica",
+          "fuente": "vulndesk/app.py"
+        },
+        {
+          "tipo": "hipotesis_origen",
+          "valor": "Ruta con semántica administrativa, de auditoría o de operación privilegiada."
+        }
+      ],
+      "casos_prueba": [
+        {
+          "id_control": null,
+          "tipo": "acceso",
+          "familia": "RBAC_ABAC",
+          "estado": "evidencia_insuficiente",
+          "endpoint": "/",
+          "metodo": "GET",
+          "cuenta": null,
+          "recurso": null,
+          "propietario": null,
+          "parametro": null,
+          "fuentes_evidencia": [
+            "vulndesk/app.py"
+          ]
+        }
+      ],
+      "relacionado_con": []
+    }
+  ]
+}

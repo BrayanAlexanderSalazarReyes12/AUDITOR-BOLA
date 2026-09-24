@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,7 +30,9 @@ class EvidenceSession:
 
     @classmethod
     def create(cls, base_dir: str | Path = "evidencias") -> "EvidenceSession":
-        root = Path(base_dir) / _timestamp()
+        base = Path(base_dir)
+        base.mkdir(parents=True, exist_ok=True)
+        root = Path(tempfile.mkdtemp(prefix=_timestamp() + "-", dir=base))
         (root / "baseline").mkdir(parents=True, exist_ok=True)
         (root / "cambios").mkdir(parents=True, exist_ok=True)
         (root / "verification").mkdir(parents=True, exist_ok=True)

@@ -19,9 +19,10 @@ class Cuenta:
     username: str
     password: str | None
     role: str
-    auth_type: str = "basic"  # basic | bearer | header | none
+    auth_type: str = "basic"  # basic | bearer | header | none | session | login_bearer
     token: str | None = None
     headers: dict[str, str] = field(default_factory=dict)
+    login: dict = field(default_factory=dict)
 
 
 @dataclass

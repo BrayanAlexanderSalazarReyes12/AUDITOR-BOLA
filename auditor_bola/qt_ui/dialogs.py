@@ -667,7 +667,7 @@ class CorrectionResultDialog(AegisDialog):
 class AccountManagerDialog(AegisDialog):
     """Editor de cuentas de prueba y roles del perfil."""
 
-    AUTH_TYPES = ("basic", "bearer", "header", "none")
+    AUTH_TYPES = ("basic", "bearer", "header", "none", "session", "login_bearer")
 
     def __init__(
         self,
@@ -730,7 +730,8 @@ class AccountManagerDialog(AegisDialog):
 
         hint = QLabel(
             "Autenticación: basic = usuario/clave · bearer = token · "
-            "header = cabecera personalizada · none = sin autenticación."
+            "header = cabecera personalizada · session = sesión · "
+            "login_bearer = token por login · none = sin autenticación."
         )
         hint.setObjectName("DialogHint")
         hint.setWordWrap(True)
@@ -837,6 +838,7 @@ class AccountManagerDialog(AegisDialog):
             str(account.get("username") or "")
         )
         username.setObjectName("AccountsCellEditor")
+        username.setProperty("account_config", dict(account))
         username.setPlaceholderText("usuario o correo")
         self.table.setCellWidget(row, 0, username)
 
@@ -959,12 +961,11 @@ class AccountManagerDialog(AegisDialog):
 
             accounts.append(
                 {
+                    **(username_widget.property("account_config") or {}),
                     "username": username,
                     "password": password_text or None,
                     "role": role,
                     "auth_type": auth,
-                    "token": None,
-                    "headers": {},
                 }
             )
 
