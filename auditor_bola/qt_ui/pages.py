@@ -44,7 +44,12 @@ from ..app_paths import (
 from ..article_evidence import export_article_package
 from ..recipe_library import biblioteca_por_defecto
 from ..remediation_knowledge import knowledge_root
-from .dialogs import styled_existing_directory, styled_open_file
+from .dialogs import (
+    LibraryBrowserWindow,
+    PatchReviewWindow,
+    styled_existing_directory,
+    styled_open_file,
+)
 from .theme import COLORS
 from .widgets import (
     Card,
@@ -921,10 +926,20 @@ class AIPage(QWidget):
         self.list.currentRowChanged.connect(self._show_proposal)
         left_l.addWidget(self.list, 1)
 
+        actions_l = QHBoxLayout()
+        self.review_btn = QPushButton("▣  Abrir revisión completa")
+        self.review_btn.setToolTip(
+            "Abrir una ventana independiente con el código, diff y detalles del parche."
+        )
+        self.review_btn.clicked.connect(self._open_patch_review)
+        self.review_btn.setEnabled(False)
+        actions_l.addWidget(self.review_btn)
+
         self.apply_btn = PrimaryButton("Aplicar propuesta y verificar")
         self.apply_btn.clicked.connect(self._apply)
         self.apply_btn.setEnabled(False)
-        left_l.addWidget(self.apply_btn)
+        actions_l.addWidget(self.apply_btn, 1)
+        left_l.addLayout(actions_l)
 
         right = Card()
         right_l = QVBoxLayout(right)
@@ -1165,11 +1180,13 @@ class AIPage(QWidget):
             self.detail.clear()
             self.diff_view.clear()
             self.apply_btn.setEnabled(False)
+            self.review_btn.setEnabled(False)
             self.apply_btn.setText("Aplicar propuesta y verificar")
             return
         proposal = self.proposals[index]
         valid = bool(proposal.get("validacion_ok", True))
         self.apply_btn.setEnabled(valid)
+        self.review_btn.setEnabled(True)
         self.apply_btn.setText(
             "Aplicar propuesta y verificar"
             if valid
@@ -1185,6 +1202,19 @@ class AIPage(QWidget):
             )
         )
         self._render_code_preview(proposal)
+
+    def _open_patch_review(self):
+        index = self.list.currentRow()
+        if index < 0 or index >= len(self.proposals):
+            return
+        proposal = self.proposals[index]
+        window = PatchReviewWindow(
+            proposal,
+            target_root=self.controller.target_root,
+            source_path=self.source_path,
+            parent=self,
+        )
+        window.exec()
 
     def _render_code_preview(self, proposal: dict) -> None:
         previews = [
@@ -1302,6 +1332,21 @@ class KnowledgePage(QWidget):
         metrics.addWidget(self.evidence)
         layout.addLayout(metrics)
 
+        actions = Card()
+        actions_l = QHBoxLayout(actions)
+        actions_l.setContentsMargins(16, 12, 16, 12)
+        actions_l.addWidget(
+            SectionHeader(
+                "Biblioteca verificable",
+                "Inspecciona los JSON reales de medicinas y parches guardados.",
+            ),
+            1,
+        )
+        browse = PrimaryButton("▣  Abrir biblioteca de archivos")
+        browse.clicked.connect(self._open_library)
+        actions_l.addWidget(browse)
+        layout.addWidget(actions)
+
         card = Card()
         card_l = QVBoxLayout(card)
         card_l.setContentsMargins(16, 14, 16, 14)
@@ -1318,6 +1363,10 @@ class KnowledgePage(QWidget):
         card_l.addWidget(self.details)
         card_l.addStretch(1)
         layout.addWidget(card, 1)
+
+    def _open_library(self):
+        window = LibraryBrowserWindow(parent=self)
+        window.exec()
 
     def refresh(self):
         knowledge_files = (

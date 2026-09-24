@@ -6,7 +6,8 @@ import json
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtCore import QTimer, Qt, Signal, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QListView,
@@ -25,6 +26,8 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QMessageBox,
     QPlainTextEdit,
+    QTabWidget,
+    QListWidget,
     QPushButton,
     QProgressBar,
     QScrollArea,
@@ -164,6 +167,336 @@ class AegisDialog(QDialog):
             pass
 
 
+
+
+class PatchReviewWindow(AegisDialog):
+    """Ventana dedicada para revisar una medicina/parche antes de aplicarlo."""
+
+    def __init__(
+        self,
+        proposal: dict,
+        *,
+        target_root: str | Path | None = None,
+        source_path: str | Path | None = None,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.proposal = dict(proposal or {})
+        self.target_root = Path(target_root).resolve() if target_root else None
+        self.source_path = Path(source_path).resolve() if source_path else None
+        self.configure_dialog_size((1420, 860), (980, 620), maximized=False)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 16, 18, 16)
+        root.setSpacing(10)
+
+        header = QFrame()
+        header_l = QHBoxLayout(header)
+        header_l.setContentsMargins(14, 10, 14, 10)
+        title_box = QVBoxLayout()
+        title = QLabel(str(self.proposal.get("titulo") or "Revisión de parche"))
+        title.setObjectName("SectionTitle")
+        title.setWordWrap(True)
+        title_box.addWidget(title)
+        self.status = QLabel()
+        self.status.setObjectName("Muted")
+        title_box.addWidget(self.status)
+        header_l.addLayout(title_box, 1)
+        close = QPushButton("Cerrar")
+        close.clicked.connect(self.close)
+        header_l.addWidget(close)
+        root.addWidget(header)
+
+        split = QSplitter(Qt.Orientation.Horizontal)
+        split.setChildrenCollapsible(False)
+
+        left = QFrame()
+        left_l = QVBoxLayout(left)
+        left_l.addWidget(SectionHeader(
+            "Archivos del parche",
+            "Selecciona el archivo para revisar su cambio completo.",
+        ))
+        self.files = QListWidget()
+        self.files.setWordWrap(True)
+        self.files.currentRowChanged.connect(self._show_file)
+        left_l.addWidget(self.files, 1)
+
+        right = QFrame()
+        right_l = QVBoxLayout(right)
+        right_l.addWidget(SectionHeader(
+            "Información de la medicina",
+            "Framework, estrategia, riesgo y validación de la propuesta.",
+        ))
+        meta = QPlainTextEdit()
+        meta.setReadOnly(True)
+        meta.setMaximumHeight(190)
+        meta.setPlainText(json.dumps(
+            {k: v for k, v in self.proposal.items() if k != "preview_cambios"},
+            ensure_ascii=False,
+            indent=2,
+        ))
+        right_l.addWidget(meta)
+
+        self.tabs = QTabWidget()
+        self.diff = QPlainTextEdit()
+        self.diff.setReadOnly(True)
+        self.diff.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.code = QPlainTextEdit()
+        self.code.setReadOnly(True)
+        self.code.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.code.setObjectName("PatchCodeView")
+        self.tabs.addTab(self.diff, "Parche / Diff")
+        self.tabs.addTab(self.code, "Código actual")
+        right_l.addWidget(self.tabs, 1)
+
+        split.addWidget(left)
+        split.addWidget(right)
+        split.setSizes([350, 1050])
+        root.addWidget(split, 1)
+
+        self._previews = [
+            item for item in self.proposal.get("preview_cambios") or []
+            if isinstance(item, dict)
+        ]
+        self._populate_files()
+        self._update_status()
+
+    def _populate_files(self):
+        self.files.clear()
+        for preview in self._previews:
+            self.files.addItem(
+                f"{preview.get('archivo') or 'archivo'}\n"
+                f"{preview.get('lenguaje') or 'desconocido'}"
+            )
+        if not self._previews:
+            self.files.addItem("No hay preview determinista disponible")
+        self.files.setCurrentRow(0)
+
+    def _update_status(self):
+        valid = bool(self.proposal.get("validacion_ok", True))
+        risk = str(self.proposal.get("riesgo") or "NO DEFINIDO").upper()
+        enfoque = str(self.proposal.get("enfoque") or "PROPUESTA").upper()
+        self.status.setText(
+            f"{enfoque}  ·  Riesgo {risk}  ·  "
+            + ("✓ validación local OK" if valid else "✕ propuesta no aplicable")
+        )
+
+    def _show_file(self, index: int):
+        if index < 0 or index >= len(self._previews):
+            self.diff.setPlainText("Esta propuesta no contiene una vista previa determinista.")
+            self.code.clear()
+            return
+        preview = self._previews[index]
+        self.diff.setPlainText(str(preview.get("diff") or "Sin diff disponible."))
+        relative = Path(str(preview.get("archivo") or ""))
+        candidate = (
+            relative if relative.is_absolute()
+            else ((self.target_root / relative) if self.target_root else self.source_path)
+        )
+        if candidate and candidate.is_file():
+            try:
+                self.code.setPlainText(candidate.read_text(encoding="utf-8", errors="replace"))
+            except OSError as exc:
+                self.code.setPlainText(f"No se pudo leer el archivo:\n{exc}")
+        else:
+            self.code.setPlainText("El archivo objetivo no está disponible en el proyecto cargado.")
+
+
+class LibraryBrowserWindow(AegisDialog):
+    """Explorador visual de medicinas, parches y sus archivos guardados."""
+
+    def __init__(self, *, parent=None):
+        super().__init__(parent)
+        self.configure_dialog_size((1380, 820), (960, 600), maximized=False)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 16, 18, 16)
+        root.setSpacing(10)
+
+        header = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title = QLabel("Biblioteca de medicinas y parches")
+        title.setObjectName("PageTitle")
+        title_box.addWidget(title)
+        subtitle = QLabel(
+            "Revisa qué archivos están guardados, su verificación, estadísticas y contenido."
+        )
+        subtitle.setObjectName("Subheading")
+        subtitle.setWordWrap(True)
+        title_box.addWidget(subtitle)
+        header.addLayout(title_box, 1)
+        refresh = QPushButton("Actualizar")
+        refresh.clicked.connect(self.refresh)
+        header.addWidget(refresh)
+        root.addLayout(header)
+
+        self.summary = QLabel()
+        self.summary.setObjectName("Muted")
+        root.addWidget(self.summary)
+
+        split = QSplitter(Qt.Orientation.Horizontal)
+        split.setChildrenCollapsible(False)
+        left = QFrame()
+        left_l = QVBoxLayout(left)
+        left_l.addWidget(SectionHeader(
+            "Archivos guardados",
+            "Medicinas y parches encontrados en la biblioteca local.",
+        ))
+        self.tabs = QTabWidget()
+        self.recipe_list = QListWidget()
+        self.knowledge_list = QListWidget()
+        self.tabs.addTab(self.recipe_list, "Parches")
+        self.tabs.addTab(self.knowledge_list, "Medicinas")
+        left_l.addWidget(self.tabs, 1)
+
+        right = QFrame()
+        right_l = QVBoxLayout(right)
+        self.path_label = QLabel("Archivo: —")
+        self.path_label.setObjectName("Muted")
+        self.path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        right_l.addWidget(self.path_label)
+        actions = QHBoxLayout()
+        self.open_file_btn = QPushButton("Abrir JSON")
+        self.open_file_btn.clicked.connect(self._open_selected_file)
+        self.open_folder_btn = QPushButton("Abrir carpeta")
+        self.open_folder_btn.clicked.connect(self._open_selected_folder)
+        self.validate_btn = QPushButton("Validar archivo")
+        self.validate_btn.clicked.connect(self._validate_selected)
+        actions.addWidget(self.open_file_btn)
+        actions.addWidget(self.open_folder_btn)
+        actions.addWidget(self.validate_btn)
+        actions.addStretch(1)
+        right_l.addLayout(actions)
+        self.preview = QPlainTextEdit()
+        self.preview.setReadOnly(True)
+        self.preview.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.preview.setObjectName("PatchCodeView")
+        right_l.addWidget(self.preview, 1)
+        split.addWidget(left)
+        split.addWidget(right)
+        split.setSizes([410, 970])
+        root.addWidget(split, 1)
+
+        self._recipe_files = []
+        self._knowledge_files = []
+        self.recipe_list.currentRowChanged.connect(self._preview_recipe)
+        self.knowledge_list.currentRowChanged.connect(self._preview_knowledge)
+        self.tabs.currentChanged.connect(lambda _: self._render_file(self._current_path()))
+        self.refresh()
+
+    @staticmethod
+    def _load_json(path: Path):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return (data, "OK") if isinstance(data, dict) else (None, "El JSON no contiene un objeto.")
+        except Exception as exc:
+            return None, str(exc)
+
+    def refresh(self):
+        from ..recipe_library import biblioteca_por_defecto
+        from ..remediation_knowledge import knowledge_root
+        recipe_root = biblioteca_por_defecto()
+        knowledge_root_path = knowledge_root()
+        self._recipe_files = sorted(recipe_root.glob("*/*.json")) if recipe_root.exists() else []
+        self._knowledge_files = sorted(knowledge_root_path.glob("*/*.json")) if knowledge_root_path.exists() else []
+        self.recipe_list.clear()
+        self.knowledge_list.clear()
+        valid_recipes = 0
+        for path in self._recipe_files:
+            data, _ = self._load_json(path)
+            valid_recipes += int(data is not None)
+            verified = "✓ VERIFICADO" if data and data.get("verificada") else "○ PENDIENTE"
+            title = str(data.get("titulo") if data else path.stem)
+            self.recipe_list.addItem(f"{verified}  ·  {title}\n{path.name}")
+        valid_knowledge = 0
+        for path in self._knowledge_files:
+            data, _ = self._load_json(path)
+            valid_knowledge += int(data is not None)
+            verified = "✓ VERIFICADA" if data and data.get("verificada") else "○ PENDIENTE"
+            title = str(data.get("titulo") if data else path.stem)
+            self.knowledge_list.addItem(f"{verified}  ·  {title}\n{path.name}")
+        self.summary.setText(
+            f"Parches: {len(self._recipe_files)} ({valid_recipes} JSON válidos)  ·  "
+            f"Medicinas: {len(self._knowledge_files)} ({valid_knowledge} JSON válidos)"
+        )
+        current = self.recipe_list if self.tabs.currentIndex() == 0 else self.knowledge_list
+        if current.count():
+            current.setCurrentRow(0)
+        else:
+            self.preview.setPlainText("No hay archivos guardados en esta biblioteca.")
+
+    def _current_path(self):
+        files = self._recipe_files if self.tabs.currentIndex() == 0 else self._knowledge_files
+        row = self.recipe_list.currentRow() if self.tabs.currentIndex() == 0 else self.knowledge_list.currentRow()
+        return files[row] if 0 <= row < len(files) else None
+
+    def _render_file(self, path):
+        if path is None:
+            self.path_label.setText("Archivo: —")
+            self.preview.setPlainText("No hay archivo seleccionado.")
+            return
+        data, state = self._load_json(path)
+        self.path_label.setText(f"Archivo: {path}")
+        if data is None:
+            self.preview.setPlainText(f"ERROR DE JSON\n\n{state}\n\n{path}")
+            return
+        stats = data.get("estadisticas") or {}
+        report = {
+            "archivo_biblioteca": str(path),
+            "estado": ("VERIFICADO" if data.get("verificada") else "PENDIENTE"),
+            "id": data.get("recipe_id") or data.get("knowledge_id"),
+            "control_id": data.get("control_id"),
+            "titulo": data.get("titulo"),
+            "estadisticas": stats,
+            "origenes": data.get("origenes") or [],
+            "archivos_del_parche": data.get("cambios") or [],
+            "operaciones": data.get("operaciones") or [],
+            "familia_control": data.get("familia_control"),
+            "causa_raiz": data.get("causa_raiz"),
+            "invariante_seguridad": data.get("invariante_seguridad"),
+            "lenguajes": data.get("lenguajes_observados") or [],
+            "frameworks": data.get("frameworks_observados") or [],
+            "casos_exitosos": data.get("casos_exitosos", 0),
+            "ejemplos_verificados": data.get("ejemplos_verificados") or [],
+        }
+        report["json_completo"] = data
+        self.preview.setPlainText(json.dumps(report, ensure_ascii=False, indent=2))
+
+    def _preview_recipe(self, index):
+        if self.tabs.currentIndex() == 0:
+            self._render_file(self._recipe_files[index] if 0 <= index < len(self._recipe_files) else None)
+
+    def _preview_knowledge(self, index):
+        if self.tabs.currentIndex() == 1:
+            self._render_file(self._knowledge_files[index] if 0 <= index < len(self._knowledge_files) else None)
+
+    def _open_selected_file(self):
+        path = self._current_path()
+        if path and path.is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def _open_selected_folder(self):
+        path = self._current_path()
+        if path:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))
+
+    def _validate_selected(self):
+        path = self._current_path()
+        if path is None:
+            return
+        data, state = self._load_json(path)
+        if data is None:
+            QMessageBox.critical(self, "Archivo inválido", state)
+            return
+        required = (
+            ("Parches", ("recipe_id", "control_id", "operaciones")),
+            ("Medicinas", ("knowledge_id", "control_id", "invariante_seguridad")),
+        )
+        group = required[self.tabs.currentIndex()]
+        missing = [key for key in group[1] if key not in data]
+        if missing:
+            QMessageBox.warning(self, "Archivo incompleto", "Faltan campos: " + ", ".join(missing))
+            return
+        QMessageBox.information(self, "Archivo válido", f"Archivo correctamente estructurado.\n\n{path}")
 
 
 def styled_open_file(
